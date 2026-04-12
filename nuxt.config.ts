@@ -37,4 +37,7 @@ export default defineNuxtConfig({
     strict: true,
     typeCheck: true,
   },
+  nitro: {
+    preset: "cloudflare-pages",
+  },
 });
