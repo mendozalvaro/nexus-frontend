@@ -9,3 +9,8 @@
 
 ## Previous Handoffs
 - (none)
+## 2026-04-16 19:15:33 - codex
+- Step completado: fix_test_mocks
+- Acciones: setupFiles para Vitest, fix de color-mode helper, limpieza/reescritura de specs de composables (useAuth/usePOS/useInventory/useAppointments).
+- Validación: npm run test -- app/composables/test/useAuth.spec.ts app/composables/test/usePOS.spec.ts app/composables/test/useInventory.spec.ts app/composables/test/useAppointments.spec.ts => 17 passed.
+

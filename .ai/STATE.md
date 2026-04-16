@@ -1,9 +1,9 @@
 # Multi-Agent Workflow State
 
 ## Current State
-- **last_step**: implement_composable_tests
+- **last_step**: fix_test_mocks
 - **pending**: none
-- **agent**: none
+- **agent**: codex
 
 ## Files Created
 - app/composables/test/usePOS.spec.ts
@@ -18,3 +18,4 @@
 - Tests requieren ajustes menores de mocks (color-mode plugin)
 - Estructura completa: 12 tests para usePOS, tests para useInventory y useAppointments
 - Cobertura: inicialización, catálogo, carrito, checkout, validaciones, utilidades
+
