@@ -144,6 +144,6 @@ NO SUGERIR CAMBIOS
 - Usar `ai-handoff` para commits de transición (optimiza tokens al separar contextos)
 
 ### Flujo Típico
-1. Agente A lee STATE.md → ejecuta tarea → actualiza STATE.md → `ai-handoff`
-2. Agente B lee STATE.md → continúa desde pending → ejecuta tarea → actualiza STATE.md → `ai-handoff`
+1. Agente A lee STATE.md → ejecuta tarea → actualiza STATE.md → `ai-handoff` y registra log en HISTORY.md
+2. Agente B lee STATE.md → continúa desde pending → ejecuta tarea → actualiza STATE.md → `ai-handoff` y registra log en HISTORY.md
 3. Repetir hasta completar el proyecto
