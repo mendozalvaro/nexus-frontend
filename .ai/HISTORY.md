@@ -14,3 +14,15 @@
 - Acciones: setupFiles para Vitest, fix de color-mode helper, limpieza/reescritura de specs de composables (useAuth/usePOS/useInventory/useAppointments).
 - Validación: npm run test -- app/composables/test/useAuth.spec.ts app/composables/test/usePOS.spec.ts app/composables/test/useInventory.spec.ts app/composables/test/useAppointments.spec.ts => 17 passed.
 
+
+## 2026-04-16 20:12:47 - codex
+- Step completado: audit_functionality_status_report
+- Acciones: cruce de módulos de .github/copilot-instructions.md con evidencia real en app/components, app/composables, app/pages, server/api, app/utils, app/types, supabase.
+- Resultado: clasificación por funcionalidad en ?/??/? y asignación recomendada por backend/frontend/db-migrations/security-rls.
+
+
+## 2026-04-16 22:54:29 - codex
+- Step completado: implement_clients_multiorg_normalized
+- Acciones: creación de migración 013_clients_multiorg.sql, tipos/Zod de cliente, endpoint clients/upsert, endpoint clients/profile, ajustes en useAuth y middleware, y rutas /:slug/catalog + /client/checkout.
+- Estado: listo para handoff; pendiente ejecutar migración y regenerar tipos Supabase.
+

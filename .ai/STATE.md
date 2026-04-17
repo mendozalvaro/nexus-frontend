@@ -1,20 +1,26 @@
 # Multi-Agent Workflow State
 
 ## Current State
-- **last_step**: audit_functionality_status_report
-- **pending**: none
+- **last_step**: implement_clients_multiorg_normalized
+- **pending**: run_db_migration_and_regen_types
 - **agent**: codex
 
 ## Files Created
-- app/composables/test/usePOS.spec.ts
-- app/composables/test/useInventory.spec.ts
-- app/composables/test/useAppointments.spec.ts
+- supabase/migrations/013_clients_multiorg.sql
+- app/types/client.ts
+- server/api/clients/upsert.ts
+- server/api/clients/profile.get.ts
+- app/pages/[slug]/catalog.vue
+- app/pages/client/checkout.vue
 
 ## Files Modified
-- (none)
+- app/composables/useAuth.ts
+- app/middleware/permissions.ts
 
 ## Notes
-- ? Tarea completada: auditoría técnica de funcionalidades Nexus POS
-- Se cruzó baseline de `.github/copilot-instructions.md` con evidencia real en `app/*`, `server/api/*`, `supabase/*`
-- Se clasificaron funcionalidades en ? / ?? / ? según UI + composables + endpoints + validación + tenant/RLS
-- Salida entregada en tabla con asignación recomendada por backend / frontend / db-migrations / security-rls
+- Tarea completada: implementación de clients multi-org normalizado.
+- DB: tablas `clients` y `client_org` con índices, triggers de updated_at y políticas RLS.
+- API: endpoint `server/api/clients/upsert.ts` con validación Zod strict y auto-upsert por phone/email + vínculo org.
+- Auth: `useAuth` con rol dinámico staff -> client -> guest, cache 30s y exposición de `useOrgContext()` + `useClientProfile()`.
+- Rutas: `/:slug/catalog` pública y `client/checkout` protegida en middleware de permisos.
+- Validación pendiente: aplicar migración en entorno Supabase y regenerar tipos de base de datos.
