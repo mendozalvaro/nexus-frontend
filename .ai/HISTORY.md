@@ -26,3 +26,9 @@
 - Acciones: creación de migración 013_clients_multiorg.sql, tipos/Zod de cliente, endpoint clients/upsert, endpoint clients/profile, ajustes en useAuth y middleware, y rutas /:slug/catalog + /client/checkout.
 - Estado: listo para handoff; pendiente ejecutar migración y regenerar tipos Supabase.
 
+
+## 2026-04-16 22:57:02 - codex
+- Step completado: apply_clients_multiorg_migration_and_regen_types
+- Acciones: ejecución de migración 013_clients_multiorg.sql en Supabase linked y regeneración de app/types/database.types.ts.
+- Validación: database.types.ts incluye client_org y clients.
+
