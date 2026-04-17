@@ -32,3 +32,9 @@
 - Acciones: ejecución de migración 013_clients_multiorg.sql en Supabase linked y regeneración de app/types/database.types.ts.
 - Validación: database.types.ts incluye client_org y clients.
 
+
+## 2026-04-17 08:52:44 - codex
+- Step completado: fix_dev_vue_tsc_errors_and_finalize_typecheck
+- Acciones: correccion de errores vue-tsc en dev/typecheck (imports `serverSupabaseUser`, ajuste de tipo para metadata auth, asserts de tests con strict null checks, y fix de spread tipado en `test/setup.ts`).
+- Validacion: `npm run typecheck` => exit code 0.
+- Estado: handoff listo, pending = none.
