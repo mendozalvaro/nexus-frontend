@@ -1,33 +1,28 @@
 import type { User } from "@supabase/supabase-js";
 
 import type { Json, Tables } from "@/types/database.types";
+import type { SubscriptionPlanSlug } from "./subscription";
+
+export type BillingMode = "monthly" | "annual";
+export type BusinessType = "products" | "services" | "both";
 
 export interface RegistrationDraft {
+  fullName: string;
   email: string;
   password: string;
-  fullName: string;
-  country: string;
-  phone: string;
   acceptTerms: boolean;
-}
-
-export interface BillingData {
-  businessName: string;
-  taxId: string;
-  address: string;
-  city: string;
-  country: string;
-  phone: string;
-  email: string;
+  selectedPlan: SubscriptionPlanSlug;
+  billingMode: BillingMode;
 }
 
 export interface OrganizationDraft {
   organizationName: string;
-  slug: string;
-  timezone: string;
+  businessType: BusinessType;
+  selectedPlan: SubscriptionPlanSlug;
+  billingMode: BillingMode;
+  country: string;
   currency: string;
-  address: string;
-  billingData: BillingData;
+  timezone: string;
   logoPreviewUrl: string | null;
   logoFileName: string | null;
 }
@@ -44,12 +39,6 @@ export interface RegistrationResult {
   user: User | null;
   requiresEmailVerification: boolean;
   email: string;
-}
-
-export interface SlugValidationResult {
-  available: boolean;
-  normalizedSlug: string;
-  suggestions: string[];
 }
 
 export interface PostAuthResolution {

@@ -29,10 +29,15 @@ const auditAccessDenied = async (
 };
 
 export default defineNuxtRouteMiddleware(async (to) => {
+  const { resolvedRole } = useAuth();
   const { ensureAuthContext } = useAuthContext();
   const { user, profile } = await ensureAuthContext({ requireProfile: true });
 
   if (!user) {
+    return navigateTo("/auth/login");
+  }
+
+  if (to.path.startsWith("/client/checkout") && resolvedRole.value === "guest") {
     return navigateTo("/auth/login");
   }
 

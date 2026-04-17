@@ -5,15 +5,26 @@ import type {
   PaymentUploadPayload,
   ReceiptPreview,
 } from "@/types/payment";
+import {
+  DEFAULT_BANK_DETAILS,
+  ERROR_MESSAGES,
+  MAX_RECEIPT_SIZE_BYTES,
+  PAYMENT_SCHEMA,
+  buildReceiptStoragePath,
+  isReceiptMimeTypeAllowed,
+  sanitizeFilename,
+} from "@/utils/onboarding";
 
 interface PaymentDraft {
   transactionRef: string;
   confirmTransfer: boolean;
+  paymentMethod: string;
 }
 
 const createPaymentDraft = (): PaymentDraft => ({
   transactionRef: "",
   confirmTransfer: false,
+  paymentMethod: "bank_transfer",
 });
 
 export const usePaymentValidation = () => {
@@ -174,6 +185,7 @@ export const usePaymentValidation = () => {
       uploadProgress.value = 58;
 
       const validatedPayload = PAYMENT_SCHEMA.parse({
+        paymentMethod: draft.value.paymentMethod,
         transactionRef: payload.transactionRef,
         confirmTransfer: payload.confirmTransfer,
       });
@@ -184,7 +196,7 @@ export const usePaymentValidation = () => {
           organization_id: payload.organizationId,
           user_id: payload.userId,
           amount: payload.amount,
-          payment_method: "bank_transfer",
+          payment_method: validatedPayload.paymentMethod,
           transaction_ref: sanitizeNullableText(
             validatedPayload.transactionRef,
           ),
@@ -257,8 +269,34 @@ export const usePaymentValidation = () => {
 
   watch(draft, persistDraft, { deep: true });
 
+  const bankDetails = computed(() => {
+    const route = useRoute();
+    const planParam = typeof route.query.plan === "string" ? route.query.plan : "emprende";
+    const billingParam = typeof route.query.billing === "string" ? route.query.billing : "monthly";
+    const validBillingModes = ["monthly", "annual"] as const;
+    type BillingMode = (typeof validBillingModes)[number];
+    const billingMode = validBillingModes.includes(billingParam as BillingMode)
+      ? (billingParam as BillingMode)
+      : "monthly";
+    const plan = getPlanBySlug(planParam);
+    const monthlyAmount = plan?.priceMonthly ?? DEFAULT_BANK_DETAILS.amountUsd;
+    const amountUsd = billingMode === "annual"
+      ? Math.round(monthlyAmount * 12 * 0.85)
+      : monthlyAmount;
+
+    return {
+      bankName: DEFAULT_BANK_DETAILS.bankName,
+      accountNumber: DEFAULT_BANK_DETAILS.accountNumber,
+      accountHolder: DEFAULT_BANK_DETAILS.accountHolder,
+      amountUsd,
+      planName: plan?.name ?? DEFAULT_BANK_DETAILS.planName,
+      qrPlaceholderUrl: DEFAULT_BANK_DETAILS.qrPlaceholderUrl,
+      billingMode,
+    };
+  });
+
   return {
-    bankDetails: DEFAULT_BANK_DETAILS,
+    bankDetails,
     draft,
     loading,
     uploadProgress,

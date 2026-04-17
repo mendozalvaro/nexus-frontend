@@ -29,9 +29,13 @@ create type sub_status as enum ('active', 'past_due', 'canceled', 'trial', 'over
 create table organizations (
     id uuid default uuid_generate_v4() primary key,
     name text not null,
-    slug text unique not null,
-    currency_code char(3) default 'USD' check (length(currency_code) = 3),
-    timezone text default 'UTC',
+    slug text,
+    currency_code char(3) default 'BOB' check (length(currency_code) = 3),
+    timezone text default 'America/La_Paz',
+    country char(2) default 'BO',
+    business_type text default 'both' check (business_type in ('products', 'services', 'both')),
+    address text,
+    billing_data jsonb,
     is_active boolean default true,
     created_at timestamptz default now(),
     updated_at timestamptz default now()
@@ -64,6 +68,7 @@ create table organization_subscriptions (
     organization_id uuid references organizations(id) on delete cascade unique not null,
     plan_id uuid references subscription_plans(id) not null,
     status sub_status default 'trial',
+    billing_mode text default 'monthly' check (billing_mode in ('monthly', 'annual')),
     current_period_start timestamptz default now(),
     current_period_end timestamptz not null,
     provider_subscription_id text,
@@ -455,6 +460,70 @@ begin
     end if;
 
     return true;
+end;
+$$ language plpgsql security definer;
+
+-- Función RPC: Crear organización + subscription + profile admin (Onboarding simplificado)
+create or replace function create_onboarding_organization(
+    p_name text,
+    p_business_type text default 'both',
+    p_country text default 'BO',
+    p_currency text default 'BOB',
+    p_timezone text default 'America/La_Paz',
+    p_billing_mode text default 'monthly',
+    p_full_name text default null,
+    p_email text default null,
+    p_phone text default null
+) returns uuid as $$
+declare
+    v_org_id uuid;
+    v_user_id uuid;
+    v_plan_id uuid;
+    v_plan_slug text;
+begin
+    v_user_id := auth.uid();
+    if v_user_id is null then
+        raise exception 'Not authenticated';
+    end if;
+
+    -- Get plan from user_metadata
+    v_plan_slug := coalesce(
+        (select (u.raw_user_meta_data->>'selectedPlan')::text from auth.users u where u.id = v_user_id),
+        'emprende'
+    );
+    select id into v_plan_id from subscription_plans where slug = v_plan_slug limit 1;
+    if v_plan_id is null then
+        select id into v_plan_id from subscription_plans where slug = 'emprende' limit 1;
+    end if;
+
+    -- Create organization
+    insert into organizations (name, currency_code, timezone, business_type)
+    values (p_name, p_currency, p_timezone, p_business_type)
+    returning id into v_org_id;
+
+    -- Create subscription (trial 30 days)
+    insert into organization_subscriptions (organization_id, plan_id, status, current_period_end)
+    values (v_org_id, v_plan_id, 'trial', now() + interval '30 days');
+
+    -- Update profile
+    update profiles
+    set organization_id = v_org_id,
+        role = 'admin',
+        full_name = coalesce(p_full_name, full_name),
+        email = coalesce(p_email, email),
+        phone = coalesce(p_phone, phone)
+    where id = v_user_id;
+
+    -- Create default branch
+    insert into branches (organization_id, name, code)
+    values (v_org_id, 'Principal', 'MAIN');
+
+    -- Assign user to default branch
+    insert into employee_branch_assignments (user_id, branch_id, is_primary)
+    select v_user_id, b.id, true
+    from branches b where b.organization_id = v_org_id limit 1;
+
+    return v_org_id;
 end;
 $$ language plpgsql security definer;
 

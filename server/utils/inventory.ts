@@ -16,6 +16,7 @@ type InventoryMovementInsert = Database["public"]["Tables"]["inventory_movements
 type AssignmentRow = Database["public"]["Tables"]["employee_branch_assignments"]["Row"];
 type SubscriptionRow = Database["public"]["Tables"]["organization_subscriptions"]["Row"];
 type SubscriptionPlanRow = Database["public"]["Tables"]["subscription_plans"]["Row"];
+type InventoryMutationRow = Database["public"]["Functions"]["apply_inventory_stock_mutation"]["Returns"][number];
 type AdminClient = ReturnType<typeof createClient<Database>>;
 
 type StaffRole = Extract<UserRole, "admin" | "manager">;
@@ -67,6 +68,14 @@ export interface InventoryContext {
   };
   allowedBranchIds: string[];
   canTransferStock: boolean;
+}
+
+export interface InventoryMutationResult {
+  stockId: string;
+  previousQuantity: number;
+  newQuantity: number;
+  reservedQuantity: number;
+  minStockLevel: number;
 }
 
 const getBearerToken = (event: H3Event): string => {
@@ -507,6 +516,73 @@ export const upsertInventoryStock = async (
   }
 
   return data;
+};
+
+export const applyInventoryStockMutation = async (
+  context: Pick<InventoryContext, "adminClient">,
+  payload: {
+    branchId: string;
+    productId: string;
+    mode: "set" | "add" | "remove";
+    quantity: number;
+    minStockLevel?: number | null;
+    requireAvailable?: boolean;
+  },
+): Promise<InventoryMutationResult> => {
+  const { data, error } = await context.adminClient.rpc("apply_inventory_stock_mutation", {
+    p_branch_id: payload.branchId,
+    p_product_id: payload.productId,
+    p_mode: payload.mode,
+    p_quantity: payload.quantity,
+    p_min_stock_level: payload.minStockLevel ?? undefined,
+    p_require_available: payload.requireAvailable ?? false,
+  });
+
+  if (error) {
+    const message = error.message ?? "No se pudo mutar el stock del producto.";
+
+    if (message.includes("INSUFFICIENT_AVAILABLE_STOCK")) {
+      throw createError({
+        statusCode: 409,
+        statusMessage: "No hay stock disponible suficiente para completar la operación.",
+      });
+    }
+
+    if (message.includes("INSUFFICIENT_STOCK") || message.includes("NEGATIVE_STOCK_NOT_ALLOWED")) {
+      throw createError({
+        statusCode: 409,
+        statusMessage: "La operación deja el stock en negativo, lo cual no está permitido.",
+      });
+    }
+
+    if (message.includes("INVENTORY_STOCK_NOT_FOUND")) {
+      throw createError({
+        statusCode: 404,
+        statusMessage: "No existe stock cargado para este producto en la sucursal seleccionada.",
+      });
+    }
+
+    throw createError({
+      statusCode: 500,
+      statusMessage: message,
+    });
+  }
+
+  const row = (data as InventoryMutationRow[] | null)?.[0];
+  if (!row) {
+    throw createError({
+      statusCode: 500,
+      statusMessage: "La operación de inventario no devolvió un resultado válido.",
+    });
+  }
+
+  return {
+    stockId: row.stock_id,
+    previousQuantity: row.previous_quantity,
+    newQuantity: row.new_quantity,
+    reservedQuantity: row.reserved_quantity,
+    minStockLevel: row.min_stock_level,
+  };
 };
 
 export const insertInventoryMovement = async (

@@ -12,16 +12,30 @@ const props = withDefaults(defineProps<{
   title: string;
   description: string;
   featureItems?: readonly AuthFeature[];
+  showSidebar?: boolean;
 }>(), {
   featureItems: () => [],
+  showSidebar: true,
 });
 
 const colorMode = useColorMode();
 const hasMounted = ref(false);
 
 const resolvedTheme = computed(() => hasMounted.value ? colorMode.value : "system");
-const themeIcon = computed(() => resolvedTheme.value === "dark" ? "i-lucide-sun-medium" : "i-lucide-moon-star");
-const themeLabel = computed(() => resolvedTheme.value === "dark" ? "Activar tema claro" : "Activar tema oscuro");
+const themeIcon = computed(() => {
+  if (!hasMounted.value) {
+    return undefined;
+  }
+
+  return resolvedTheme.value === "dark" ? "i-lucide-sun-medium" : "i-lucide-moon-star";
+});
+const themeLabel = computed(() => {
+  if (!hasMounted.value) {
+    return "Cambiar tema";
+  }
+
+  return resolvedTheme.value === "dark" ? "Activar tema claro" : "Activar tema oscuro";
+});
 
 const toggleTheme = () => {
   colorMode.preference = colorMode.value === "dark" ? "light" : "dark";
@@ -62,8 +76,11 @@ onMounted(() => {
         </div>
       </header>
 
-      <div class="mx-auto flex w-full max-w-7xl flex-1 flex-col px-4 pb-8 pt-4 sm:px-6 sm:pt-6 lg:flex-row lg:items-center lg:gap-10 lg:px-8 lg:pb-10">
-        <aside class="hidden lg:flex lg:w-1/2 lg:flex-col lg:justify-between lg:py-8">
+      <div
+        class="mx-auto flex w-full flex-1 flex-col px-4 pb-8 pt-4 sm:px-6 sm:pt-6 lg:px-8 lg:pb-10"
+        :class="showSidebar ? 'max-w-7xl lg:flex-row lg:items-center lg:gap-10' : 'max-w-2xl'"
+      >
+        <aside v-if="showSidebar" class="hidden lg:flex lg:w-1/2 lg:flex-col lg:justify-between lg:py-8">
           <div class="max-w-xl">
             <p class="text-sm font-semibold uppercase tracking-[0.28em] text-slate-600 dark:text-slate-300">
               {{ eyebrow }}
@@ -99,7 +116,7 @@ onMounted(() => {
           <div class="w-full max-w-xl">
             <slot />
 
-            <div v-if="featureItems.length" class="mt-6 grid gap-3 lg:hidden">
+            <div v-if="showSidebar && featureItems.length" class="mt-6 grid gap-3 lg:hidden">
               <article
                 v-for="feature in featureItems"
                 :key="feature.title"

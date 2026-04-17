@@ -16,7 +16,8 @@ onMounted(() => {
   }
 
   observer = new IntersectionObserver((entries: IntersectionObserverEntry[]) => {
-    if (entries[0]?.isIntersecting) {
+    const entry = entries[0]
+    if (entry && entry.isIntersecting) {
       isVisible.value = true
       observer?.disconnect()
     }

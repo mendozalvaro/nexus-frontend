@@ -6,7 +6,6 @@
     "noImplicitAny": true,
     "strictNullChecks": true,
     "strictFunctionTypes": true,
-    "strictFunctionTypes": true,
     "strictBindCallApply": true,
     "strictPropertyInitialization": true,
     "noImplicitThis": true,
@@ -26,6 +25,7 @@
     "lib": ["ESNext", "DOM", "DOM.Iterable"],
     "jsx": "preserve",
     "types": ["node"],
+    "ignoreDeprecations": "5.0",
     "baseUrl": ".",
     "paths": {
       "@": ["./app"],

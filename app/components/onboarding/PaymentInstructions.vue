@@ -3,10 +3,12 @@ const props = defineProps<{
   organizationSlug: string;
   amountUsd: number;
   planName: string;
+  billingMode?: "monthly" | "annual";
   bankName: string;
   accountNumber: string;
   accountHolder: string;
   qrPlaceholderUrl: string;
+  paymentMethod?: string;
 }>();
 
 const referenceCode = computed(() => `NexusPOS-${props.organizationSlug}`);
@@ -87,8 +89,12 @@ onBeforeUnmount(() => {
     <div class="grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
       <div class="space-y-4">
         <div class="rounded-[1.5rem] bg-primary-50 p-4 dark:bg-primary-950/30">
-          <p class="text-sm text-slate-600 dark:text-slate-300">Monto mensual</p>
-          <p class="mt-2 text-3xl font-semibold text-slate-950 dark:text-white">${{ amountUsd }} USD/mes</p>
+          <p class="text-sm text-slate-600 dark:text-slate-300">
+            Monto {{ props.billingMode === 'annual' ? 'anual' : 'mensual' }}
+          </p>
+          <p class="mt-2 text-3xl font-semibold text-slate-950 dark:text-white">
+            ${{ amountUsd }} USD/{{ props.billingMode === 'annual' ? 'año' : 'mes' }}
+          </p>
           <p class="mt-1 text-sm text-slate-600 dark:text-slate-300">{{ planName }}</p>
         </div>
 
@@ -131,9 +137,13 @@ onBeforeUnmount(() => {
           color="info"
           variant="soft"
           icon="i-lucide-info"
-          title="Validacion manual en menos de 1 hora habil"
-          description="Conserva esta referencia en tu comprobante para agilizar la revision."
+          title="Validación manual en menos de 1 hora hábiles"
+          description="Conserva esta referencia en tu comprobante para agilizar la revisión."
         />
+
+        <p v-if="props.paymentMethod && props.paymentMethod !== 'bank_transfer'" class="text-sm text-amber-600 dark:text-amber-400">
+          Para {{ props.paymentMethod === 'qr_payment' ? 'pago QR' : props.paymentMethod === 'card' ? 'tarjeta' : 'otros métodos' }}, contacta soporte para instrucciones específicas.
+        </p>
 
         <p
           v-if="copiedValue || copyError"

@@ -3,6 +3,7 @@ import type { User } from "@supabase/supabase-js";
 import type { Database } from "@/types/database.types";
 
 const USER_VALIDATION_TTL_MS = 30_000;
+let pendingUserPromise: Promise<User | null> | null = null;
 
 /**
  * Resuelve el usuario autenticado tolerando el desfase entre SSR y la
@@ -66,22 +67,40 @@ export const useSessionAccess = () => {
       }
     }
 
-    const { data: userData, error: userError } = await supabase.auth.getUser();
-    if (!userError && userData.user) {
-      authenticatedUser.value = userData.user;
-      validatedAccessToken.value = token;
-      validatedAt.value = Date.now();
-      return userData.user;
+    if (!forceValidation && pendingUserPromise) {
+      return await pendingUserPromise;
     }
 
-    if (import.meta.dev && userError) {
-      console.warn("[SESSION_ACCESS]", userError.message);
+    const loader = (async (): Promise<User | null> => {
+      const { data: userData, error: userError } = await supabase.auth.getUser();
+      if (!userError && userData.user) {
+        authenticatedUser.value = userData.user;
+        validatedAccessToken.value = token;
+        validatedAt.value = Date.now();
+        return userData.user;
+      }
+
+      if (import.meta.dev && userError) {
+        console.warn("[SESSION_ACCESS]", userError.message);
+      }
+
+      authenticatedUser.value = null;
+      validatedAccessToken.value = null;
+      validatedAt.value = 0;
+      return null;
+    })();
+
+    if (!forceValidation) {
+      pendingUserPromise = loader;
     }
 
-    authenticatedUser.value = null;
-    validatedAccessToken.value = null;
-    validatedAt.value = 0;
-    return null;
+    try {
+      return await loader;
+    } finally {
+      if (pendingUserPromise === loader) {
+        pendingUserPromise = null;
+      }
+    }
   };
 
   return {

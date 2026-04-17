@@ -1,0 +1,25 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run *)",
+      "Bash(powershell *)",
+      "Bash(node *)",
+      "Bash(ren *)",
+      "Bash(findstr *)",
+      "Bash(del *)",
+      "WebSearch",
+      "Read(c:\\Users\\PC-Alvarito\\Dev/**)",
+      "WebFetch(nuxt.com)",
+      "Bash(mkdir *)",
+      "WebFetch(mcp.nuxt.space)",
+      "Bash(curl *)",
+      "Bash(echo.)",
+      "Bash(code *)",
+      "Bash(taskkill *)",
+      "Bash(npx *)",
+      "Bash(type *)",
+      "Bash(supabase *)"
+    ]
+  },
+  "$version": 3
+}

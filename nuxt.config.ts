@@ -4,6 +4,12 @@ export default defineNuxtConfig({
   devtools: { enabled: true },
   css: ["~/assets/css/main.css"],
   modules: ["@nuxt/ui", "@nuxtjs/color-mode", "@nuxtjs/supabase"],
+  colorMode: {
+    preference: 'system',
+    fallback: 'light',
+    storageKey: 'nexuspos-theme',
+    storage: 'cookie',
+  },
   runtimeConfig: {
     supabaseServiceRoleKey: process.env.NUXT_SUPABASE_SERVICE_ROLE_KEY ?? "",
     public: {},

@@ -1,9 +1,16 @@
 <script setup lang="ts">
-import { defineAsyncComponent } from "vue"
+import { defineAsyncComponent, computed } from "vue"
 
+import type { Database } from "@/types/database.types"
 import LandingHero from "../components/landing/LandingHero.vue"
 import LandingNavbar from "../components/landing/LandingNavbar.vue"
 import { useLanding } from "../composables/useLanding"
+import type { LandingPricingPlan } from "../composables/useLanding"
+
+type SubscriptionPlanRow = Pick<
+  Database["public"]["Tables"]["subscription_plans"]["Row"],
+  "slug" | "name" | "price_monthly" | "price_yearly" | "is_active"
+>
 
 definePageMeta({
   layout: false,
@@ -22,11 +29,51 @@ const {
   trustBadges,
   features,
   steps,
-  pricingPlans,
+  pricingPlans: defaultPricingPlans,
   testimonials,
   faqItems,
   footerColumns,
 } = useLanding()
+
+const supabase = useSupabaseClient<Database>()
+
+const { data: dbPlans } = await useAsyncData<SubscriptionPlanRow[]>(
+  "landing-subscription-plans",
+  async () => {
+    const { data, error } = await supabase
+      .from("subscription_plans")
+      .select("slug,name,price_monthly,price_yearly,is_active")
+      .eq("is_active", true)
+      .order("price_monthly", { ascending: true })
+
+    if (error) {
+      throw error
+    }
+
+    return (data ?? []) as SubscriptionPlanRow[]
+  },
+)
+
+const pricingPlans = computed<LandingPricingPlan[]>(() => {
+  if (!dbPlans.value || dbPlans.value.length === 0) {
+    return defaultPricingPlans
+  }
+
+  return dbPlans.value.map((plan) => {
+    const fallback = defaultPricingPlans.find((item) => item.id === plan.slug)
+
+    return {
+      id: plan.slug,
+      name: plan.name,
+      monthlyPrice: plan.price_monthly,
+      yearlyPrice: plan.price_yearly,
+      description: fallback?.description ?? "",
+      highlighted: fallback?.highlighted,
+      badge: fallback?.badge,
+      features: fallback?.features ?? [],
+    }
+  })
+})
 
 const isScrolled = ref(false)
 
@@ -70,26 +117,12 @@ useHead({
         name: "NexusPOS",
         applicationCategory: "BusinessApplication",
         operatingSystem: "Web",
-        offers: [
-          {
-            "@type": "Offer",
-            name: "Emprende",
-            price: "20",
-            priceCurrency: "USD",
-          },
-          {
-            "@type": "Offer",
-            name: "Crecimiento",
-            price: "65",
-            priceCurrency: "USD",
-          },
-          {
-            "@type": "Offer",
-            name: "Enterprise",
-            price: "200",
-            priceCurrency: "USD",
-          },
-        ],
+        offers: pricingPlans.value.map((plan) => ({
+          "@type": "Offer",
+          name: plan.name,
+          price: String(plan.monthlyPrice),
+          priceCurrency: "USD",
+        })),
       }),
     },
     {

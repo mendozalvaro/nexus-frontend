@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { computed, onMounted, ref } from "vue";
 import type { User } from "@supabase/supabase-js";
 
 import type { Profile } from "../../types/auth";
@@ -11,6 +12,26 @@ type UserRole = Database["public"]["Enums"]["user_role"];
 
 const route = useRoute();
 const { toggle, resolvedTheme } = useTheme();
+const hasMounted = ref(false);
+
+const themeIcon = computed(() => {
+  if (!hasMounted.value) {
+    return undefined;
+  }
+
+  return resolvedTheme.value === "dark" ? "i-lucide-sun-medium" : "i-lucide-moon-star";
+});
+const themeLabel = computed(() => {
+  if (!hasMounted.value) {
+    return "Cambiar tema";
+  }
+
+  return resolvedTheme.value === "dark" ? "Activar tema claro" : "Activar tema oscuro";
+});
+
+onMounted(() => {
+  hasMounted.value = true;
+});
 
 const props = withDefaults(
   defineProps<{
@@ -133,8 +154,8 @@ function handleEscape(event: KeyboardEvent) {
 
       <div class="flex items-center gap-2">
         <UButton color="neutral" variant="ghost"
-          :icon="resolvedTheme === 'dark' ? 'i-lucide-sun-medium' : 'i-lucide-moon-star'"
-          :aria-label="resolvedTheme === 'dark' ? 'Activar tema claro' : 'Activar tema oscuro'"
+          :icon="themeIcon"
+          :aria-label="themeLabel"
           class="admin-interactive admin-focus-ring h-10 w-10 rounded-2xl" @click="toggle" />
 
         <div v-if="showNotifications" class="relative">

@@ -76,11 +76,11 @@ const syncValidationInfo = (
   const latestValidation = summary?.latestValidation;
   validationInfo.value = latestValidation
     ? {
-        submittedAt: latestValidation.created_at ?? undefined,
-        reviewedAt: latestValidation.reviewed_at ?? undefined,
-        rejectionReason: latestValidation.rejection_reason,
-        reviewedBy: latestValidation.reviewed_by,
-      }
+      submittedAt: latestValidation.created_at ?? undefined,
+      reviewedAt: latestValidation.reviewed_at ?? undefined,
+      rejectionReason: latestValidation.rejection_reason,
+      reviewedBy: latestValidation.reviewed_by,
+    }
     : null;
 };
 
@@ -167,7 +167,7 @@ const onSubmit = async () => {
   await uploadReceipt({
     organizationId: currentProfile.organization_id,
     userId: user.id,
-    amount: bankDetails.amountUsd,
+    amount: bankDetails.value.amountUsd,
     file: selectedFile,
     transactionRef: draft.value.transactionRef,
     confirmTransfer: draft.value.confirmTransfer,
@@ -177,24 +177,6 @@ const onSubmit = async () => {
   updatePageState(latestStatus.value);
   await navigateTo("/onboarding/success", { replace: true });
 };
-
-const featureItems = [
-  {
-    icon: "i-lucide-landmark",
-    title: "Transferencia manual",
-    description: "Sin pasarela en esta fase: monto fijo, referencia trazable y validacion humana.",
-  },
-  {
-    icon: "i-lucide-file-check-2",
-    title: "Comprobante rastreable",
-    description: "Guardamos path, tipo, referencia y metadata del envio para auditoria posterior.",
-  },
-  {
-    icon: "i-lucide-hourglass",
-    title: "Estado visible",
-    description: "Si ya enviaste un comprobante, mostramos si esta pendiente o requiere reintento.",
-  },
-] as const;
 
 if (import.meta.client) {
   onMounted(async () => {
@@ -233,19 +215,22 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <AuthLayout eyebrow="Pago" title="Sube tu comprobante de transferencia."
-    description="Tu cuenta seguira en estado pendiente hasta que validemos el pago manualmente."
-    :feature-items="featureItems">
+  <AuthLayout
+    eyebrow="Pago"
+    title="Completa el pago"
+    description="Sube tu comprobante de transferencia para activar la cuenta."
+    :show-sidebar="false"
+  >
     <div class="space-y-5">
       <ProgressStepper current-step="payment" />
 
       <PaymentInstructions :organization-slug="organizationSlug" :amount-usd="bankDetails.amountUsd"
-        :plan-name="bankDetails.planName" :bank-name="bankDetails.bankName" :account-number="bankDetails.accountNumber"
-        :account-holder="bankDetails.accountHolder" :qr-placeholder-url="bankDetails.qrPlaceholderUrl" />
+        :plan-name="bankDetails.planName" :billing-mode="bankDetails.billingMode" :bank-name="bankDetails.bankName"
+        :account-number="bankDetails.accountNumber" :account-holder="bankDetails.accountHolder"
+        :qr-placeholder-url="bankDetails.qrPlaceholderUrl" :payment-method="draft.paymentMethod" />
 
       <UAlert v-if="pageState === 'pending'" color="warning" variant="soft" icon="i-lucide-timer"
-        title="Comprobante recibido - En validacion"
-        :description="formattedSubmittedAt
+        title="Comprobante recibido - En validacion" :description="formattedSubmittedAt
           ? `Recibimos tu comprobante el ${formattedSubmittedAt}. Te avisaremos por email cuando la cuenta este activa.`
           : 'Recibimos tu comprobante y esta en revision manual.'" />
 
@@ -253,34 +238,38 @@ onBeforeUnmount(() => {
         title="Comprobante rechazado"
         :description="validationInfo?.rejectionReason ?? 'Sube un nuevo comprobante para continuar.'" />
 
-      <UCard v-if="pageState === 'approved'" class="rounded-[1.75rem] border border-emerald-300/80 bg-emerald-50/80 dark:border-emerald-700 dark:bg-emerald-950/25">
+      <UCard v-if="pageState === 'approved'"
+        class="rounded-[1.75rem] border border-emerald-300/80 bg-emerald-50/80 dark:border-emerald-700 dark:bg-emerald-950/25">
         <div class="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div class="space-y-2">
             <div class="flex items-center gap-3">
-              <div class="flex h-11 w-11 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-300">
+              <div
+                class="flex h-11 w-11 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-300">
                 <UIcon name="i-lucide-badge-check" class="h-6 w-6" />
               </div>
               <div>
-                <p class="text-sm font-semibold uppercase tracking-[0.22em] text-emerald-700 dark:text-emerald-300">Pago aprobado</p>
+                <p class="text-sm font-semibold uppercase tracking-[0.22em] text-emerald-700 dark:text-emerald-300">Pago
+                  aprobado</p>
                 <h2 class="text-xl font-semibold text-slate-950 dark:text-white">Tu cuenta ya puede activarse</h2>
               </div>
             </div>
             <p class="text-sm text-slate-700 dark:text-slate-300">
-              {{ formattedReviewedAt ? `Aprobado el ${formattedReviewedAt}.` : "Tu comprobante fue aprobado correctamente." }}
+              {{ formattedReviewedAt ? `Aprobado el ${formattedReviewedAt}.` : "Tu comprobante fue aprobado correctamente."}}
               Redirigiendo al dashboard en {{ approvedRedirectSeconds }}s.
             </p>
-          </div>
 
-          <UButton color="primary" size="lg" @click="navigateTo('/dashboard', { replace: true })">
-            Ir al dashboard
-          </UButton>
+            <UButton color="primary" size="lg" @click="navigateTo('/dashboard', { replace: true })">
+              Ir al dashboard
+            </UButton>
+          </div>
         </div>
       </UCard>
 
       <ReceiptUpload v-else :loading="loading" :upload-progress="uploadProgress" :error="error" :preview="preview"
-        :page-state="pageState" :transaction-ref="draft.transactionRef" :confirm-transfer="draft.confirmTransfer"
+        :page-state="pageState" :transaction-ref="draft.transactionRef" :confirm-transfer="draft.confirmTransfer" :payment-method="draft.paymentMethod"
         @update:transaction-ref="draft.transactionRef = $event"
-        @update:confirm-transfer="draft.confirmTransfer = $event" @file-selected="onFileSelected"
+        @update:confirm-transfer="draft.confirmTransfer = $event" @update:payment-method="draft.paymentMethod = $event"
+        @file-selected="onFileSelected"
         @clear-file="clearFileSelection" @submit="onSubmit" />
     </div>
   </AuthLayout>

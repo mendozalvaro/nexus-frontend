@@ -11,7 +11,9 @@
     "typecheck": "nuxt typecheck",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
-    "supabase:types": "supabase gen types typescript --project-id $SUPABASE_PROJECT_ID > types/supabase.ts"
+    "supabase:types": "supabase gen types typescript --project-id $SUPABASE_PROJECT_ID > types/supabase.ts",
+    "test" : "vitest",
+    "test:ui" : "vitest --ui"
   },
   "dependencies": {
     "@nuxt/ui": "^4.6.0",
@@ -26,7 +28,11 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
+    "@nuxt/test-utils": "^4.0.2",
     "@types/node": "^25.5.0",
+    "@vue/test-utils": "^2.4.6",
+    "happy-dom": "^20.9.0",
+    "vitest": "^4.1.4",
     "vue-tsc": "^3.2.6",
     "wrangler": "^4.81.1"
   }

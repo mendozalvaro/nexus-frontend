@@ -1,3 +1,5 @@
+import { applyInventoryStockMutation } from "../../utils/inventory";
+
 import {
   assertBranchAccess,
   assertEmployeeCanDeliverService,
@@ -8,11 +10,11 @@ import {
   computeDiscountAmount,
   createPOSGuestCustomer,
   getCategoriesMap,
+  getCustomerOrThrow,
+  getInventoryForBranch,
   getPOSBranchOrThrow,
   getPOSEmployeeOrThrow,
   getPOSServiceOrThrow,
-  getCustomerOrThrow,
-  getInventoryForBranch,
   getProductOrThrow,
   mapPOSError,
   readValidatedPOSBody,
@@ -74,6 +76,7 @@ export default defineEventHandler(async (event) => {
 
   try {
     const itemInserts: TransactionItemInsert[] = [];
+    const stockAdjustments: Array<{ productId: string; quantity: number }> = [];
     let subtotal = 0;
 
     for (const item of productItems) {
@@ -95,6 +98,11 @@ export default defineEventHandler(async (event) => {
             statusMessage: `Stock insuficiente para ${product.name}. Disponible: ${available}.`,
           });
         }
+
+        stockAdjustments.push({
+          productId: product.id,
+          quantity: item.quantity,
+        });
       }
 
       const category = product.category_id ? categoriesMap.get(product.category_id) ?? null : null;
@@ -180,73 +188,73 @@ export default defineEventHandler(async (event) => {
 
     const discountAmount = computeDiscountAmount(subtotal, body.discount);
     const finalAmount = Math.max(0, subtotal - discountAmount);
+    const appliedStockAdjustments: Array<{ productId: string; quantity: number }> = [];
 
-    const transactionInsert: TransactionInsert = buildTransactionInsert(
-      context,
-      branch.id,
-      customerId,
-      subtotal,
-      discountAmount,
-      finalAmount,
-      body.paymentMethod,
-    );
+    try {
+      for (const stockAdjustment of stockAdjustments) {
+        await applyInventoryStockMutation(context, {
+          branchId: branch.id,
+          productId: stockAdjustment.productId,
+          mode: "remove",
+          quantity: stockAdjustment.quantity,
+          requireAvailable: true,
+        });
 
-    const { data: transaction, error: transactionError } = await context.adminClient
-      .from("transactions")
-      .insert(transactionInsert)
-      .select("id")
-      .single<{ id: string }>();
-
-    if (transactionError || !transaction) {
-      throw transactionError ?? new Error("No se pudo crear la transacción del POS.");
-    }
-
-    const transactionItems = itemInserts.map((item) => ({
-      ...item,
-      transaction_id: transaction.id,
-    }));
-
-    const { error: itemsError } = await context.adminClient
-      .from("transaction_items")
-      .insert(transactionItems);
-
-    if (itemsError) {
-      throw itemsError;
-    }
-
-    for (const item of productItems) {
-      const product = await getProductOrThrow(context, item.productId);
-      if (!product.track_inventory) {
-        continue;
+        appliedStockAdjustments.push(stockAdjustment);
       }
 
-      const stock = inventoryMap.get(product.id);
-      if (!stock) {
-        throw createError({
-          statusCode: 409,
-          statusMessage: `No existe stock cargado para ${product.name} en esta sucursal.`,
+      const transactionInsert: TransactionInsert = buildTransactionInsert(
+        context,
+        branch.id,
+        customerId,
+        subtotal,
+        discountAmount,
+        finalAmount,
+        body.paymentMethod,
+      );
+
+      const { data: transaction, error: transactionError } = await context.adminClient
+        .from("transactions")
+        .insert(transactionInsert)
+        .select("id")
+        .single<{ id: string }>();
+
+      if (transactionError || !transaction) {
+        throw transactionError ?? new Error("No se pudo crear la transacción del POS.");
+      }
+
+      const transactionItems = itemInserts.map((item) => ({
+        ...item,
+        transaction_id: transaction.id,
+      }));
+
+      const { error: itemsError } = await context.adminClient
+        .from("transaction_items")
+        .insert(transactionItems);
+
+      if (itemsError) {
+        throw itemsError;
+      }
+
+      const receipt = await buildReceiptFromTransaction(context, transaction.id);
+
+      return {
+        success: true,
+        transactionId: transaction.id,
+        receipt,
+      };
+    } catch (error) {
+      for (const stockAdjustment of appliedStockAdjustments.reverse()) {
+        await applyInventoryStockMutation(context, {
+          branchId: branch.id,
+          productId: stockAdjustment.productId,
+          mode: "add",
+          quantity: stockAdjustment.quantity,
         });
       }
 
-      const nextQuantity = Math.max(0, (stock.quantity ?? 0) - item.quantity);
-      const { error: stockError } = await context.adminClient
-        .from("inventory_stock")
-        .update({ quantity: nextQuantity })
-        .eq("id", stock.id)
-        .eq("branch_id", branch.id);
-
-      if (stockError) {
-        throw stockError;
-      }
+      throw error;
     }
-
-    const receipt = await buildReceiptFromTransaction(context, transaction.id);
-
-    return {
-      success: true,
-      transactionId: transaction.id,
-      receipt,
-    };
   } catch (error) {
     return mapPOSError(error, "No se pudo completar el checkout del POS.");
   }

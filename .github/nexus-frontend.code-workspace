@@ -1,0 +1,22 @@
+{
+	"folders": [
+		{
+			"path": ".."
+		}
+	],
+	"settings": {
+		"github.copilot.enable": {
+			"*": true,
+			"plaintext": false,
+			"markdown": false,
+			".env": false
+		},
+		"typescript.tsdk": "node_modules/typescript/lib",
+		"chat.tools.terminal.autoApprove": {
+			"/^supabase db push$/": {
+				"approve": true,
+				"matchCommandLine": true
+			}
+		}
+	}
+}

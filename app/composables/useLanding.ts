@@ -19,6 +19,7 @@ export interface LandingPricingPlan {
   id: string
   name: string
   monthlyPrice: number
+  yearlyPrice: number
   description: string
   highlighted?: boolean
   badge?: string
@@ -117,9 +118,24 @@ const steps: LandingStepItem[] = [
 
 const pricingPlans: LandingPricingPlan[] = [
   {
+    id: "prueba",
+    name: "Prueba",
+    monthlyPrice: 0,
+    yearlyPrice: 0,
+    description: "Experimenta el poder de NexusPOS con nuestra prueba gratuita de 14 dias. Sin tarjeta requerida, sin compromiso.",
+    features: [
+      "1 sucursal",
+      "1 usuario",
+      "Catalogo basico",
+      "Punto de venta",
+      "Soporte por email",
+    ],
+  },
+  {
     id: "emprende",
     name: "Emprende",
     monthlyPrice: 20,
+    yearlyPrice: 204,
     description: "Ideal para negocios que estan digitalizando su primera operacion.",
     features: [
       "1 sucursal",
@@ -133,6 +149,7 @@ const pricingPlans: LandingPricingPlan[] = [
     id: "crecimiento",
     name: "Crecimiento",
     monthlyPrice: 65,
+    yearlyPrice: 663,
     description: "La opcion recomendada para equipos que ya venden en varias lineas o sedes.",
     highlighted: true,
     badge: "Mas popular",
@@ -148,6 +165,7 @@ const pricingPlans: LandingPricingPlan[] = [
     id: "enterprise",
     name: "Enterprise",
     monthlyPrice: 200,
+    yearlyPrice: 2040,
     description: "Para operaciones complejas que necesitan control avanzado, marca propia y soporte premium.",
     features: [
       "Sucursales ilimitadas",

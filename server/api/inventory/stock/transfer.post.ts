@@ -1,4 +1,5 @@
 import {
+  applyInventoryStockMutation,
   assertInventoryBranchAccess,
   assertTransferFeature,
   getInventoryBranchOrThrow,
@@ -9,7 +10,6 @@ import {
   readValidatedInventoryBody,
   requireInventoryContext,
   stockTransferSchema,
-  upsertInventoryStock,
 } from "../../../utils/inventory";
 
 export default defineEventHandler(async (event) => {
@@ -30,44 +30,23 @@ export default defineEventHandler(async (event) => {
   const sourceBranch = await getInventoryBranchOrThrow(context, body.sourceBranchId);
   const destinationBranch = await getInventoryBranchOrThrow(context, body.destinationBranchId);
   const product = await getInventoryProductOrThrow(context, body.productId);
-  const sourceStock = await getInventoryStockOrThrow(context, body.sourceBranchId, body.productId);
-
-  if (!sourceStock) {
-    throw createError({
-      statusCode: 404,
-      statusMessage: "La sucursal origen no tiene stock registrado para ese producto.",
-    });
-  }
-
-  const sourcePreviousQuantity = sourceStock.quantity ?? 0;
-  const sourceReserved = sourceStock.reserved_quantity ?? 0;
-  const sourceAvailableQuantity = sourcePreviousQuantity - sourceReserved;
-
-  if (sourceAvailableQuantity < body.quantity) {
-    throw createError({
-      statusCode: 409,
-      statusMessage: `La sucursal origen solo tiene ${sourceAvailableQuantity} unidad(es) disponibles.`,
-    });
-  }
-
   const destinationStock = await getInventoryStockOrThrow(context, body.destinationBranchId, body.productId);
-  const destinationPreviousQuantity = destinationStock?.quantity ?? 0;
-  const nextSourceQuantity = sourcePreviousQuantity - body.quantity;
-  const nextDestinationQuantity = destinationPreviousQuantity + body.quantity;
 
-  const updatedSourceStock = await upsertInventoryStock(context, {
+  const sourceMutation = await applyInventoryStockMutation(context, {
     branchId: body.sourceBranchId,
     productId: body.productId,
-    quantity: nextSourceQuantity,
-    minStockLevel: sourceStock.min_stock_level ?? 5,
+    mode: "remove",
+    quantity: body.quantity,
+    requireAvailable: true,
   });
 
   try {
-    const updatedDestinationStock = await upsertInventoryStock(context, {
+    const destinationMutation = await applyInventoryStockMutation(context, {
       branchId: body.destinationBranchId,
       productId: body.productId,
-      quantity: nextDestinationQuantity,
-      minStockLevel: destinationStock?.min_stock_level ?? sourceStock.min_stock_level ?? 5,
+      mode: "add",
+      quantity: body.quantity,
+      minStockLevel: destinationStock?.min_stock_level ?? null,
     });
 
     await insertInventoryMovement(context, {
@@ -76,12 +55,12 @@ export default defineEventHandler(async (event) => {
       product_id: body.productId,
       movement_type: "transfer_out",
       quantity: body.quantity,
-      previous_quantity: sourcePreviousQuantity,
-      new_quantity: nextSourceQuantity,
+      previous_quantity: sourceMutation.previousQuantity,
+      new_quantity: sourceMutation.newQuantity,
       reason: body.reason.trim(),
       note: body.note.trim() || null,
       reference_type: "branch_transfer",
-      reference_id: updatedSourceStock.id,
+      reference_id: sourceMutation.stockId,
       source_branch_id: body.sourceBranchId,
       destination_branch_id: body.destinationBranchId,
       created_by: context.userId,
@@ -93,31 +72,31 @@ export default defineEventHandler(async (event) => {
       product_id: body.productId,
       movement_type: "transfer_in",
       quantity: body.quantity,
-      previous_quantity: destinationPreviousQuantity,
-      new_quantity: nextDestinationQuantity,
+      previous_quantity: destinationMutation.previousQuantity,
+      new_quantity: destinationMutation.newQuantity,
       reason: body.reason.trim(),
       note: body.note.trim() || null,
       reference_type: "branch_transfer",
-      reference_id: updatedDestinationStock.id,
+      reference_id: destinationMutation.stockId,
       source_branch_id: body.sourceBranchId,
       destination_branch_id: body.destinationBranchId,
       created_by: context.userId,
     });
 
     await insertInventoryAudit(context, {
-      recordId: updatedSourceStock.id,
+      recordId: sourceMutation.stockId,
       event: "INVENTORY_STOCK_TRANSFER",
       oldData: {
         sourceBranchId: body.sourceBranchId,
         destinationBranchId: body.destinationBranchId,
-        sourceQuantity: sourcePreviousQuantity,
-        destinationQuantity: destinationPreviousQuantity,
+        sourceQuantity: sourceMutation.previousQuantity,
+        destinationQuantity: destinationMutation.previousQuantity,
       },
       newData: {
         sourceBranchId: body.sourceBranchId,
         destinationBranchId: body.destinationBranchId,
-        sourceQuantity: nextSourceQuantity,
-        destinationQuantity: nextDestinationQuantity,
+        sourceQuantity: sourceMutation.newQuantity,
+        destinationQuantity: destinationMutation.newQuantity,
       },
       extraContext: {
         source_branch_name: sourceBranch.name,
@@ -129,11 +108,11 @@ export default defineEventHandler(async (event) => {
       },
     });
   } catch (error) {
-    await upsertInventoryStock(context, {
+    await applyInventoryStockMutation(context, {
       branchId: body.sourceBranchId,
       productId: body.productId,
-      quantity: sourcePreviousQuantity,
-      minStockLevel: sourceStock.min_stock_level ?? 5,
+      mode: "add",
+      quantity: body.quantity,
     });
 
     throw createError({

@@ -7,7 +7,7 @@ type PaymentValidationRow =
   Database["public"]["Tables"]["payment_validations"]["Row"];
 
 export interface OnboardingSuccessState {
-  organization: Pick<OrganizationRow, "id" | "name" | "slug" | "status">;
+  organization: Pick<OrganizationRow, "id" | "name" | "country" | "status">;
   subscription: Pick<SubscriptionRow, "status" | "current_period_end"> | null;
   validation: Pick<
     PaymentValidationRow,
@@ -121,7 +121,7 @@ export const useOnboarding = () => {
       }, { data: validation, error: validationError }] = await Promise.all([
         supabase
           .from("organizations")
-          .select("id, name, slug, status")
+          .select("id, name, country, status")
           .eq("id", profile.organization_id)
           .single(),
         supabase

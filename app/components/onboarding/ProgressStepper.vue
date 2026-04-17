@@ -1,23 +1,19 @@
 <script setup lang="ts">
-
-const props = defineProps<{
-  currentStep: OnboardingStep;
-}>();
+const props = defineProps<{ currentStep: string }>();
 
 const items = [
-  { key: "registration", label: "Registro", description: "Crea tu acceso inicial." },
-  { key: "verification", label: "Verificacion", description: "Confirma tu email." },
-  { key: "organization", label: "Organizacion", description: "Configura tu empresa." },
+  { key: "registration", label: "Cuenta", description: "Crea tu acceso." },
+  { key: "organization", label: "Empresa", description: "Configura tu negocio." },
   { key: "payment", label: "Pago", description: "Sube tu comprobante." },
 ] as const;
 
-const currentIndex = computed(() => items.findIndex((item) => item.key === props.currentStep));
+const currentIndex = computed(() => items.findIndex(item => item.key === props.currentStep));
 </script>
 
 <template>
   <nav aria-label="Progreso del onboarding"
-    class="rounded-[1.75rem] border border-slate-200/80 bg-white/80 p-4 shadow-sm shadow-slate-900/5 dark:border-slate-800 dark:bg-slate-950/65">
-    <ol class="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+    class="rounded-[1.75rem] border border-slate-200/80 bg-white/80 p-4 shadow-sm dark:border-slate-800 dark:bg-slate-950/65">
+    <ol class="grid gap-3 md:grid-cols-3">
       <li v-for="(item, index) in items" :key="item.key" class="rounded-[1.5rem] border p-3 transition-colors"
         :class="index <= currentIndex ? 'border-primary-200 bg-primary-50/90 dark:border-primary-900/70 dark:bg-primary-950/30' : 'border-slate-200/80 bg-slate-50/70 dark:border-slate-800 dark:bg-slate-900/65'">
         <div class="flex items-center gap-3">
@@ -26,7 +22,6 @@ const currentIndex = computed(() => items.findIndex((item) => item.key === props
             <UIcon v-if="index < currentIndex" name="i-lucide-check" class="h-4 w-4" />
             <span v-else>{{ index + 1 }}</span>
           </div>
-
           <div class="min-w-0">
             <p class="text-sm font-semibold text-slate-950 dark:text-white">{{ item.label }}</p>
             <p class="text-sm leading-5 text-slate-600 dark:text-slate-300">{{ item.description }}</p>

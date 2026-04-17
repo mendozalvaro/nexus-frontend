@@ -73,32 +73,14 @@ watch(() => session.value?.user?.email_confirmed_at ?? null, async (value, previ
 
   await redirectIfVerified();
 });
-
-const featureItems = [
-  {
-    icon: "i-lucide-mail-check",
-    title: "Verificacion activa",
-    description: "Consultamos el estado para evitar que te quedes atascado despues de confirmar.",
-  },
-  {
-    icon: "i-lucide-clock-3",
-    title: "Reenvio con espera",
-    description: "Limitamos el reenvio a una vez por minuto para reducir abuso y spam.",
-  },
-  {
-    icon: "i-lucide-arrow-right",
-    title: "Continuidad del flujo",
-    description: "Cuando el email se confirme, te llevaremos al siguiente paso automaticamente.",
-  },
-] as const;
 </script>
 
 <template>
   <AuthLayout
-    eyebrow="Verificacion"
-    title="Confirma tu correo para continuar."
-    description="Este paso protege el acceso inicial y habilita la configuracion de tu organizacion."
-    :feature-items="featureItems"
+    eyebrow="Verificación"
+    title="Confirma tu correo"
+    description="Te enviaremos un enlace de confirmación a tu email."
+    :show-sidebar="false"
   >
     <div class="space-y-5">
       <ProgressStepper current-step="verification" />

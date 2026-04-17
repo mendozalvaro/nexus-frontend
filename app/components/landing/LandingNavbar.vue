@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { computed, onMounted, ref, watch } from "vue"
 import type { LandingNavigationItem } from "../../composables/useLanding"
 
 const props = defineProps<{
@@ -8,8 +9,26 @@ const props = defineProps<{
 
 const { colorMode, toggleTheme, scrollToSection, goToTop, navigateToAuth } = useLanding()
 const isMobileMenuOpen = ref(false)
+const hasMounted = ref(false)
 
-const themeIcon = computed(() => colorMode.value === "dark" ? "i-lucide-sun-medium" : "i-lucide-moon-star")
+const themeIcon = computed(() => {
+  if (!hasMounted.value) {
+    return undefined;
+  }
+
+  return colorMode.value === "dark" ? "i-lucide-sun-medium" : "i-lucide-moon-star";
+})
+const themeLabel = computed(() => {
+  if (!hasMounted.value) {
+    return "Cambiar tema";
+  }
+
+  return colorMode.value === "dark" ? "Activar tema claro" : "Activar tema oscuro";
+})
+
+onMounted(() => {
+  hasMounted.value = true
+})
 
 const handleNavigation = (id: string) => {
   scrollToSection(id)
@@ -91,7 +110,7 @@ onBeforeUnmount(() => {
           variant="ghost"
           :icon="themeIcon"
           class="rounded-full"
-          aria-label="Cambiar tema"
+          :aria-label="themeLabel"
           @click="toggleTheme"
         />
       </div>
@@ -102,7 +121,7 @@ onBeforeUnmount(() => {
           variant="ghost"
           :icon="themeIcon"
           class="rounded-full"
-          aria-label="Cambiar tema"
+          :aria-label="themeLabel"
           @click="toggleTheme"
         />
         <UButton

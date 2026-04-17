@@ -159,64 +159,6 @@ export type Database = {
         }
         Relationships: []
       }
-      guest_customers: {
-        Row: {
-          branch_id: string | null
-          created_at: string | null
-          created_by: string | null
-          full_name: string
-          id: string
-          notes: string | null
-          organization_id: string
-          phone: string | null
-          updated_at: string | null
-        }
-        Insert: {
-          branch_id?: string | null
-          created_at?: string | null
-          created_by?: string | null
-          full_name: string
-          id?: string
-          notes?: string | null
-          organization_id: string
-          phone?: string | null
-          updated_at?: string | null
-        }
-        Update: {
-          branch_id?: string | null
-          created_at?: string | null
-          created_by?: string | null
-          full_name?: string
-          id?: string
-          notes?: string | null
-          organization_id?: string
-          phone?: string | null
-          updated_at?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "guest_customers_branch_id_fkey"
-            columns: ["branch_id"]
-            isOneToOne: false
-            referencedRelation: "branches"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "guest_customers_created_by_fkey"
-            columns: ["created_by"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "guest_customers_organization_id_fkey"
-            columns: ["organization_id"]
-            isOneToOne: false
-            referencedRelation: "organizations"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       branches: {
         Row: {
           address: string | null
@@ -306,6 +248,87 @@ export type Database = {
           },
         ]
       }
+      client_org: {
+        Row: {
+          billing_data: Json
+          client_id: string
+          created_at: string
+          organization_id: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          billing_data?: Json
+          client_id: string
+          created_at?: string
+          organization_id: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          billing_data?: Json
+          client_id?: string
+          created_at?: string
+          organization_id?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "client_org_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "client_org_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      clients: {
+        Row: {
+          billing_data: Json
+          created_at: string
+          email: string | null
+          first_name: string
+          id: string
+          last_name: string | null
+          phone: string | null
+          preferences: Json
+          updated_at: string
+          user_id: string | null
+        }
+        Insert: {
+          billing_data?: Json
+          created_at?: string
+          email?: string | null
+          first_name: string
+          id?: string
+          last_name?: string | null
+          phone?: string | null
+          preferences?: Json
+          updated_at?: string
+          user_id?: string | null
+        }
+        Update: {
+          billing_data?: Json
+          created_at?: string
+          email?: string | null
+          first_name?: string
+          id?: string
+          last_name?: string | null
+          phone?: string | null
+          preferences?: Json
+          updated_at?: string
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       employee_branch_assignments: {
         Row: {
           branch_id: string
@@ -347,6 +370,64 @@ export type Database = {
             columns: ["user_id"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      guest_customers: {
+        Row: {
+          branch_id: string | null
+          created_at: string | null
+          created_by: string | null
+          full_name: string
+          id: string
+          notes: string | null
+          organization_id: string
+          phone: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          branch_id?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          full_name: string
+          id?: string
+          notes?: string | null
+          organization_id: string
+          phone?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          branch_id?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          full_name?: string
+          id?: string
+          notes?: string | null
+          organization_id?: string
+          phone?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "guest_customers_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "guest_customers_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "guest_customers_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
         ]
@@ -540,6 +621,7 @@ export type Database = {
       }
       organization_subscriptions: {
         Row: {
+          billing_mode: string | null
           cancel_at_period_end: boolean | null
           created_at: string | null
           current_period_end: string
@@ -552,6 +634,7 @@ export type Database = {
           updated_at: string | null
         }
         Insert: {
+          billing_mode?: string | null
           cancel_at_period_end?: boolean | null
           created_at?: string | null
           current_period_end: string
@@ -564,6 +647,7 @@ export type Database = {
           updated_at?: string | null
         }
         Update: {
+          billing_mode?: string | null
           cancel_at_period_end?: boolean | null
           created_at?: string | null
           current_period_end?: string
@@ -596,13 +680,14 @@ export type Database = {
         Row: {
           address: string | null
           billing_data: Json | null
+          country: string | null
           created_at: string | null
           currency_code: string | null
           id: string
           is_active: boolean | null
           logo_url: string | null
           name: string
-          slug: string
+          slug: string | null
           status: string | null
           timezone: string | null
           updated_at: string | null
@@ -610,13 +695,14 @@ export type Database = {
         Insert: {
           address?: string | null
           billing_data?: Json | null
+          country?: string | null
           created_at?: string | null
           currency_code?: string | null
           id?: string
           is_active?: boolean | null
           logo_url?: string | null
           name: string
-          slug: string
+          slug?: string | null
           status?: string | null
           timezone?: string | null
           updated_at?: string | null
@@ -624,13 +710,14 @@ export type Database = {
         Update: {
           address?: string | null
           billing_data?: Json | null
+          country?: string | null
           created_at?: string | null
           currency_code?: string | null
           id?: string
           is_active?: boolean | null
           logo_url?: string | null
           name?: string
-          slug?: string
+          slug?: string | null
           status?: string | null
           timezone?: string | null
           updated_at?: string | null
@@ -1227,24 +1314,84 @@ export type Database = {
         Args: { p_decision: string; p_reason?: string; p_validation_id: string }
         Returns: Json
       }
+      apply_inventory_stock_mutation: {
+        Args: {
+          p_branch_id: string
+          p_min_stock_level?: number
+          p_mode: string
+          p_product_id: string
+          p_quantity: number
+          p_require_available?: boolean
+        }
+        Returns: {
+          min_stock_level: number
+          new_quantity: number
+          previous_quantity: number
+          reserved_quantity: number
+          stock_id: string
+        }[]
+      }
       check_subscription_limit: {
         Args: { org_id: string; resource_type: string }
         Returns: boolean
       }
-      create_onboarding_organization: {
-        Args: {
-          p_address: string
-          p_billing_data: Json
-          p_currency: string
-          p_email: string
-          p_full_name: string
-          p_name: string
-          p_phone?: string
-          p_slug: string
-          p_timezone: string
-        }
-        Returns: string
-      }
+      create_onboarding_organization:
+        | {
+            Args: {
+              p_billing_mode?: string
+              p_business_type?: string
+              p_country?: string
+              p_currency?: string
+              p_email?: string
+              p_full_name?: string
+              p_name: string
+              p_phone?: string
+              p_timezone?: string
+            }
+            Returns: string
+          }
+        | {
+            Args: {
+              p_address?: string
+              p_billing_data?: Json
+              p_billing_mode?: string
+              p_business_type?: string
+              p_country?: string
+              p_currency?: string
+              p_email?: string
+              p_full_name?: string
+              p_name: string
+              p_phone?: string
+              p_slug?: string
+              p_timezone?: string
+            }
+            Returns: string
+          }
+        | {
+            Args: {
+              p_address?: string
+              p_country: string
+              p_email?: string
+              p_full_name?: string
+              p_name: string
+              p_phone?: string
+            }
+            Returns: string
+          }
+        | {
+            Args: {
+              p_address: string
+              p_billing_data: Json
+              p_currency: string
+              p_email: string
+              p_full_name: string
+              p_name: string
+              p_phone?: string
+              p_slug: string
+              p_timezone: string
+            }
+            Returns: string
+          }
       get_organization_capabilities: {
         Args: { input_org_id: string }
         Returns: Json

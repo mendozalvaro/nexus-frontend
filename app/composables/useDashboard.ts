@@ -82,7 +82,7 @@ export interface LimitedDashboardData {
     ProfileRow,
     "id" | "full_name" | "role" | "organization_id" | "email"
   >;
-  organization: Pick<OrganizationRow, "id" | "name" | "slug" | "status">;
+  organization: Pick<OrganizationRow, "id" | "name" | "country" | "status">;
   subscription: Pick<SubscriptionRow, "status" | "current_period_end"> | null;
   latestValidation: Pick<
     PaymentValidationRow,
@@ -715,7 +715,7 @@ export const useDashboard = () => {
       }, productsResponse, employeesResponse, branchesResponse, servicesResponse] = await Promise.all([
         supabase
           .from("organizations")
-          .select("id, name, slug, status")
+          .select("id, name, country, status")
           .eq("id", profile.organization_id)
           .single(),
         supabase

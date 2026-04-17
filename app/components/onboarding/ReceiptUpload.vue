@@ -10,7 +10,21 @@ const props = defineProps<{
   transactionRef: string;
   confirmTransfer: boolean;
   pageState: PaymentPageState;
+  paymentMethod: string;
 }>();
+
+const paymentMethodOptions = [
+  { label: "Transferencia bancaria", value: "bank_transfer" },
+  { label: "Pago QR", value: "qr_payment" },
+  { label: "Tarjeta de crédito/débito", value: "card" },
+  { label: "PayPal", value: "paypal" },
+  { label: "Otro", value: "other" },
+];
+
+const paymentMethod = computed({
+  get: () => props.paymentMethod || "bank_transfer",
+  set: (value) => emit("update:paymentMethod", value),
+});
 
 const canSubmit = computed(
   () => !!props.preview && props.confirmTransfer && props.pageState !== "pending",
@@ -19,6 +33,7 @@ const canSubmit = computed(
 const emit = defineEmits<{
   "update:transactionRef": [value: string];
   "update:confirmTransfer": [value: boolean];
+  "update:paymentMethod": [value: string];
   "file-selected": [file: File];
   "clear-file": [];
   submit: [];
@@ -54,6 +69,11 @@ const onFileChange = (event: Event) => {
         icon="i-lucide-triangle-alert"
         :title="error"
       />
+
+      <UFormField label="Método de pago" name="paymentMethod">
+        <USelectMenu v-model="paymentMethod" :items="paymentMethodOptions" value-key="value" label-key="label"
+          :disabled="pageState === 'pending' || loading" />
+      </UFormField>
 
       <label
         class="flex cursor-pointer flex-col items-center justify-center rounded-[1.5rem] border border-dashed border-slate-300/80 bg-slate-50/70 px-4 py-8 text-center transition hover:border-primary-400 hover:bg-primary-50/70 dark:border-slate-700 dark:bg-slate-900/65 dark:hover:border-primary-500 dark:hover:bg-primary-950/20 sm:px-6"

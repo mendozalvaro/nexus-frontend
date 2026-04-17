@@ -1,7 +1,5 @@
 export type AppTheme = "light" | "dark" | "system";
 
-const STORAGE_KEY = "nexuspos-theme";
-
 /**
  * Sincroniza el tema local con Nuxt Color Mode y persistencia en localStorage.
  */
@@ -19,10 +17,6 @@ export const useTheme = () => {
   const applyTheme = (value: AppTheme) => {
     theme.value = value;
     colorMode.preference = value;
-
-    if (import.meta.client) {
-      window.localStorage.setItem(STORAGE_KEY, value);
-    }
   };
 
   /**
@@ -43,19 +37,6 @@ export const useTheme = () => {
    * Obtiene la preferencia actual persistida.
    */
   const getTheme = () => theme.value;
-
-  if (import.meta.client) {
-    onMounted(() => {
-      const stored = window.localStorage.getItem(STORAGE_KEY);
-
-      if (stored === "light" || stored === "dark" || stored === "system") {
-        applyTheme(stored);
-        return;
-      }
-
-      window.localStorage.setItem(STORAGE_KEY, theme.value);
-    });
-  }
 
   return {
     theme: readonly(theme),

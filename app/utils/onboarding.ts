@@ -81,34 +81,14 @@ export const CURRENCIES: CurrencyOption[] = [
   })),
 ] as const;
 
-export const TIMEZONES: TimezoneOption[] = [
-  ...timezonesList,
-] as const;
-
-export const BILLING_DATA_SCHEMA = z.object({
-  businessName: z
-    .string()
-    .trim()
-    .min(2, "Ingresa la razon social o nombre de facturacion"),
-  taxId: z.string().trim().optional().or(z.literal("")),
-  address: z.string().trim().min(5, "Ingresa una direccion de facturacion"),
-  city: z.string().trim().min(2, "Ingresa una ciudad valida"),
-  country: z.string().trim().min(2, "Selecciona un pais"),
-  phone: z
-    .string()
-    .trim()
-    .regex(/^\+?[1-9]\d{1,14}$/, "Ingresa un telefono valido")
-    .optional()
-    .or(z.literal("")),
-  email: z
-    .string()
-    .trim()
-    .email("Ingresa un email de facturacion valido")
-    .optional()
-    .or(z.literal("")),
-});
+export const TIMEZONES: TimezoneOption[] = [...timezonesList] as const;
 
 export const REGISTRATION_SCHEMA = z.object({
+  fullName: z
+    .string()
+    .trim()
+    .min(2, "Nombre muy corto")
+    .max(100, "Nombre muy largo"),
   email: z
     .string()
     .trim()
@@ -119,21 +99,11 @@ export const REGISTRATION_SCHEMA = z.object({
     .min(8, "La contrasena debe tener al menos 8 caracteres")
     .regex(/[A-Z]/, "Debe incluir al menos una mayuscula")
     .regex(/[0-9]/, "Debe incluir al menos un numero"),
-  fullName: z
-    .string()
-    .trim()
-    .min(2, "Nombre muy corto")
-    .max(100, "Nombre muy largo"),
-  country: z.string().trim().min(1, "Selecciona un pais"),
-  phone: z
-    .string()
-    .trim()
-    .regex(/^\+?[1-9]\d{6,14}$/, "Formato de telefono invalido")
-    .optional()
-    .or(z.literal("")),
   acceptTerms: z
     .boolean()
     .refine((value) => value === true, "Debes aceptar los terminos"),
+  selectedPlan: z.enum(["emprende", "crecimiento", "enterprise"] as const),
+  billingMode: z.enum(["monthly", "annual"] as const),
 });
 
 export const ORGANIZATION_SCHEMA = z.object({
@@ -142,27 +112,25 @@ export const ORGANIZATION_SCHEMA = z.object({
     .trim()
     .min(2, "El nombre debe tener al menos 2 caracteres")
     .max(100, "El nombre es demasiado largo")
-    .regex(/^[a-zA-Z0-9\\s\\-_.'¡!¿?]+$/, "Caracteres no permitidos"),
-  slug: z
-    .string()
-    .trim()
-    .min(3, "El slug debe tener al menos 3 caracteres")
-    .max(50, "El slug no puede exceder 50 caracteres")
-    .regex(
-      /^[a-z][a-z0-9-]*$/,
-      "Solo letras minusculas, numeros y guiones. Debe empezar con letra",
-    ),
-  timezone: z.string().trim().min(1, "Selecciona una zona horaria"),
+    .regex(/^[a-zA-Z0-9\s\-_.,'¡!¿?]+$/, "Caracteres no permitidos"),
+  businessType: z.enum(["products", "services", "both"], {
+    message: "Selecciona el tipo de negocio",
+  }),
+  selectedPlan: z.enum(["emprende", "crecimiento", "enterprise"], {
+    message: "Selecciona un plan",
+  }),
+  billingMode: z.enum(["monthly", "annual"], {
+    message: "Selecciona el tipo de facturacion",
+  }),
+  country: z.string().trim().min(2, "Selecciona un pais"),
   currency: z.string().trim().length(3, "Selecciona una moneda"),
-  address: z
-    .string()
-    .trim()
-    .min(10, "Direccion muy corta")
-    .max(200, "Direccion muy larga"),
-  billingData: BILLING_DATA_SCHEMA,
+  timezone: z.string().trim().min(1, "Selecciona una zona horaria"),
 });
 
 export const PAYMENT_SCHEMA = z.object({
+  paymentMethod: z.enum(["bank_transfer", "qr_payment", "card", "paypal", "other"], {
+    message: "Selecciona un método de pago",
+  }),
   transactionRef: z
     .string()
     .trim()
@@ -196,7 +164,7 @@ export const DEFAULT_BANK_DETAILS = {
 
 export const ERROR_MESSAGES = {
   EMAIL_EXISTS: "Ya hay una cuenta registrada con este email.",
-  EMAIL_INVALID: "Ingresa un email válido.",
+  EMAIL_INVALID: "Ingresa un email valido.",
   EMAIL_RATE_LIMIT:
     "Hemos recibido muchas solicitudes para este correo. Intenta nuevamente en unos minutos.",
   GENERIC_AUTH: "No se pudo completar la operacion. Intenta nuevamente.",
@@ -207,6 +175,60 @@ export const ERROR_MESSAGES = {
   VALIDATION_NOT_FOUND:
     "No se encontro tu validacion de pago. Contacta soporte.",
 } as const;
+
+export const PLAN_PRICING = [
+  {
+    slug: "prueba" as const,
+    name: "Prueba",
+    priceMonthly: 0,
+    description:
+      "Experimenta el poder de NexusPOS con nuestra prueba gratuita de 14 dias. Sin tarjeta requerida, sin compromiso.",
+    features: ["1 sucursal", "1 usuarios", "Catalogo basico", "Punto de venta"],
+    disabledBoth: true,
+  },
+  {
+    slug: "emprende" as const,
+    name: "Emprende",
+    priceMonthly: 20,
+    description:
+      "Para negocios que venden un solo tipo: productos O servicios.",
+    features: ["1 sucursal", "2 usuarios", "Catalogo basico", "Punto de venta"],
+    disabledBoth: true,
+  },
+  {
+    slug: "crecimiento" as const,
+    name: "Crecimiento",
+    priceMonthly: 50,
+    description: "Para negocios que combinan productos y servicios.",
+    features: [
+      "3 sucursales",
+      "5 usuarios",
+      "Inventario + Citas",
+      "Multi-sucursal",
+      "Transferencias",
+    ],
+  },
+  {
+    slug: "enterprise" as const,
+    name: "Enterprise",
+    priceMonthly: 100,
+    description: "Todo ilimitado para escalar tu negocio.",
+    features: [
+      "Sucursales ilimitadas",
+      "Usuarios ilimitados",
+      "API access",
+      "Reportes avanzados",
+      "White label",
+      "Export forense",
+    ],
+  },
+] as const;
+
+export const getPlanBySlug = (slug: string) =>
+  PLAN_PRICING.find((p) => p.slug === slug) ?? null;
+
+export const getPlanAmount = (planSlug: string): number =>
+  getPlanBySlug(planSlug)?.priceMonthly ?? PLAN_PRICING[0].priceMonthly;
 
 export const sanitizeText = (value: string | null | undefined): string =>
   value?.trim() ?? "";
@@ -298,47 +320,8 @@ export const getTimezoneOptionsForCountry = (
   return preferred ? [preferred, ...rest] : [...TIMEZONES];
 };
 
-export const calculatePasswordStrength = (password: string) => {
-  const normalized = sanitizeText(password);
-  const hasUppercase = /[A-Z]/.test(normalized);
-  const hasNumber = /[0-9]/.test(normalized);
-  const hasSymbol = /[^A-Za-z0-9]/.test(normalized);
-
-  if (normalized.length >= 12 && hasUppercase && hasNumber && hasSymbol) {
-    return {
-      label: "Fuerte",
-      className: "bg-emerald-500",
-      progressClass: "w-full",
-    };
-  }
-
-  if (normalized.length >= 8 && hasUppercase && hasNumber) {
-    return {
-      label: "Media",
-      className: "bg-amber-500",
-      progressClass: "w-2/3",
-    };
-  }
-
-  if (normalized.length > 0) {
-    return {
-      label: "Basica",
-      className: "bg-rose-500",
-      progressClass: "w-1/3",
-    };
-  }
-
-  return {
-    label: "Pendiente",
-    className: "bg-slate-300",
-    progressClass: "w-0",
-  };
-};
-
 export const isReceiptMimeTypeAllowed = (mimeType: string): boolean => {
-  return ACCEPTED_RECEIPT_TYPES.includes(
-    mimeType as (typeof ACCEPTED_RECEIPT_TYPES)[number],
-  );
+  return ACCEPTED_RECEIPT_TYPES.includes(mimeType as (typeof ACCEPTED_RECEIPT_TYPES)[number]);
 };
 
 export const asJsonObject = (value: Record<string, unknown>): Json =>

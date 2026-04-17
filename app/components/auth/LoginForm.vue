@@ -48,11 +48,12 @@ const state = reactive<LoginFormData>({
 });
 
 const submitting = ref(false);
+const redirecting = ref(false);
 const error = ref<string | null>(null);
 const showPassword = ref(false);
 const liveMessage = ref("");
 
-const isBusy = computed(() => submitting.value || isSubmitting.value || isLoading.value);
+const isBusy = computed(() => submitting.value || redirecting.value || isSubmitting.value || isLoading.value);
 const submitDisabled = computed(() => isBusy.value || isRateLimited.value);
 const submitLabel = computed(() => {
   if (isRateLimited.value) {
@@ -114,8 +115,18 @@ const hydrateRememberPreference = () => {
 };
 
 const redirectByRole = async () => {
+  if (redirecting.value) {
+    return;
+  }
+
+  redirecting.value = true;
+
   const resolution = await resolvePostAuthDestination();
-  await router.push(sanitizedRedirect.value ?? resolution.destination);
+  try {
+    await router.push(sanitizedRedirect.value ?? resolution.destination);
+  } finally {
+    redirecting.value = false;
+  }
 };
 
 const togglePassword = () => {
@@ -135,7 +146,7 @@ const handleRateLimit = () => {
 };
 
 const checkExistingSession = async () => {
-  if (!session.value?.user) {
+  if (!session.value?.user || redirecting.value || submitting.value) {
     return;
   }
 
@@ -199,7 +210,7 @@ if (import.meta.client) {
 }
 
 watch(() => session.value?.user?.id ?? null, async (userId) => {
-  if (!userId) {
+  if (!userId || redirecting.value || submitting.value) {
     return;
   }
 

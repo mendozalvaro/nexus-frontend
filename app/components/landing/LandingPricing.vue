@@ -8,7 +8,6 @@ const props = defineProps<{
 type BillingMode = "monthly" | "annual"
 
 const billingMode = ref<BillingMode>("monthly")
-const annualDiscount = 0.15
 const sectionRef = ref<HTMLElement | null>(null)
 const isVisible = ref(false)
 let observer: IntersectionObserver | null = null
@@ -26,7 +25,8 @@ onMounted(() => {
   }
 
   observer = new IntersectionObserver((entries: IntersectionObserverEntry[]) => {
-    if (entries[0]?.isIntersecting) {
+    const entry = entries[0]
+    if (entry && entry.isIntersecting) {
       isVisible.value = true
       observer?.disconnect()
     }
@@ -39,12 +39,12 @@ onBeforeUnmount(() => {
   observer?.disconnect()
 })
 
-const getDisplayPrice = (monthlyPrice: number) => {
+const getDisplayPrice = (plan: LandingPricingPlan) => {
   if (billingMode.value === "annual") {
-    return Math.round(monthlyPrice * (1 - annualDiscount))
+    return plan.yearlyPrice
   }
 
-  return monthlyPrice
+  return plan.monthlyPrice
 }
 </script>
 
@@ -87,7 +87,7 @@ const getDisplayPrice = (monthlyPrice: number) => {
         </div>
       </div>
 
-      <div class="mt-12 grid gap-6 xl:grid-cols-3">
+      <div class="mt-12 grid gap-6 xl:grid-cols-4">
         <UCard
           v-for="(plan, index) in props.plans"
           :key="plan.id"
@@ -119,10 +119,10 @@ const getDisplayPrice = (monthlyPrice: number) => {
 
           <div class="mt-8 flex items-end gap-2">
             <span class="text-5xl font-semibold tracking-tight text-slate-950 dark:text-white">
-              {{ currencyFormatter.format(getDisplayPrice(plan.monthlyPrice)) }}
+              {{ currencyFormatter.format(getDisplayPrice(plan)) }}
             </span>
             <span class="pb-1 text-sm text-slate-500 dark:text-slate-400">
-              /mes
+              /{{ billingMode === "annual" ? "año" : "mes" }}
             </span>
           </div>
 
@@ -148,7 +148,7 @@ const getDisplayPrice = (monthlyPrice: number) => {
               class="rounded-full"
               :variant="plan.highlighted ? 'solid' : 'outline'"
               trailing-icon="i-lucide-arrow-right"
-              @click="navigateTo(`/auth/register?plan=${plan.id}`)"
+              @click="navigateTo(`/auth/register?plan=${plan.id}&billing=${billingMode}`)"
             >
               Elegir {{ plan.name }}
             </UButton>
