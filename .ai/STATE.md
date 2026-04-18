@@ -1,8 +1,8 @@
 ﻿# Multi-Agent Workflow State
 
 ## Current State
-- **last_step**: sync_plan_catalog_db_landing_onboarding_and_seed
-- **pending**: none
+- **last_step**: validate_manager_inventory_denial_and_fix_permission_loading_race
+- **pending**: harden_server_side_module_enforcement_for_inventory_and_sensitive_modules
 - **agent**: codex
 
 ## Files Created
@@ -14,6 +14,17 @@
 - app/pages/client/checkout.vue
 - supabase/migrations/20260418_subscription_model_hybrid_trial_limits.sql
 - supabase/migrations/20260418_update_subscription_plans_catalog.sql
+- AGENTS.md
+- instructions.md
+- app/utils/subscription-plan.ts
+- supabase/migrations/20260418_system_role_module_permissions.sql
+- server/api/system/plans/index.get.ts
+- server/api/system/plans/index.post.ts
+- server/api/system/plans/[planId].patch.ts
+- server/api/system/roles/index.get.ts
+- server/api/system/roles/[roleId].patch.ts
+- server/api/system/roles/[roleId]/permissions.put.ts
+- app/pages/system/access.vue
 
 ## Files Modified
 - app/composables/useAuth.ts
@@ -44,6 +55,19 @@
 - app/middleware/pending-account.global.ts
 - schema.sql
 - supabase/seed.sql
+- AGENTS.md
+- app/composables/useSubscription.ts
+- app/composables/usePermissions.ts
+- app/composables/useUsers.ts
+- app/types/subscription.ts
+- app/types/permissions.ts
+- server/utils/admin-users.ts
+- server/api/admin/users.post.ts
+- server/api/admin/users/[id].patch.ts
+- app/composables/useSystemAdmin.ts
+- app/config/navigation.ts
+- app/pages/system/index.vue
+- app/middleware/permissions.ts
 
 ## Notes
 - Migracion aplicada en Supabase linked: `supabase db query --linked -f supabase/migrations/013_clients_multiorg.sql -o json`.
@@ -60,3 +84,24 @@
 - Migracion aplicada en Supabase linked: `supabase/migrations/20260418_update_subscription_plans_catalog.sql` (planes Emprende/Crecimiento/Empresarial con business_only, features, limits y billing modes).
 - Landing pricing ahora no hardcodea descuentos/modos en componente; consume `available_billing_modes` y metadatos de plan desde BD via `app/pages/index.vue`.
 - Seed actualizado con catalogo de planes alineado al nuevo modelo.
+- Se agrego parser/normalizador dinamico de `permissions` y `limits` de `subscription_plans` en `app/utils/subscription-plan.ts` para soportar claves nuevas sin hardcode estricto.
+- `useSubscription` ahora consume limits dinamicos (incluye nested keys como `roles.manager` y flags como `users_unlimited`) y expone helpers para resolver permisos/limites por alias.
+- `usePermissions` ahora filtra acceso a modulos por namespace de permiso de forma dinamica usando `planPermissions`.
+- En backend (`server/utils/admin-users.ts` + endpoints admin users) se aplico enforcement server-side de:
+  - permiso de modulo `users`,
+  - limite total de usuarios por plan,
+  - limite por rol desde `limits.roles.*`,
+  - auditoria de denegaciones en `audit_logs` con accion `PERMISSION_DENIED`.
+- `useUsers` ahora usa capacidad real dinamica para `canCreateMoreUsers` y estado `isOverUserLimit`.
+- Validacion ejecutada: `npm run typecheck` en verde.
+- Decision de producto confirmada en esta sesion: **no aplicar overrides por organizacion** en esta etapa (sin tabla ni merge override>plan).
+- Se implemento UI dinamica de planes/roles en `/system/access` (sin JSON manual) con soporte de agregar/eliminar para features, permissions, limits y billing modes, mas presets rapidos y filtros de modulos en matriz de roles.
+- Se ejecuto prueba de flujo real: se removio acceso `manager` a `inventory` (`role_module_permissions.can_view=false`) y se valido en BD linked.
+- Hallazgo de seguridad/consistencia: existia carrera de carga en frontend donde una navegacion directa podia evaluar middleware antes de sincronizar permisos dinamicos.
+- Fix aplicado:
+  - `app/composables/usePermissions.ts`: `ensureRolePermissionsLoaded()` para sincronizar `role_module_permissions` por `role_id`.
+  - `app/middleware/permissions.ts`: espera explicita de permisos dinamicos antes de resolver acceso de ruta.
+- Verificacion E2E posterior al fix: `manager` ya no puede entrar a `/inventory` por URL directa y es redirigido a `/dashboard`; menu lateral sin item Inventario.
+- Limpieza de entorno de prueba: se revirtio asignacion temporal de sucursal en `manager@nexuspos.demo`.
+- Validacion final: `npm run typecheck` en verde.
+- Proxima tarea propuesta: **harden_server_side_module_enforcement_for_inventory_and_sensitive_modules** para evitar bypass por consumo directo de APIs (inventario/catalogo/reportes) sin depender solo del middleware frontend.

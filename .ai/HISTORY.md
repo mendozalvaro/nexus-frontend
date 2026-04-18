@@ -53,3 +53,35 @@
 - Datos semilla: `supabase/seed.sql` actualizado para sembrar catalogo de planes consistente con nuevo modelo y suscripcion demo con campos nuevos (`billing_mode`, `payment_method`, `trial_ends_at`, `is_trial`) + `organizations.business_type='hybrid'`.
 - Validacion: `npm run typecheck` => exit code 0.
 - Estado: handoff listo, pending = none.
+
+## 2026-04-18 04:18:00 - codex
+- Step completado: integrate_dynamic_plan_limits_permissions_and_role_enforcement_without_overrides
+- Acciones:
+  - Se creo `app/utils/subscription-plan.ts` para parseo/normalizacion dinamica de `subscription_plans.permissions` y `subscription_plans.limits` (incluye soporte nested y aliases de claves).
+  - Se actualizo `app/composables/useSubscription.ts` para resolver limites dinamicos (`users`, `branches`, `roles.*`, `users_unlimited`) y exponer helpers reutilizables.
+  - Se actualizo `app/composables/usePermissions.ts` para aplicar gating de modulos por namespace de permiso segun `planPermissions` de manera dinamica.
+  - Se actualizo `app/composables/useUsers.ts` para usar capacidades dinamicas y detectar estado over-limit.
+  - Se reforzo backend en `server/utils/admin-users.ts`, `server/api/admin/users.post.ts` y `server/api/admin/users/[id].patch.ts` con enforcement server-side de:
+    - permiso de modulo `users`,
+    - limite total de usuarios,
+    - limite por rol (`limits.roles.*`),
+    - registro de denegaciones en `audit_logs` con `PERMISSION_DENIED`.
+  - Se agregaron plantillas de flags por rol (fijos + custom base) en `app/types/permissions.ts`.
+- Validacion: `npm run typecheck` => exit code 0.
+- Decision de alcance: se evaluo implementar overrides por organizacion, pero se descarto por instruccion del usuario en esta sesion (`no aplicar override`).
+- Estado: handoff actualizado, pending = none.
+
+## 2026-04-18 13:31:32 - codex
+- Step completado: validate_manager_inventory_denial_and_fix_permission_loading_race
+- Acciones:
+  - UI: mejora de `/system/access` con edicion dinamica de planes (features/permissions/limits/billing modes), presets rapidos y filtros de modulos en matriz de permisos por rol.
+  - Prueba de flujo real solicitada: se removio acceso de `manager` a inventario en `role_module_permissions` (`can_view=false`) y se verifico en BD linked.
+  - E2E local en `http://localhost:3000`: login como `manager@nexuspos.demo`, validacion de menu y acceso directo a `/inventory`.
+  - Hallazgo: condicion de carrera en carga de permisos dinamicos permitia evaluacion temprana de middleware con fallback estatico.
+  - Fix:
+    - `app/composables/usePermissions.ts`: agregado `ensureRolePermissionsLoaded()` y espera de carga.
+    - `app/middleware/permissions.ts`: espera de permisos dinamicos antes de `resolveRouteAccess`.
+  - Resultado final: acceso directo a `/inventory` bloqueado para manager (redireccion a `/dashboard`), item Inventario oculto en sidebar.
+  - Limpieza: se revirtio asignacion temporal de sucursal usada para aislar la prueba.
+- Validacion: `npm run typecheck` => exit code 0.
+- Estado: handoff listo con pendiente `harden_server_side_module_enforcement_for_inventory_and_sensitive_modules`.
