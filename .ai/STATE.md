@@ -1,8 +1,8 @@
 ﻿# Multi-Agent Workflow State
 
 ## Current State
-- **last_step**: implement_subscription_model_hybrid_trial_limits_and_payment_gate
-- **pending**: apply_subscription_model_migration_and_regen_types_on_linked_supabase
+- **last_step**: sync_plan_catalog_db_landing_onboarding_and_seed
+- **pending**: none
 - **agent**: codex
 
 ## Files Created
@@ -13,6 +13,7 @@
 - app/pages/[slug]/catalog.vue
 - app/pages/client/checkout.vue
 - supabase/migrations/20260418_subscription_model_hybrid_trial_limits.sql
+- supabase/migrations/20260418_update_subscription_plans_catalog.sql
 
 ## Files Modified
 - app/composables/useAuth.ts
@@ -42,6 +43,7 @@
 - app/layouts/default.vue
 - app/middleware/pending-account.global.ts
 - schema.sql
+- supabase/seed.sql
 
 ## Notes
 - Migracion aplicada en Supabase linked: `supabase db query --linked -f supabase/migrations/013_clients_multiorg.sql -o json`.
@@ -53,4 +55,8 @@
 - Se elimino plan free/prueba de flujos de onboarding y pricing en frontend.
 - Agregado gating de pago forzado: middleware global + overlay en layout para restringir acceso fuera de `/onboarding/payment` cuando no hay pago activo o trial vencido.
 - `npm run typecheck` validado en verde despues de los cambios.
-- Pendiente operativo: ejecutar migracion `20260418_subscription_model_hybrid_trial_limits.sql` en Supabase linked y regenerar tipos desde origen para alinear `app/types/database.types.ts` con DB real.
+- Migracion aplicada en Supabase linked: `supabase/migrations/20260418_subscription_model_hybrid_trial_limits.sql`.
+- Tipos regenerados despues de migracion v2: `supabase gen types typescript --project-id ohdvqqgfebwseeudtwae` -> `app/types/database.types.ts`.
+- Migracion aplicada en Supabase linked: `supabase/migrations/20260418_update_subscription_plans_catalog.sql` (planes Emprende/Crecimiento/Empresarial con business_only, features, limits y billing modes).
+- Landing pricing ahora no hardcodea descuentos/modos en componente; consume `available_billing_modes` y metadatos de plan desde BD via `app/pages/index.vue`.
+- Seed actualizado con catalogo de planes alineado al nuevo modelo.

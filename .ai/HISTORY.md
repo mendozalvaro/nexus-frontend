@@ -45,3 +45,11 @@
 - Fixes tecnicos: correccion de precedencia `??`/`||` en `useFeatureFlags`, sincronizacion de `schema.sql`, y ajustes de tipos locales en `app/types/database.types.ts` para nuevas columnas.
 - Validacion: `npm run typecheck` => exit code 0.
 - Pendiente: aplicar migracion en Supabase linked y regenerar tipos desde Supabase para sincronizacion completa con la base real.
+
+## 2026-04-18 03:33:13 - codex
+- Step completado: sync_plan_catalog_db_landing_onboarding_and_seed
+- Acciones: creacion y ejecucion de migracion `supabase/migrations/20260418_update_subscription_plans_catalog.sql` para actualizar `subscription_plans` (Emprende/Crecimiento/Empresarial) con `business_only`, `description`, `resume`, `features`, `limits`, `available_billing_modes`, `max_users`, `max_branches`; verificacion directa en BD linked de filas actualizadas.
+- Frontend: landing pricing sin hardcode de modos/descuentos en componente, ahora consume metadata de BD (`available_billing_modes`, `features`, `limits`, `description`) desde `app/pages/index.vue`; onboarding alineado a mismos datos de negocio y features.
+- Datos semilla: `supabase/seed.sql` actualizado para sembrar catalogo de planes consistente con nuevo modelo y suscripcion demo con campos nuevos (`billing_mode`, `payment_method`, `trial_ends_at`, `is_trial`) + `organizations.business_type='hybrid'`.
+- Validacion: `npm run typecheck` => exit code 0.
+- Estado: handoff listo, pending = none.
