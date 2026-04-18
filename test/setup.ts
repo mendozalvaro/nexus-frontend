@@ -17,7 +17,7 @@ if (typeof window !== 'undefined') {
 
 // Mock global de #imports para useState
 vi.mock('#imports', async (importOriginal) => {
-  const mod = await importOriginal()
+  const mod = (await importOriginal()) as Record<string, unknown>
   return {
     ...mod,
     useState: <T>(key: string, init?: () => T) => {

@@ -1,11 +1,16 @@
-<script setup lang="ts">
+﻿<script setup lang="ts">
 import type { LandingPricingPlan } from "../../composables/useLanding"
 
 const props = defineProps<{
   plans: readonly LandingPricingPlan[]
 }>()
 
-type BillingMode = "monthly" | "annual"
+type BillingMode = "monthly" | "quarterly" | "annual"
+type BillingOption = {
+  key: BillingMode
+  label: string
+  discountPercent: number
+}
 
 const billingMode = ref<BillingMode>("monthly")
 const sectionRef = ref<HTMLElement | null>(null)
@@ -40,11 +45,60 @@ onBeforeUnmount(() => {
 })
 
 const getDisplayPrice = (plan: LandingPricingPlan) => {
+  if (billingMode.value === "quarterly") {
+    return plan.quarterlyPrice
+  }
+
   if (billingMode.value === "annual") {
     return plan.yearlyPrice
   }
 
   return plan.monthlyPrice
+}
+
+const BILLING_MODE_LABELS: Record<BillingMode, string> = {
+  monthly: "Mensual",
+  quarterly: "Trimestral",
+  annual: "Anual",
+}
+
+const billingOptions = computed<BillingOption[]>(() => {
+  const options: BillingOption[] = []
+  const order: BillingMode[] = ["monthly", "quarterly", "annual"]
+  for (const mode of order) {
+    const enabledInAnyPlan = props.plans.some((plan) => plan.billingModes?.[mode]?.enabled === true)
+    if (!enabledInAnyPlan) continue
+    const maxDiscount = props.plans.reduce((max, plan) => {
+      const discount = plan.billingModes?.[mode]?.discountPercent ?? 0
+      return Math.max(max, discount)
+    }, 0)
+    options.push({
+      key: mode,
+      label: BILLING_MODE_LABELS[mode],
+      discountPercent: maxDiscount,
+    })
+  }
+  if (options.length === 0) {
+    options.push({ key: "monthly", label: "Mensual", discountPercent: 0 })
+  }
+  return options
+})
+
+watch(billingOptions, (next) => {
+  if (!next.some((item) => item.key === billingMode.value)) {
+    billingMode.value = next[0]?.key ?? "monthly"
+  }
+}, { immediate: true })
+
+const currentBillingOption = computed(() =>
+  billingOptions.value.find((item) => item.key === billingMode.value)
+    ?? { key: "monthly" as const, label: "Mensual", discountPercent: 0 },
+)
+
+const getBillingSuffix = (mode: BillingMode) => {
+  if (mode === "annual") return "año"
+  if (mode === "quarterly") return "trimestre"
+  return "mes"
 }
 </script>
 
@@ -68,21 +122,15 @@ const getDisplayPrice = (plan: LandingPricingPlan) => {
       <div class="mt-8 flex justify-center">
         <div class="landing-billing-toggle">
           <button
+            v-for="option in billingOptions"
+            :key="option.key"
             type="button"
             class="landing-billing-option admin-focus-ring"
-            :class="billingMode === 'monthly' ? 'landing-billing-option-active' : ''"
-            @click="billingMode = 'monthly'"
+            :class="billingMode === option.key ? 'landing-billing-option-active' : ''"
+            @click="billingMode = option.key"
           >
-            Mensual
-          </button>
-          <button
-            type="button"
-            class="landing-billing-option admin-focus-ring"
-            :class="billingMode === 'annual' ? 'landing-billing-option-active' : ''"
-            @click="billingMode = 'annual'"
-          >
-            Anual
-            <span class="landing-billing-badge">15% off</span>
+            {{ option.label }}
+            <span v-if="option.discountPercent > 0" class="landing-billing-badge">{{ option.discountPercent }}% off</span>
           </button>
         </div>
       </div>
@@ -122,12 +170,16 @@ const getDisplayPrice = (plan: LandingPricingPlan) => {
               {{ currencyFormatter.format(getDisplayPrice(plan)) }}
             </span>
             <span class="pb-1 text-sm text-slate-500 dark:text-slate-400">
-              /{{ billingMode === "annual" ? "año" : "mes" }}
+              /{{ getBillingSuffix(billingMode) }}
             </span>
           </div>
 
           <p class="mt-3 text-sm text-slate-500 dark:text-slate-400">
-            {{ billingMode === "annual" ? "Facturacion anual con descuento incluido." : "Facturacion mensual sin permanencia." }}
+            {{
+              currentBillingOption.discountPercent > 0
+                ? `Facturacion ${currentBillingOption.label.toLowerCase()} con ${currentBillingOption.discountPercent}% de descuento.`
+                : "Facturacion mensual sin permanencia."
+            }}
           </p>
 
           <ul class="mt-8 space-y-3 text-sm text-slate-700 dark:text-slate-200">

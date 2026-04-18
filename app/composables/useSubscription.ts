@@ -47,6 +47,42 @@ const readNumber = (value: unknown, fallback = 0): number => {
   return typeof value === "number" && Number.isFinite(value) ? value : fallback;
 };
 
+const readBooleanRecord = (value: unknown): Record<string, boolean> => {
+  if (!isRecord(value)) {
+    return {};
+  }
+
+  const result: Record<string, boolean> = {};
+  for (const [key, raw] of Object.entries(value)) {
+    if (typeof raw === "boolean") {
+      result[key] = raw;
+    }
+  }
+  return result;
+};
+
+const readNumberRecord = (value: unknown): Record<string, number> => {
+  if (!isRecord(value)) {
+    return {};
+  }
+
+  const result: Record<string, number> = {};
+  for (const [key, raw] of Object.entries(value)) {
+    if (typeof raw === "number" && Number.isFinite(raw)) {
+      result[key] = raw;
+    }
+  }
+  return result;
+};
+
+const readStringArray = (value: unknown): string[] => {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.filter((entry): entry is string => typeof entry === "string");
+};
+
 const sanitizePlanSlug = (value: unknown): SubscriptionPlanSlug => {
   return value === "crecimiento" || value === "enterprise" ? value : FALLBACK_PLAN_SLUG;
 };
@@ -86,6 +122,14 @@ const createFallbackCapabilities = (
     currentUsersCount,
     subscriptionStatus: "inactive",
     periodEnd: null,
+    billingMode: null,
+    isTrial: false,
+    trialEndsAt: null,
+    paymentMethod: null,
+    paymentRequired: false,
+    planPermissions: {},
+    planLimits: {},
+    planFeatures: [],
     ...overrides,
   };
 };
@@ -143,6 +187,14 @@ const normalizeCapabilities = (payload: CapabilityRpcResponse): OrganizationCapa
       payload.subscriptionStatus ?? payload.subscription_status,
     ),
     periodEnd: readNullableString(payload.periodEnd ?? payload.period_end),
+    billingMode: readNullableString(payload.billingMode ?? payload.billing_mode) as OrganizationCapabilities["billingMode"],
+    isTrial: readBoolean(payload.isTrial ?? payload.is_trial, false),
+    trialEndsAt: readNullableString(payload.trialEndsAt ?? payload.trial_ends_at),
+    paymentMethod: readNullableString(payload.paymentMethod ?? payload.payment_method) as OrganizationCapabilities["paymentMethod"],
+    paymentRequired: readBoolean(payload.paymentRequired ?? payload.payment_required, false),
+    planPermissions: readBooleanRecord(payload.permissions),
+    planLimits: readNumberRecord(payload.limits),
+    planFeatures: readStringArray(payload.features),
   };
 };
 
@@ -297,9 +349,16 @@ export const useSubscription = () => {
     }
 
     if (resource === "branch") {
+      const maxBranchesFromLimits = capabilities.value.planLimits?.branches;
+      if (typeof maxBranchesFromLimits === "number" && Number.isFinite(maxBranchesFromLimits)) {
+        return capabilities.value.currentBranchesCount < maxBranchesFromLimits;
+      }
       return capabilities.value.canCreateBranch;
     }
-
+    const maxUsersFromLimits = capabilities.value.planLimits?.users;
+    if (typeof maxUsersFromLimits === "number" && Number.isFinite(maxUsersFromLimits)) {
+      return capabilities.value.currentUsersCount < maxUsersFromLimits;
+    }
     return capabilities.value.currentUsersCount < capabilities.value.maxUsers;
   };
 

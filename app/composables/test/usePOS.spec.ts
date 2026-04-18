@@ -81,8 +81,9 @@ describe('usePOS', () => {
 
     expect(mockFetch).toHaveBeenCalledWith('/api/pos/catalog', expect.any(Object))
     expect(result.organizationId).toBe('org-abc')
-    expect(result.products[0].price).toBe(100)
-    expect(result.products[0].stockByBranch['branch-1']).toBe(8)
+    expect(result.products).toHaveLength(1)
+    expect(result.products[0]!.price).toBe(100)
+    expect(result.products[0]!.stockByBranch['branch-1']).toBe(8)
     expect(pos.lastCatalog.value?.organizationId).toBe('org-abc')
   })
 
@@ -105,7 +106,7 @@ describe('usePOS', () => {
     pos.addProductToCart(product, 'branch-1', 2)
 
     expect(pos.cart.value).toHaveLength(1)
-    expect(pos.cart.value[0].subtotal).toBe(100)
+    expect(pos.cart.value[0]!.subtotal).toBe(100)
   })
 
   it('valida stock insuficiente al agregar producto', async () => {

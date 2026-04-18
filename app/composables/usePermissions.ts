@@ -13,6 +13,7 @@ export const usePermissions = () => {
   const supabase = useSupabaseClient<Database>();
   const { user, profile } = useAuth();
   const { isFeatureEnabled } = useFeatureFlags();
+  const { capabilities } = useSubscription();
 
   const removePermission = (
     permissions: PermissionGrant[],
@@ -24,6 +25,30 @@ export const usePermissions = () => {
       }
 
       return permission !== permissionToRemove;
+    });
+  };
+
+  const MODULE_PERMISSION_PREFIXES: Record<string, string[]> = {
+    pos: ["pos."],
+    catalog: ["catalog."],
+    inventory: ["inventory."],
+    service_assignment: ["service_assignment."],
+    appointments: ["appointments."],
+    users: ["users."],
+    branches: ["branches."],
+    reports: ["reports."],
+    settings: ["settings."],
+    profile: ["profile."],
+    api: [],
+    forensic: [],
+  };
+
+  const removePermissionPrefixes = (
+    permissions: PermissionGrant[],
+    prefixes: string[],
+  ): PermissionGrant[] => {
+    return permissions.filter((permission) => {
+      return !prefixes.some((prefix) => permission.startsWith(prefix));
     });
   };
 
@@ -45,6 +70,20 @@ export const usePermissions = () => {
 
     if (!isFeatureEnabled("feature_multi_branch")) {
       permissions = permissions.filter((permission) => !permission.startsWith("branches."));
+    }
+
+    const planPermissions = capabilities.value?.planPermissions ?? {};
+    for (const [moduleKey, enabled] of Object.entries(planPermissions)) {
+      if (enabled) {
+        continue;
+      }
+
+      const prefixes = MODULE_PERMISSION_PREFIXES[moduleKey];
+      if (!prefixes || prefixes.length === 0) {
+        continue;
+      }
+
+      permissions = removePermissionPrefixes(permissions, prefixes);
     }
 
     return permissions;

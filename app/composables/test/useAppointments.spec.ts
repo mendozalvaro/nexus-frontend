@@ -71,8 +71,10 @@ describe('useAppointments', () => {
       headers: { Authorization: 'Bearer token-abc' }
     })
     expect(catalog.organizationId).toBe('org-abc')
-    expect(catalog.branches[0].label).toBe('Sucursal 1')
-    expect(catalog.services[0].value).toBe('serv-1')
+    expect(catalog.branches).toHaveLength(1)
+    expect(catalog.services).toHaveLength(1)
+    expect(catalog.branches[0]!.label).toBe('Sucursal 1')
+    expect(catalog.services[0]!.value).toBe('serv-1')
   })
 
   it('actualiza estado de cita por API', async () => {

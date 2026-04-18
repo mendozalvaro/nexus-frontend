@@ -627,10 +627,13 @@ export type Database = {
           current_period_end: string
           current_period_start: string | null
           id: string
+          is_trial: boolean
           organization_id: string
+          payment_method: string | null
           plan_id: string
           provider_subscription_id: string | null
           status: Database["public"]["Enums"]["sub_status"] | null
+          trial_ends_at: string | null
           updated_at: string | null
         }
         Insert: {
@@ -640,10 +643,13 @@ export type Database = {
           current_period_end: string
           current_period_start?: string | null
           id?: string
+          is_trial?: boolean
           organization_id: string
+          payment_method?: string | null
           plan_id: string
           provider_subscription_id?: string | null
           status?: Database["public"]["Enums"]["sub_status"] | null
+          trial_ends_at?: string | null
           updated_at?: string | null
         }
         Update: {
@@ -653,10 +659,13 @@ export type Database = {
           current_period_end?: string
           current_period_start?: string | null
           id?: string
+          is_trial?: boolean
           organization_id?: string
+          payment_method?: string | null
           plan_id?: string
           provider_subscription_id?: string | null
           status?: Database["public"]["Enums"]["sub_status"] | null
+          trial_ends_at?: string | null
           updated_at?: string | null
         }
         Relationships: [
@@ -680,6 +689,7 @@ export type Database = {
         Row: {
           address: string | null
           billing_data: Json | null
+          business_type: string | null
           country: string | null
           created_at: string | null
           currency_code: string | null
@@ -695,6 +705,7 @@ export type Database = {
         Insert: {
           address?: string | null
           billing_data?: Json | null
+          business_type?: string | null
           country?: string | null
           created_at?: string | null
           currency_code?: string | null
@@ -710,6 +721,7 @@ export type Database = {
         Update: {
           address?: string | null
           billing_data?: Json | null
+          business_type?: string | null
           country?: string | null
           created_at?: string | null
           currency_code?: string | null
@@ -985,7 +997,10 @@ export type Database = {
       }
       subscription_plans: {
         Row: {
+          available_billing_modes: Json
+          business_only: boolean
           created_at: string | null
+          description: string
           feature_advanced_reports: boolean | null
           feature_api_access: boolean | null
           feature_forensic_export: boolean | null
@@ -993,18 +1008,27 @@ export type Database = {
           feature_manager_role: boolean | null
           feature_multi_branch: boolean | null
           feature_white_label: boolean | null
+          features: Json
           id: string
           is_active: boolean | null
+          limits: Json
           max_branches: number
           max_storage_mb: number | null
           max_users: number
           name: string
+          permissions: Json
           price_monthly: number
           price_yearly: number
+          resume: string
           slug: string
+          trial: boolean
+          trial_duration: number | null
         }
         Insert: {
+          available_billing_modes?: Json
+          business_only?: boolean
           created_at?: string | null
+          description?: string
           feature_advanced_reports?: boolean | null
           feature_api_access?: boolean | null
           feature_forensic_export?: boolean | null
@@ -1012,18 +1036,27 @@ export type Database = {
           feature_manager_role?: boolean | null
           feature_multi_branch?: boolean | null
           feature_white_label?: boolean | null
+          features?: Json
           id?: string
           is_active?: boolean | null
+          limits?: Json
           max_branches?: number
           max_storage_mb?: number | null
           max_users?: number
           name: string
+          permissions?: Json
           price_monthly: number
           price_yearly: number
+          resume?: string
           slug: string
+          trial?: boolean
+          trial_duration?: number | null
         }
         Update: {
+          available_billing_modes?: Json
+          business_only?: boolean
           created_at?: string | null
+          description?: string
           feature_advanced_reports?: boolean | null
           feature_api_access?: boolean | null
           feature_forensic_export?: boolean | null
@@ -1031,15 +1064,21 @@ export type Database = {
           feature_manager_role?: boolean | null
           feature_multi_branch?: boolean | null
           feature_white_label?: boolean | null
+          features?: Json
           id?: string
           is_active?: boolean | null
+          limits?: Json
           max_branches?: number
           max_storage_mb?: number | null
           max_users?: number
           name?: string
+          permissions?: Json
           price_monthly?: number
           price_yearly?: number
+          resume?: string
           slug?: string
+          trial?: boolean
+          trial_duration?: number | null
         }
         Relationships: []
       }
@@ -1409,6 +1448,10 @@ export type Database = {
       is_system_user: { Args: { input_user_id?: string }; Returns: boolean }
       is_user_assigned_to_branch: {
         Args: { target_branch_id: string }
+        Returns: boolean
+      }
+      plan_billing_mode_enabled: {
+        Args: { p_available_billing_modes: Json; p_billing_mode: string }
         Returns: boolean
       }
     }

@@ -13,11 +13,13 @@ const FEATURE_FLAG_MAPPINGS: Record<
   (capabilities: OrganizationCapabilities) => boolean
 > = {
   feature_inventory: (capabilities) =>
-    capabilities.canCreateBranch ||
-    capabilities.canTransferStock ||
-    capabilities.hasAdvancedReports,
+    (capabilities.planPermissions?.inventory
+      ?? capabilities.canCreateBranch)
+    || capabilities.canTransferStock
+    || capabilities.hasAdvancedReports,
   feature_inventory_transfer: (capabilities) => capabilities.canTransferStock,
-  feature_multi_branch: (capabilities) => capabilities.canCreateBranch,
+  feature_multi_branch: (capabilities) =>
+    capabilities.planPermissions?.branches ?? capabilities.canCreateBranch,
   feature_advanced_reports: (capabilities) => capabilities.hasAdvancedReports,
   feature_api_access: (capabilities) => capabilities.hasApiAccess,
   feature_forensic_export: (capabilities) => capabilities.hasForensicExport,

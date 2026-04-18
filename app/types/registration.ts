@@ -3,8 +3,8 @@ import type { User } from "@supabase/supabase-js";
 import type { Json, Tables } from "@/types/database.types";
 import type { SubscriptionPlanSlug } from "./subscription";
 
-export type BillingMode = "monthly" | "annual";
-export type BusinessType = "products" | "services" | "both";
+export type BillingMode = "monthly" | "quarterly" | "annual";
+export type BusinessType = "products" | "services" | "hybrid";
 
 export interface RegistrationDraft {
   fullName: string;

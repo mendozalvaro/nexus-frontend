@@ -103,7 +103,7 @@ export const REGISTRATION_SCHEMA = z.object({
     .boolean()
     .refine((value) => value === true, "Debes aceptar los terminos"),
   selectedPlan: z.enum(["emprende", "crecimiento", "enterprise"] as const),
-  billingMode: z.enum(["monthly", "annual"] as const),
+  billingMode: z.enum(["monthly", "quarterly", "annual"] as const),
 });
 
 export const ORGANIZATION_SCHEMA = z.object({
@@ -113,13 +113,13 @@ export const ORGANIZATION_SCHEMA = z.object({
     .min(2, "El nombre debe tener al menos 2 caracteres")
     .max(100, "El nombre es demasiado largo")
     .regex(/^[a-zA-Z0-9\s\-_.,'¡!¿?]+$/, "Caracteres no permitidos"),
-  businessType: z.enum(["products", "services", "both"], {
+  businessType: z.enum(["products", "services", "hybrid"], {
     message: "Selecciona el tipo de negocio",
   }),
   selectedPlan: z.enum(["emprende", "crecimiento", "enterprise"], {
     message: "Selecciona un plan",
   }),
-  billingMode: z.enum(["monthly", "annual"], {
+  billingMode: z.enum(["monthly", "quarterly", "annual"], {
     message: "Selecciona el tipo de facturacion",
   }),
   country: z.string().trim().min(2, "Selecciona un pais"),
@@ -178,49 +178,67 @@ export const ERROR_MESSAGES = {
 
 export const PLAN_PRICING = [
   {
-    slug: "prueba" as const,
-    name: "Prueba",
-    priceMonthly: 0,
-    description:
-      "Experimenta el poder de NexusPOS con nuestra prueba gratuita de 14 dias. Sin tarjeta requerida, sin compromiso.",
-    features: ["1 sucursal", "1 usuarios", "Catalogo basico", "Punto de venta"],
-    disabledBoth: true,
-  },
-  {
     slug: "emprende" as const,
     name: "Emprende",
     priceMonthly: 20,
     description:
-      "Para negocios que venden un solo tipo: productos O servicios.",
-    features: ["1 sucursal", "2 usuarios", "Catalogo basico", "Punto de venta"],
-    disabledBoth: true,
+      "Negocio de servicios o productos en etapa inicial.",
+    features: [
+      "3 usuarios (1 admin, 1 manager, 1 empleado)",
+      "1 sucursal",
+      "100 ventas mensuales por sucursal",
+      "Pedidos o reservas segun eleccion",
+      "Reportes basicos y alertas",
+      "Tienda virtual",
+    ],
+    businessOnly: true,
+    discounts: {
+      monthly: 10,
+      quarterly: 15,
+      annual: 20,
+    },
   },
   {
     slug: "crecimiento" as const,
     name: "Crecimiento",
-    priceMonthly: 50,
-    description: "Para negocios que combinan productos y servicios.",
+    priceMonthly: 65,
+    description: "Para equipos con mas personal y mas sucursales.",
     features: [
-      "3 sucursales",
-      "5 usuarios",
-      "Inventario + Citas",
-      "Multi-sucursal",
-      "Transferencias",
+      "12 usuarios (1 admin, 4 manager, 7 empleados)",
+      "4 sucursales",
+      "Negocio hibrido",
+      "300 ventas por sucursal",
+      "Pedidos y reservas",
+      "Reportes especializados y alertas",
+      "Tienda virtual",
     ],
+    businessOnly: false,
+    discounts: {
+      monthly: 10,
+      quarterly: 15,
+      annual: 20,
+    },
   },
   {
     slug: "enterprise" as const,
-    name: "Enterprise",
-    priceMonthly: 100,
-    description: "Todo ilimitado para escalar tu negocio.",
+    name: "Empresarial",
+    priceMonthly: 200,
+    description: "Para operaciones grandes con personalizacion y escalabilidad.",
     features: [
-      "Sucursales ilimitadas",
-      "Usuarios ilimitados",
-      "API access",
-      "Reportes avanzados",
-      "White label",
-      "Export forense",
+      "Usuarios ilimitados (1 admin)",
+      "20 sucursales",
+      "Negocio hibrido",
+      "1000 ventas por sucursal",
+      "Pedidos y reservas",
+      "Reportes especializados y alertas",
+      "Tienda virtual personalizada",
     ],
+    businessOnly: false,
+    discounts: {
+      monthly: 10,
+      quarterly: 15,
+      annual: 20,
+    },
   },
 ] as const;
 
@@ -229,6 +247,24 @@ export const getPlanBySlug = (slug: string) =>
 
 export const getPlanAmount = (planSlug: string): number =>
   getPlanBySlug(planSlug)?.priceMonthly ?? PLAN_PRICING[0].priceMonthly;
+
+export const getPlanBillingAmount = (
+  planSlug: string,
+  billingMode: "monthly" | "quarterly" | "annual",
+): number => {
+  const plan = getPlanBySlug(planSlug);
+  const monthlyBase = plan?.priceMonthly ?? PLAN_PRICING[0].priceMonthly;
+
+  if (billingMode === "monthly") {
+    return Math.round(monthlyBase * (1 - ((plan?.discounts.monthly ?? 0) / 100)));
+  }
+
+  if (billingMode === "quarterly") {
+    return Math.round(monthlyBase * 3 * (1 - ((plan?.discounts.quarterly ?? 0) / 100)));
+  }
+
+  return Math.round(monthlyBase * 12 * (1 - ((plan?.discounts.annual ?? 0) / 100)));
+};
 
 export const sanitizeText = (value: string | null | undefined): string =>
   value?.trim() ?? "";

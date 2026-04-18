@@ -12,7 +12,7 @@ import {
 
 const createOrganizationDraft = (): OrganizationDraft => ({
   organizationName: "",
-  businessType: "both",
+  businessType: "hybrid",
   selectedPlan: "emprende",
   billingMode: "monthly",
   country: "BO",

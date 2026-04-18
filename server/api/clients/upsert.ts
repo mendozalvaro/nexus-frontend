@@ -1,10 +1,10 @@
 import { createClient } from "@supabase/supabase-js";
 import { createError, readBody } from "h3";
+import { serverSupabaseUser } from "#supabase/server";
 
 import { clientUpsertSchema } from "@/types/client";
 
 import type { H3Event } from "h3";
-import type { User } from "@supabase/supabase-js";
 
 type ProfileRole = "admin" | "manager" | "employee" | "client" | null;
 type OrgStatus = "active" | "inactive" | "blocked";
@@ -15,7 +15,7 @@ const sanitizeNullableString = (value: string | null | undefined): string | null
   return normalized.length > 0 ? normalized : null;
 };
 
-const getUserMetadataOrgId = (user: User): string | null => {
+const getUserMetadataOrgId = (user: { user_metadata?: unknown }): string | null => {
   const metadata = (user.user_metadata as Record<string, unknown> | undefined) ?? {};
   const organizationId = metadata.organization_id;
 

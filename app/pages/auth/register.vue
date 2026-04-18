@@ -29,7 +29,7 @@ if (import.meta.client) {
     const planParam = typeof route.query.plan === "string" ? route.query.plan : null;
     const billingParam = typeof route.query.billing === "string" ? route.query.billing : null;
     const validPlans = ["emprende", "crecimiento", "enterprise"] as const;
-    const validBilling: BillingMode[] = ["monthly", "annual"];
+    const validBilling: BillingMode[] = ["monthly", "quarterly", "annual"];
 
     registrationDraft.value = {
       ...registrationDraft.value,

@@ -19,11 +19,17 @@ export interface LandingPricingPlan {
   id: string
   name: string
   monthlyPrice: number
+  quarterlyPrice: number
   yearlyPrice: number
   description: string
   highlighted?: boolean
   badge?: string
   features: string[]
+  billingModes: Record<"monthly" | "quarterly" | "annual", {
+    label: string
+    enabled: boolean
+    discountPercent: number
+  }>
 }
 
 export interface LandingTestimonial {
@@ -118,62 +124,72 @@ const steps: LandingStepItem[] = [
 
 const pricingPlans: LandingPricingPlan[] = [
   {
-    id: "prueba",
-    name: "Prueba",
-    monthlyPrice: 0,
-    yearlyPrice: 0,
-    description: "Experimenta el poder de NexusPOS con nuestra prueba gratuita de 14 dias. Sin tarjeta requerida, sin compromiso.",
-    features: [
-      "1 sucursal",
-      "1 usuario",
-      "Catalogo basico",
-      "Punto de venta",
-      "Soporte por email",
-    ],
-  },
-  {
     id: "emprende",
     name: "Emprende",
     monthlyPrice: 20,
+    quarterlyPrice: 51,
     yearlyPrice: 204,
-    description: "Ideal para negocios que estan digitalizando su primera operacion.",
+    description: "Ideal para operaciones de servicios o productos en etapa inicial.",
     features: [
+      "3 usuarios (1 admin, 1 manager, 1 empleado)",
       "1 sucursal",
-      "5 usuarios",
-      "Citas y POS basico",
-      "Inventario local",
-      "Soporte por email",
+      "Negocio de servicios o productos",
+      "100 ventas mensuales por sucursal",
+      "Pedidos o reservas segun eleccion",
+      "Reportes basicos y alertas",
+      "Tienda virtual",
     ],
+    billingModes: {
+      monthly: { label: "monthly", enabled: true, discountPercent: 0 },
+      quarterly: { label: "quarterly", enabled: true, discountPercent: 15 },
+      annual: { label: "annual", enabled: true, discountPercent: 20 },
+    },
   },
   {
     id: "crecimiento",
     name: "Crecimiento",
     monthlyPrice: 65,
+    quarterlyPrice: 166,
     yearlyPrice: 663,
-    description: "La opcion recomendada para equipos que ya venden en varias lineas o sedes.",
+    description: "Para equipos con mas personal y mas sucursales en crecimiento.",
     highlighted: true,
     badge: "Mas popular",
     features: [
-      "5 sucursales",
-      "Usuarios ilimitados",
-      "Rol Manager",
-      "Transferencias de stock",
-      "Reportes comparativos",
+      "12 usuarios (1 admin, 4 manager, 7 empleados)",
+      "4 sucursales",
+      "Negocio hibrido",
+      "300 ventas por sucursal",
+      "Pedidos y reservas",
+      "Reportes especializados y alertas",
+      "Tienda virtual",
     ],
+    billingModes: {
+      monthly: { label: "monthly", enabled: true, discountPercent: 0 },
+      quarterly: { label: "quarterly", enabled: true, discountPercent: 15 },
+      annual: { label: "annual", enabled: true, discountPercent: 20 },
+    },
   },
   {
     id: "enterprise",
-    name: "Enterprise",
+    name: "Empresarial",
     monthlyPrice: 200,
+    quarterlyPrice: 510,
     yearlyPrice: 2040,
-    description: "Para operaciones complejas que necesitan control avanzado, marca propia y soporte premium.",
+    description: "Para operaciones grandes con personalizacion y escalabilidad alta.",
     features: [
-      "Sucursales ilimitadas",
-      "API access",
-      "White-label",
-      "Forensic export",
-      "Soporte prioritario",
+      "Usuarios ilimitados (1 admin)",
+      "20 sucursales",
+      "Negocio hibrido",
+      "1000 ventas por sucursal",
+      "Pedidos y reservas",
+      "Reportes especializados y alertas",
+      "Tienda virtual personalizada",
     ],
+    billingModes: {
+      monthly: { label: "monthly", enabled: true, discountPercent: 0 },
+      quarterly: { label: "quarterly", enabled: true, discountPercent: 15 },
+      annual: { label: "annual", enabled: true, discountPercent: 20 },
+    },
   },
 ]
 
@@ -240,7 +256,7 @@ const faqItems: LandingFAQItem[] = [
   },
   {
     label: "Como funciona la facturacion?",
-    content: "La facturacion es recurrente y transparente. Puedes elegir entre modalidad mensual o anual, revisar el estado desde tu cuenta y cancelar cuando quieras.",
+    content: "La facturacion es recurrente y transparente. Puedes elegir modalidad mensual, trimestral o anual, revisar el estado desde tu cuenta y cancelar cuando quieras.",
     icon: "i-lucide-receipt",
   },
   {

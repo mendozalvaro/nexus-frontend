@@ -11,6 +11,7 @@ import {
   MAX_RECEIPT_SIZE_BYTES,
   PAYMENT_SCHEMA,
   buildReceiptStoragePath,
+  getPlanBillingAmount,
   isReceiptMimeTypeAllowed,
   sanitizeFilename,
 } from "@/utils/onboarding";
@@ -273,16 +274,13 @@ export const usePaymentValidation = () => {
     const route = useRoute();
     const planParam = typeof route.query.plan === "string" ? route.query.plan : "emprende";
     const billingParam = typeof route.query.billing === "string" ? route.query.billing : "monthly";
-    const validBillingModes = ["monthly", "annual"] as const;
+    const validBillingModes = ["monthly", "quarterly", "annual"] as const;
     type BillingMode = (typeof validBillingModes)[number];
     const billingMode = validBillingModes.includes(billingParam as BillingMode)
       ? (billingParam as BillingMode)
       : "monthly";
     const plan = getPlanBySlug(planParam);
-    const monthlyAmount = plan?.priceMonthly ?? DEFAULT_BANK_DETAILS.amountUsd;
-    const amountUsd = billingMode === "annual"
-      ? Math.round(monthlyAmount * 12 * 0.85)
-      : monthlyAmount;
+    const amountUsd = getPlanBillingAmount(planParam, billingMode);
 
     return {
       bankName: DEFAULT_BANK_DETAILS.bankName,

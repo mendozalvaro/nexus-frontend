@@ -1,9 +1,9 @@
-<script setup lang="ts">
+﻿<script setup lang="ts">
 const props = defineProps<{
   organizationSlug: string;
   amountUsd: number;
   planName: string;
-  billingMode?: "monthly" | "annual";
+  billingMode?: "monthly" | "quarterly" | "annual";
   bankName: string;
   accountNumber: string;
   accountHolder: string;
@@ -90,10 +90,10 @@ onBeforeUnmount(() => {
       <div class="space-y-4">
         <div class="rounded-[1.5rem] bg-primary-50 p-4 dark:bg-primary-950/30">
           <p class="text-sm text-slate-600 dark:text-slate-300">
-            Monto {{ props.billingMode === 'annual' ? 'anual' : 'mensual' }}
+            Monto {{ props.billingMode === "annual" ? "anual" : props.billingMode === "quarterly" ? "trimestral" : "mensual" }}
           </p>
           <p class="mt-2 text-3xl font-semibold text-slate-950 dark:text-white">
-            ${{ amountUsd }} USD/{{ props.billingMode === 'annual' ? 'año' : 'mes' }}
+            ${{ amountUsd }} USD/{{ props.billingMode === "annual" ? "año" : props.billingMode === "quarterly" ? "trimestre" : "mes" }}
           </p>
           <p class="mt-1 text-sm text-slate-600 dark:text-slate-300">{{ planName }}</p>
         </div>
@@ -137,12 +137,12 @@ onBeforeUnmount(() => {
           color="info"
           variant="soft"
           icon="i-lucide-info"
-          title="Validación manual en menos de 1 hora hábiles"
-          description="Conserva esta referencia en tu comprobante para agilizar la revisión."
+          title="ValidaciÃ³n manual en menos de 1 hora hÃ¡biles"
+          description="Conserva esta referencia en tu comprobante para agilizar la revisiÃ³n."
         />
 
         <p v-if="props.paymentMethod && props.paymentMethod !== 'bank_transfer'" class="text-sm text-amber-600 dark:text-amber-400">
-          Para {{ props.paymentMethod === 'qr_payment' ? 'pago QR' : props.paymentMethod === 'card' ? 'tarjeta' : 'otros métodos' }}, contacta soporte para instrucciones específicas.
+          Para {{ props.paymentMethod === 'qr_payment' ? 'pago QR' : props.paymentMethod === 'card' ? 'tarjeta' : 'otros mÃ©todos' }}, contacta soporte para instrucciones especÃ­ficas.
         </p>
 
         <p

@@ -33,7 +33,7 @@ create table organizations (
     currency_code char(3) default 'BOB' check (length(currency_code) = 3),
     timezone text default 'America/La_Paz',
     country char(2) default 'BO',
-    business_type text default 'both' check (business_type in ('products', 'services', 'both')),
+    business_type text default 'hybrid' check (business_type in ('products', 'services', 'hybrid')),
     address text,
     billing_data jsonb,
     is_active boolean default true,
@@ -48,6 +48,15 @@ create table subscription_plans (
     name text not null,
     price_monthly numeric(10, 2) not null,
     price_yearly numeric(10, 2) not null,
+    business_only boolean not null default false,
+    description text not null default '',
+    resume text not null default '',
+    features jsonb not null default '[]'::jsonb,
+    permissions jsonb not null default '{}'::jsonb,
+    limits jsonb not null default '{}'::jsonb,
+    available_billing_modes jsonb not null default '{}'::jsonb,
+    trial boolean not null default false,
+    trial_duration int,
     max_branches int not null default 1,
     max_users int not null default 5,
     max_storage_mb int default 1000,
@@ -59,7 +68,13 @@ create table subscription_plans (
     feature_advanced_reports boolean default false,
     feature_forensic_export boolean default false,
     is_active boolean default true,
-    created_at timestamptz default now()
+    created_at timestamptz default now(),
+    constraint subscription_plans_trial_duration_check
+      check (
+        (trial = true and trial_duration is not null and trial_duration > 0)
+        or
+        (trial = false and trial_duration is null)
+      )
 );
 
 -- Suscripción Activa por Organización
@@ -68,13 +83,21 @@ create table organization_subscriptions (
     organization_id uuid references organizations(id) on delete cascade unique not null,
     plan_id uuid references subscription_plans(id) not null,
     status sub_status default 'trial',
-    billing_mode text default 'monthly' check (billing_mode in ('monthly', 'annual')),
+    billing_mode text default 'monthly' check (billing_mode in ('monthly', 'quarterly', 'annual')),
+    payment_method text,
+    trial_ends_at timestamptz,
+    is_trial boolean not null default false,
     current_period_start timestamptz default now(),
     current_period_end timestamptz not null,
     provider_subscription_id text,
     cancel_at_period_end boolean default false,
     created_at timestamptz default now(),
-    updated_at timestamptz default now()
+    updated_at timestamptz default now(),
+    constraint organization_subscriptions_payment_method_check
+      check (
+        payment_method is null
+        or payment_method in ('tarjeta', 'efectivo', 'transferencia', 'qr')
+      )
 );
 
 -- Sucursales
@@ -466,7 +489,7 @@ $$ language plpgsql security definer;
 -- Función RPC: Crear organización + subscription + profile admin (Onboarding simplificado)
 create or replace function create_onboarding_organization(
     p_name text,
-    p_business_type text default 'both',
+    p_business_type text default 'hybrid',
     p_country text default 'BO',
     p_currency text default 'BOB',
     p_timezone text default 'America/La_Paz',

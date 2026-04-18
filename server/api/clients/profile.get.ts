@@ -1,6 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { createError, getQuery } from "h3";
 import { z } from "zod";
+import { serverSupabaseUser } from "#supabase/server";
 
 import type { H3Event } from "h3";
 import type { ClientProfileState } from "@/types/client";

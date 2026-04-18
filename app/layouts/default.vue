@@ -128,6 +128,7 @@ const getRouteAccountStatus = () =>
   normalizeAccountStatus(typeof route.query.status === "string" ? route.query.status : null);
 
 const accountStatus = ref<DashboardAccountStatus | "active">(getRouteAccountStatus());
+const paymentRequired = ref(false);
 
 const isPendingActivationRequired = computed(() =>
   accountStatus.value === "pending" ||
@@ -295,7 +296,7 @@ const loadAccountStatus = async () => {
       .maybeSingle(),
     supabase
       .from("organization_subscriptions")
-      .select("status")
+      .select("status, is_trial, trial_ends_at")
       .eq("organization_id", profile.value.organization_id)
       .maybeSingle(),
     supabase
@@ -306,6 +307,24 @@ const loadAccountStatus = async () => {
       .limit(1)
       .maybeSingle(),
   ]);
+
+  const now = Date.now();
+  const trialEndsAt =
+    typeof subscription?.trial_ends_at === "string"
+      ? new Date(subscription.trial_ends_at).getTime()
+      : null;
+  const trialExpired =
+    typeof trialEndsAt === "number" && Number.isFinite(trialEndsAt) && trialEndsAt <= now;
+  paymentRequired.value = Boolean(
+    subscription
+    && subscription.status !== "active"
+    && (subscription.is_trial !== true || trialExpired || trialEndsAt === null),
+  );
+
+  if (paymentRequired.value) {
+    accountStatus.value = "pending";
+    return;
+  }
 
   if (organization?.status === "suspended") {
     accountStatus.value = "suspended";
@@ -540,6 +559,33 @@ if (import.meta.client) {
 
         <LayoutAppFooter />
       </div>
+    </div>
+
+    <div
+      v-if="paymentRequired && !route.path.startsWith('/onboarding/payment')"
+      class="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm"
+    >
+      <UCard class="w-full max-w-lg rounded-3xl border border-amber-300 bg-white p-2 dark:border-amber-700 dark:bg-slate-900">
+        <div class="space-y-4 p-4">
+          <div class="flex items-start gap-3">
+            <div class="flex h-11 w-11 items-center justify-center rounded-2xl bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
+              <UIcon name="i-lucide-credit-card" class="h-5 w-5" />
+            </div>
+            <div>
+              <p class="text-sm font-semibold uppercase tracking-[0.18em] text-amber-700 dark:text-amber-300">Pago requerido</p>
+              <h2 class="mt-1 text-lg font-semibold text-slate-950 dark:text-white">Tu prueba finalizó o no tienes una suscripción activa</h2>
+            </div>
+          </div>
+
+          <p class="text-sm text-slate-600 dark:text-slate-300">
+            Para continuar usando los módulos de la app, debes completar el pago y activar tu suscripción.
+          </p>
+
+          <UButton to="/onboarding/payment" color="primary" block size="lg" class="min-h-11">
+            Ir a pago
+          </UButton>
+        </div>
+      </UCard>
     </div>
 
     <USlideover v-if="mobileMenuOpen" :open="mobileMenuOpen" side="left" @update:open="mobileMenuOpen = $event">

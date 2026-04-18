@@ -19,6 +19,14 @@ export interface OrganizationCapabilities {
   currentUsersCount: number;
   subscriptionStatus: SubscriptionStatus;
   periodEnd: string | null;
+  billingMode?: "monthly" | "quarterly" | "annual" | null;
+  isTrial?: boolean;
+  trialEndsAt?: string | null;
+  paymentMethod?: "tarjeta" | "efectivo" | "transferencia" | "qr" | null;
+  paymentRequired?: boolean;
+  planPermissions?: Record<string, boolean>;
+  planLimits?: Record<string, number>;
+  planFeatures?: string[];
 }
 
 export type SubscriptionResource = "branch" | "user";

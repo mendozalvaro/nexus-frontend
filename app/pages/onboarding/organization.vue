@@ -34,7 +34,7 @@ const onSubmit = async () => {
 
 const featureItems = [
   { icon: "i-lucide-globe", title: "Pais auto-detectado", description: "Detectamos tu pais por IP. Moneda y timezone se ajustan automaticamente." },
-  { icon: "i-lucide-credit-card", title: "Plan flexible", description: "Elige plan y facturacion mensual o anual con descuento." },
+  { icon: "i-lucide-credit-card", title: "Plan flexible", description: "Elige plan y facturacion mensual, trimestral o anual con descuento." },
   { icon: "i-lucide-save", title: "Progreso persistente", description: "Guarda y retoma sin perder contexto." },
 ] as const;
 
