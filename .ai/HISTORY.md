@@ -38,3 +38,10 @@
 - Acciones: correccion de errores vue-tsc en dev/typecheck (imports `serverSupabaseUser`, ajuste de tipo para metadata auth, asserts de tests con strict null checks, y fix de spread tipado en `test/setup.ts`).
 - Validacion: `npm run typecheck` => exit code 0.
 - Estado: handoff listo, pending = none.
+
+## 2026-04-18 02:53:51 - codex
+- Step completado: implement_subscription_model_hybrid_trial_limits_and_payment_gate
+- Acciones: migracion v2 de suscripciones (`20260418_subscription_model_hybrid_trial_limits.sql`) con `business_type=hybrid`, campos nuevos en `subscription_plans` y `organization_subscriptions`, compatibilidad plan-negocio, trial por plan y billing trimestral; actualizacion de onboarding/payment/landing para quarterly y retiro de plan free/prueba; incorporacion de limits/permisos en composables sin romper role flags; gating de pago forzado con middleware + overlay en layout.
+- Fixes tecnicos: correccion de precedencia `??`/`||` en `useFeatureFlags`, sincronizacion de `schema.sql`, y ajustes de tipos locales en `app/types/database.types.ts` para nuevas columnas.
+- Validacion: `npm run typecheck` => exit code 0.
+- Pendiente: aplicar migracion en Supabase linked y regenerar tipos desde Supabase para sincronizacion completa con la base real.
