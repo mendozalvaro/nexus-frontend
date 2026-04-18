@@ -891,6 +891,7 @@ export type Database = {
           organization_id: string | null
           phone: string | null
           role: Database["public"]["Enums"]["user_role"] | null
+          role_id: string | null
           updated_at: string | null
         }
         Insert: {
@@ -905,6 +906,7 @@ export type Database = {
           organization_id?: string | null
           phone?: string | null
           role?: Database["public"]["Enums"]["user_role"] | null
+          role_id?: string | null
           updated_at?: string | null
         }
         Update: {
@@ -919,6 +921,7 @@ export type Database = {
           organization_id?: string | null
           phone?: string | null
           role?: Database["public"]["Enums"]["user_role"] | null
+          role_id?: string | null
           updated_at?: string | null
         }
         Relationships: [
@@ -934,6 +937,69 @@ export type Database = {
             columns: ["organization_id"]
             isOneToOne: false
             referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "profiles_role_id_fkey"
+            columns: ["role_id"]
+            isOneToOne: false
+            referencedRelation: "user_roles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      role_module_permissions: {
+        Row: {
+          can_approve: boolean
+          can_assign: boolean
+          can_create: boolean
+          can_delete: boolean
+          can_edit: boolean
+          can_export: boolean
+          can_manage: boolean
+          can_view: boolean
+          created_at: string
+          id: string
+          module_key: string
+          role_id: string
+          updated_at: string
+        }
+        Insert: {
+          can_approve?: boolean
+          can_assign?: boolean
+          can_create?: boolean
+          can_delete?: boolean
+          can_edit?: boolean
+          can_export?: boolean
+          can_manage?: boolean
+          can_view?: boolean
+          created_at?: string
+          id?: string
+          module_key: string
+          role_id: string
+          updated_at?: string
+        }
+        Update: {
+          can_approve?: boolean
+          can_assign?: boolean
+          can_create?: boolean
+          can_delete?: boolean
+          can_edit?: boolean
+          can_export?: boolean
+          can_manage?: boolean
+          can_view?: boolean
+          created_at?: string
+          id?: string
+          module_key?: string
+          role_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "role_module_permissions_role_id_fkey"
+            columns: ["role_id"]
+            isOneToOne: false
+            referencedRelation: "user_roles"
             referencedColumns: ["id"]
           },
         ]
@@ -1079,6 +1145,54 @@ export type Database = {
           slug?: string
           trial?: boolean
           trial_duration?: number | null
+        }
+        Relationships: []
+      }
+      system_role_module_permissions: {
+        Row: {
+          can_approve: boolean
+          can_assign: boolean
+          can_create: boolean
+          can_delete: boolean
+          can_edit: boolean
+          can_export: boolean
+          can_manage: boolean
+          can_view: boolean
+          created_at: string
+          id: string
+          module_key: string
+          system_role: string
+          updated_at: string
+        }
+        Insert: {
+          can_approve?: boolean
+          can_assign?: boolean
+          can_create?: boolean
+          can_delete?: boolean
+          can_edit?: boolean
+          can_export?: boolean
+          can_manage?: boolean
+          can_view?: boolean
+          created_at?: string
+          id?: string
+          module_key: string
+          system_role: string
+          updated_at?: string
+        }
+        Update: {
+          can_approve?: boolean
+          can_assign?: boolean
+          can_create?: boolean
+          can_delete?: boolean
+          can_edit?: boolean
+          can_export?: boolean
+          can_manage?: boolean
+          can_view?: boolean
+          created_at?: string
+          id?: string
+          module_key?: string
+          system_role?: string
+          updated_at?: string
         }
         Relationships: []
       }
@@ -1268,6 +1382,39 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      user_roles: {
+        Row: {
+          code: Database["public"]["Enums"]["user_role"]
+          created_at: string
+          description: string
+          id: string
+          is_active: boolean
+          is_system: boolean
+          name: string
+          updated_at: string
+        }
+        Insert: {
+          code: Database["public"]["Enums"]["user_role"]
+          created_at?: string
+          description?: string
+          id?: string
+          is_active?: boolean
+          is_system?: boolean
+          name: string
+          updated_at?: string
+        }
+        Update: {
+          code?: Database["public"]["Enums"]["user_role"]
+          created_at?: string
+          description?: string
+          id?: string
+          is_active?: boolean
+          is_system?: boolean
+          name?: string
+          updated_at?: string
+        }
+        Relationships: []
       }
     }
     Views: {

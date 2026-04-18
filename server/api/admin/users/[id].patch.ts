@@ -2,7 +2,9 @@ import { getRouterParam } from "h3";
 
 import {
   assertBranchesBelongToOrganization,
+  assertPlanPermission,
   assertRoleRules,
+  assertUserLimit,
   buildUserMetadata,
   readValidatedAdminBody,
   requireAdminContext,
@@ -15,6 +17,8 @@ export default defineEventHandler(async (event) => {
   const context = await requireAdminContext(event);
   const userId = getRouterParam(event, "id");
   const body = await readValidatedAdminBody(event, updateUserSchema);
+
+  await assertPlanPermission(context, "users");
 
   if (!userId) {
     throw createError({
@@ -37,11 +41,26 @@ export default defineEventHandler(async (event) => {
     });
   }
 
+  if (context.actorRole === "manager" && existingProfile.role !== "employee") {
+    throw createError({
+      statusCode: 403,
+      statusMessage: "Un manager solo puede editar usuarios con rol employee.",
+    });
+  }
+
+  if (existingProfile.role === "admin" || body.role === "admin") {
+    throw createError({
+      statusCode: 403,
+      statusMessage: "Solo system puede modificar asignaciones del rol admin.",
+    });
+  }
+
   const email = sanitizeEmail(body.email);
   const assignedBranchIds = Array.from(new Set(body.assignedBranchIds));
   const branchIdsToValidate = body.branchId ? [body.branchId, ...assignedBranchIds] : assignedBranchIds;
 
   assertRoleRules(
+    context,
     body.role,
     body.branchId,
     assignedBranchIds,
@@ -49,6 +68,7 @@ export default defineEventHandler(async (event) => {
     context.capabilities.canCreateManager,
     existingProfile.role,
   );
+  await assertUserLimit(context, body.role, existingProfile.role);
   await assertBranchesBelongToOrganization(context.adminClient, context.organizationId, branchIdsToValidate);
 
   const { data: duplicateProfile } = await context.adminClient

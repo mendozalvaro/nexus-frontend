@@ -50,6 +50,34 @@ export interface SystemUserFormInput {
   isActive: boolean;
 }
 
+export type SystemPlanRow = Database["public"]["Tables"]["subscription_plans"]["Row"];
+export type SystemRoleRow = Database["public"]["Tables"]["user_roles"]["Row"];
+export type RoleModulePermissionRow = Database["public"]["Tables"]["role_module_permissions"]["Row"];
+
+export interface SystemRoleWithPermissions extends SystemRoleRow {
+  module_permissions: RoleModulePermissionRow[];
+}
+
+export interface SystemPlanFormInput {
+  id?: string;
+  slug: string;
+  name: string;
+  priceMonthly: number;
+  priceYearly: number;
+  businessOnly: boolean;
+  description: string;
+  resume: string;
+  features: Json;
+  permissions: Json;
+  limits: Json;
+  availableBillingModes: Json;
+  trial: boolean;
+  trialDuration: number | null;
+  maxBranches: number;
+  maxUsers: number;
+  isActive: boolean;
+}
+
 const createDefaultStats = (): SystemDashboardStats => ({
   pendingValidations: 0,
   approvedToday: 0,
@@ -117,6 +145,10 @@ export const useSystemAdmin = () => {
     "system:dashboard:users:action-loading",
     () => false,
   );
+  const plans = useState<SystemPlanRow[]>("system:plans:rows", () => []);
+  const plansLoading = useState<boolean>("system:plans:loading", () => false);
+  const roles = useState<SystemRoleWithPermissions[]>("system:roles:rows", () => []);
+  const rolesLoading = useState<boolean>("system:roles:loading", () => false);
   const error = useState<string | null>("system:dashboard:error", () => null);
 
   const getReadableErrorMessage = (
@@ -540,6 +572,239 @@ export const useSystemAdmin = () => {
     isActive: true,
   });
 
+  const getDefaultPlanForm = (): SystemPlanFormInput => ({
+    slug: "",
+    name: "",
+    priceMonthly: 0,
+    priceYearly: 0,
+    businessOnly: false,
+    description: "",
+    resume: "",
+    features: [],
+    permissions: {},
+    limits: {},
+    availableBillingModes: {
+      monthly: { label: "monthly", enabled: true, discount_percent: 10 },
+      quarterly: { label: "quarterly", enabled: true, discount_percent: 15 },
+      annual: { label: "annual", enabled: true, discount_percent: 20 },
+    },
+    trial: false,
+    trialDuration: null,
+    maxBranches: 1,
+    maxUsers: 1,
+    isActive: true,
+  });
+
+  const loadPlans = async (): Promise<void> => {
+    plansLoading.value = true;
+    error.value = null;
+
+    try {
+      const response = await $fetch<{ rows: SystemPlanRow[] }>("/api/system/plans", {
+        headers: await getSystemRequestHeaders(),
+      });
+
+      plans.value = response.rows ?? [];
+    } catch (loadError) {
+      error.value = getReadableErrorMessage(
+        loadError,
+        "No pudimos cargar los planes.",
+      );
+      plans.value = [];
+    } finally {
+      plansLoading.value = false;
+    }
+  };
+
+  const createPlan = async (input: SystemPlanFormInput): Promise<SystemPlanRow> => {
+    actionLoading.value = true;
+    error.value = null;
+
+    try {
+      const response = await $fetch<{ row: SystemPlanRow }>("/api/system/plans", {
+        method: "POST",
+        headers: await getSystemRequestHeaders(),
+        body: {
+          slug: input.slug,
+          name: input.name,
+          priceMonthly: input.priceMonthly,
+          priceYearly: input.priceYearly,
+          businessOnly: input.businessOnly,
+          description: input.description,
+          resume: input.resume,
+          features: input.features,
+          permissions: input.permissions,
+          limits: input.limits,
+          availableBillingModes: input.availableBillingModes,
+          trial: input.trial,
+          trialDuration: input.trialDuration,
+          maxBranches: input.maxBranches,
+          maxUsers: input.maxUsers,
+          isActive: input.isActive,
+        },
+      });
+
+      if (response.row) {
+        plans.value = [...plans.value, response.row];
+      }
+
+      return response.row;
+    } catch (requestError) {
+      error.value = getReadableErrorMessage(
+        requestError,
+        "No pudimos crear el plan.",
+      );
+      throw requestError;
+    } finally {
+      actionLoading.value = false;
+    }
+  };
+
+  const updatePlan = async (
+    planId: string,
+    input: Partial<SystemPlanFormInput>,
+  ): Promise<SystemPlanRow> => {
+    actionLoading.value = true;
+    error.value = null;
+
+    try {
+      const response = await $fetch<{ row: SystemPlanRow }>(`/api/system/plans/${planId}`, {
+        method: "PATCH",
+        headers: await getSystemRequestHeaders(),
+        body: {
+          name: input.name,
+          priceMonthly: input.priceMonthly,
+          priceYearly: input.priceYearly,
+          businessOnly: input.businessOnly,
+          description: input.description,
+          resume: input.resume,
+          features: input.features,
+          permissions: input.permissions,
+          limits: input.limits,
+          availableBillingModes: input.availableBillingModes,
+          trial: input.trial,
+          trialDuration: input.trialDuration,
+          maxBranches: input.maxBranches,
+          maxUsers: input.maxUsers,
+          isActive: input.isActive,
+        },
+      });
+
+      if (response.row) {
+        const index = plans.value.findIndex((plan) => plan.id === response.row.id);
+        if (index >= 0) {
+          plans.value.splice(index, 1, response.row);
+        }
+      }
+
+      return response.row;
+    } catch (requestError) {
+      error.value = getReadableErrorMessage(
+        requestError,
+        "No pudimos actualizar el plan.",
+      );
+      throw requestError;
+    } finally {
+      actionLoading.value = false;
+    }
+  };
+
+  const loadRoles = async (): Promise<void> => {
+    rolesLoading.value = true;
+    error.value = null;
+
+    try {
+      const response = await $fetch<{ rows: SystemRoleWithPermissions[] }>("/api/system/roles", {
+        headers: await getSystemRequestHeaders(),
+      });
+
+      roles.value = response.rows ?? [];
+    } catch (loadError) {
+      error.value = getReadableErrorMessage(
+        loadError,
+        "No pudimos cargar los roles globales.",
+      );
+      roles.value = [];
+    } finally {
+      rolesLoading.value = false;
+    }
+  };
+
+  const updateRole = async (
+    roleId: string,
+    payload: { name: string; description: string; isActive: boolean },
+  ): Promise<SystemRoleRow> => {
+    actionLoading.value = true;
+    error.value = null;
+
+    try {
+      const response = await $fetch<{ row: SystemRoleRow }>(`/api/system/roles/${roleId}`, {
+        method: "PATCH",
+        headers: await getSystemRequestHeaders(),
+        body: payload,
+      });
+
+      const current = roles.value.find((role) => role.id === roleId);
+      if (response.row && current) {
+        Object.assign(current, response.row);
+      }
+
+      return response.row;
+    } catch (requestError) {
+      error.value = getReadableErrorMessage(
+        requestError,
+        "No pudimos actualizar el rol.",
+      );
+      throw requestError;
+    } finally {
+      actionLoading.value = false;
+    }
+  };
+
+  const updateRolePermissions = async (
+    roleId: string,
+    permissions: Array<{
+      moduleKey: string;
+      canView: boolean;
+      canCreate: boolean;
+      canEdit: boolean;
+      canDelete: boolean;
+      canExport: boolean;
+      canManage: boolean;
+      canApprove: boolean;
+      canAssign: boolean;
+    }>,
+  ): Promise<RoleModulePermissionRow[]> => {
+    actionLoading.value = true;
+    error.value = null;
+
+    try {
+      const response = await $fetch<{ rows: RoleModulePermissionRow[] }>(
+        `/api/system/roles/${roleId}/permissions`,
+        {
+          method: "PUT",
+          headers: await getSystemRequestHeaders(),
+          body: { permissions },
+        },
+      );
+
+      const role = roles.value.find((entry) => entry.id === roleId);
+      if (role) {
+        role.module_permissions = response.rows ?? [];
+      }
+
+      return response.rows ?? [];
+    } catch (requestError) {
+      error.value = getReadableErrorMessage(
+        requestError,
+        "No pudimos actualizar permisos del rol.",
+      );
+      throw requestError;
+    } finally {
+      actionLoading.value = false;
+    }
+  };
+
   return {
     stats,
     alerts,
@@ -553,16 +818,27 @@ export const useSystemAdmin = () => {
     usersLoading,
     orgUsersLoading,
     clientsLoading,
+    plans,
+    plansLoading,
+    roles,
+    rolesLoading,
     actionLoading,
     error,
     loadDashboard,
     loadSystemUsers,
     loadOrgUsers,
     loadClients,
+    loadPlans,
+    loadRoles,
     createSystemUser,
     updateSystemUser,
     toggleSystemUserStatus,
+    createPlan,
+    updatePlan,
+    updateRole,
+    updateRolePermissions,
     getDefaultSystemUserForm,
+    getDefaultPlanForm,
     parsePermissions,
   };
 };

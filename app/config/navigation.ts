@@ -159,6 +159,11 @@ export const SYSTEM_NAVIGATION_ITEMS: NavigationItem[] = [
     to: "/system",
   },
   {
+    label: "Planes y Roles",
+    icon: "i-heroicons-shield-check",
+    to: "/system/access",
+  },
+  {
     label: "Validacion de pagos",
     icon: "i-heroicons-credit-card",
     to: "/system/payment-validations",

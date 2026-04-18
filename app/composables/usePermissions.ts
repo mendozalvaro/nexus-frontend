@@ -8,12 +8,16 @@ import type {
   UserRole,
 } from "@/types/permissions";
 import { ROLE_PERMISSIONS } from "@/types/permissions";
+import { resolvePlanPermission } from "@/utils/subscription-plan";
 
 export const usePermissions = () => {
   const supabase = useSupabaseClient<Database>();
   const { user, profile } = useAuth();
   const { isFeatureEnabled } = useFeatureFlags();
   const { capabilities } = useSubscription();
+  const dbPermissionGrants = useState<PermissionGrant[]>("permissions:db-grants", () => []);
+  const dbPermissionRoleId = useState<string | null>("permissions:db-role-id", () => null);
+  const dbPermissionLoading = useState<boolean>("permissions:db-loading", () => false);
 
   const removePermission = (
     permissions: PermissionGrant[],
@@ -28,29 +32,177 @@ export const usePermissions = () => {
     });
   };
 
-  const MODULE_PERMISSION_PREFIXES: Record<string, string[]> = {
-    pos: ["pos."],
-    catalog: ["catalog."],
-    inventory: ["inventory."],
-    service_assignment: ["service_assignment."],
-    appointments: ["appointments."],
-    users: ["users."],
-    branches: ["branches."],
-    reports: ["reports."],
-    settings: ["settings."],
-    profile: ["profile."],
-    api: [],
-    forensic: [],
+  const resolvePermissionModule = (permission: PermissionGrant): string => {
+    const [module] = permission.split(".");
+    return module ?? "";
   };
 
-  const removePermissionPrefixes = (
-    permissions: PermissionGrant[],
-    prefixes: string[],
-  ): PermissionGrant[] => {
-    return permissions.filter((permission) => {
-      return !prefixes.some((prefix) => permission.startsWith(prefix));
-    });
+  const MODULE_ACTION_PERMISSION_MAP: Record<string, Partial<Record<
+    | "can_view"
+    | "can_create"
+    | "can_edit"
+    | "can_delete"
+    | "can_export"
+    | "can_manage",
+    PermissionGrant
+  >>> = {
+    pos: {
+      can_view: "pos.view",
+      can_create: "pos.create",
+      can_edit: "pos.edit",
+      can_delete: "pos.delete",
+      can_manage: "pos.*",
+    },
+    catalog: {
+      can_view: "catalog.view",
+      can_edit: "catalog.edit",
+      can_manage: "catalog.*",
+    },
+    inventory: {
+      can_view: "inventory.view",
+      can_edit: "inventory.adjust",
+      can_delete: "inventory.delete",
+      can_manage: "inventory.*",
+    },
+    service_assignment: {
+      can_view: "service_assignment.view",
+      can_edit: "service_assignment.edit",
+      can_manage: "service_assignment.*",
+    },
+    appointments: {
+      can_view: "appointments.view",
+      can_create: "appointments.create",
+      can_edit: "appointments.edit",
+      can_delete: "appointments.delete",
+      can_manage: "appointments.*",
+    },
+    users: {
+      can_view: "users.view",
+      can_create: "users.create",
+      can_edit: "users.edit",
+      can_delete: "users.delete",
+      can_manage: "users.*",
+    },
+    branches: {
+      can_view: "branches.view",
+      can_create: "branches.create",
+      can_edit: "branches.edit",
+      can_delete: "branches.delete",
+      can_manage: "branches.*",
+    },
+    reports: {
+      can_view: "reports.view",
+      can_export: "reports.export",
+      can_manage: "reports.*",
+    },
+    settings: {
+      can_view: "settings.view",
+      can_edit: "settings.edit",
+      can_manage: "settings.*",
+    },
+    profile: {
+      can_view: "profile.view",
+      can_edit: "profile.edit",
+      can_manage: "profile.*",
+    },
   };
+
+  const actionKeys = [
+    "can_view",
+    "can_create",
+    "can_edit",
+    "can_delete",
+    "can_export",
+    "can_manage",
+  ] as const;
+
+  const parseDbPermissionGrants = (
+    rows: Database["public"]["Tables"]["role_module_permissions"]["Row"][],
+  ): PermissionGrant[] => {
+    const grants = new Set<PermissionGrant>();
+
+    for (const row of rows) {
+      const actionMap = MODULE_ACTION_PERMISSION_MAP[row.module_key];
+      if (!actionMap) {
+        continue;
+      }
+
+      for (const actionKey of actionKeys) {
+        if (row[actionKey] !== true) {
+          continue;
+        }
+
+        const permission = actionMap[actionKey];
+        if (permission) {
+          grants.add(permission);
+        }
+      }
+    }
+
+    return Array.from(grants);
+  };
+
+  const loadRoleModulePermissions = async (roleId: string | null | undefined) => {
+    if (!roleId) {
+      dbPermissionGrants.value = [];
+      dbPermissionRoleId.value = null;
+      return;
+    }
+
+    if (dbPermissionLoading.value) {
+      let attempts = 0;
+      while (dbPermissionLoading.value && attempts < 40) {
+        await new Promise<void>((resolve) => {
+          setTimeout(resolve, 25);
+        });
+        attempts += 1;
+      }
+      return;
+    }
+
+    dbPermissionLoading.value = true;
+
+    try {
+      const { data, error } = await supabase
+        .from("role_module_permissions")
+        .select("*")
+        .eq("role_id", roleId);
+
+      if (error) {
+        throw error;
+      }
+
+      dbPermissionGrants.value = parseDbPermissionGrants(data ?? []);
+      dbPermissionRoleId.value = roleId;
+    } catch {
+      dbPermissionGrants.value = [];
+      dbPermissionRoleId.value = null;
+    } finally {
+      dbPermissionLoading.value = false;
+    }
+  };
+
+  const ensureRolePermissionsLoaded = async (): Promise<void> => {
+    const roleId = profile.value?.role_id ?? null;
+
+    if (!roleId) {
+      return;
+    }
+
+    if (dbPermissionRoleId.value === roleId) {
+      return;
+    }
+
+    await loadRoleModulePermissions(roleId);
+  };
+
+  watch(
+    () => profile.value?.role_id ?? null,
+    async (roleId) => {
+      await loadRoleModulePermissions(roleId);
+    },
+    { immediate: true },
+  );
 
   const getUserPermissions = (): PermissionGrant[] => {
     if (!profile.value) {
@@ -58,7 +210,12 @@ export const usePermissions = () => {
     }
 
     const role = profile.value.role as UserRole;
-    let permissions = [...(ROLE_PERMISSIONS[role] ?? [])];
+    const hasDbPermissions =
+      Boolean(profile.value.role_id)
+      && dbPermissionRoleId.value === profile.value.role_id;
+    let permissions = hasDbPermissions
+      ? [...dbPermissionGrants.value]
+      : [...(ROLE_PERMISSIONS[role] ?? [])];
 
     if (!isFeatureEnabled("feature_inventory_transfer")) {
       permissions = removePermission(permissions, "inventory.transfer");
@@ -72,19 +229,15 @@ export const usePermissions = () => {
       permissions = permissions.filter((permission) => !permission.startsWith("branches."));
     }
 
-    const planPermissions = capabilities.value?.planPermissions ?? {};
-    for (const [moduleKey, enabled] of Object.entries(planPermissions)) {
-      if (enabled) {
-        continue;
+    const planPermissions = capabilities.value?.planPermissions;
+    permissions = permissions.filter((permission) => {
+      const moduleKey = resolvePermissionModule(permission);
+      if (!moduleKey) {
+        return true;
       }
 
-      const prefixes = MODULE_PERMISSION_PREFIXES[moduleKey];
-      if (!prefixes || prefixes.length === 0) {
-        continue;
-      }
-
-      permissions = removePermissionPrefixes(permissions, prefixes);
-    }
+      return resolvePlanPermission(planPermissions, moduleKey, true);
+    });
 
     return permissions;
   };
@@ -275,6 +428,7 @@ export const usePermissions = () => {
     hasPermission,
     canAccessBranch,
     getAccessibleBranches,
+    ensureRolePermissionsLoaded,
     resolveRouteAccess,
   };
 };

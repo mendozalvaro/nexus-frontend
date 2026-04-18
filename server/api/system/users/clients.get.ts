@@ -1,10 +1,16 @@
 import type { Database } from "@/types/database.types";
-import { parsePagination, requireSystemAdminContext } from "../../../utils/system-admin";
+import {
+  assertSystemModuleAccess,
+  parsePagination,
+  requireSystemAdminContext,
+} from "../../../utils/system-admin";
 
 type ProfileRow = Database["public"]["Tables"]["profiles"]["Row"];
 
 export default defineEventHandler(async (event) => {
-  const { adminClient } = await requireSystemAdminContext(event);
+  const context = await requireSystemAdminContext(event);
+  await assertSystemModuleAccess(context, "organizations", "can_view");
+  const { adminClient } = context;
   const { page, perPage, from, to } = parsePagination(event, 10);
 
   const { data, count, error } = await adminClient

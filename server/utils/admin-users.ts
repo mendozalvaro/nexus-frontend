@@ -4,24 +4,38 @@ import { z } from "zod";
 
 import type { H3Event } from "h3";
 
-import type { Database } from "@/types/database.types";
+import type { Database, Json } from "@/types/database.types";
+import {
+  flattenPlanLimits,
+  readBooleanPlanPermissions,
+  resolvePlanBooleanLimit,
+  resolvePlanNumericLimit,
+  resolvePlanPermission,
+  type PlanLimitScalar,
+} from "@/utils/subscription-plan";
 
 type UserRole = Database["public"]["Enums"]["user_role"];
+type InternalRole = Exclude<UserRole, "client">;
 
 interface AdminContext {
   adminClient: ReturnType<typeof createClient<Database>>;
   organizationId: string;
   userId: string;
+  actorRole: InternalRole;
   capabilities: {
     maxUsers: number;
     currentUsersCount: number;
     canCreateManager: boolean;
+    planPermissions: Record<string, boolean>;
+    planLimits: Record<string, PlanLimitScalar>;
   };
 }
 
+const INTERNAL_ROLES: InternalRole[] = ["admin", "manager", "employee"];
+
 const baseUserSchema = z.object({
   fullName: z.string().trim().min(3, "El nombre completo es obligatorio."),
-  email: z.string().trim().email("Ingresa un email válido."),
+  email: z.string().trim().email("Ingresa un email valido."),
   role: z.enum(["admin", "manager", "employee"] satisfies UserRole[]),
   branchId: z.string().uuid().nullable(),
   assignedBranchIds: z.array(z.string().uuid()).default([]),
@@ -29,19 +43,23 @@ const baseUserSchema = z.object({
 });
 
 export const createUserSchema = baseUserSchema.extend({
-  password: z.string().min(8, "La contraseña debe tener al menos 8 caracteres."),
+  password: z.string().min(8, "La contrasena debe tener al menos 8 caracteres."),
 });
 
 export const updateUserSchema = baseUserSchema.extend({
   password: z.string().min(8).optional(),
 });
 
+const isInternalRole = (role: UserRole | null | undefined): role is InternalRole => {
+  return INTERNAL_ROLES.includes(role as InternalRole);
+};
+
 const getBearerToken = (event: H3Event): string => {
   const header = getHeader(event, "authorization");
   if (!header?.startsWith("Bearer ")) {
     throw createError({
       statusCode: 401,
-      statusMessage: "No se recibió un token de autenticación válido.",
+      statusMessage: "No se recibio un token de autenticacion valido.",
     });
   }
 
@@ -57,7 +75,7 @@ const getSupabaseServerConfig = (event: H3Event) => {
   if (!url || !anonKey) {
     throw createError({
       statusCode: 500,
-      statusMessage: "La configuración pública de Supabase está incompleta.",
+      statusMessage: "La configuracion publica de Supabase esta incompleta.",
     });
   }
 
@@ -78,7 +96,73 @@ const parseCapabilities = (payload: unknown) => {
     maxUsers: typeof record.maxUsers === "number" ? record.maxUsers : 0,
     currentUsersCount: typeof record.currentUsersCount === "number" ? record.currentUsersCount : 0,
     canCreateManager: typeof record.canCreateManager === "boolean" ? record.canCreateManager : false,
+    planPermissions: readBooleanPlanPermissions(record.permissions),
+    planLimits: flattenPlanLimits(record.limits),
   };
+};
+
+const auditPermissionDenied = async (
+  adminClient: AdminContext["adminClient"],
+  payload: {
+    userId: string;
+    organizationId: string;
+    reason: string;
+    message: string;
+    module?: string;
+    role?: UserRole;
+    currentRole?: UserRole | null;
+    expected?: number;
+    current?: number;
+  },
+) => {
+  try {
+    await adminClient.from("audit_logs").insert({
+      user_id: payload.userId,
+      action: "PERMISSION_DENIED",
+      table_name: "subscription_limits",
+      record_id: payload.organizationId,
+      context: {
+        reason: payload.reason,
+        message: payload.message,
+        module: payload.module ?? null,
+        role: payload.role ?? null,
+        current_role: payload.currentRole ?? null,
+        expected: payload.expected ?? null,
+        current: payload.current ?? null,
+      } as Json,
+    });
+  } catch {
+    // Ignore audit write failures to avoid masking access errors.
+  }
+};
+
+const resolveTotalUsersLimit = (capabilities: AdminContext["capabilities"]): number => {
+  return resolvePlanNumericLimit(capabilities.planLimits, [
+    "users",
+    "users.max",
+    "seats",
+    "seats.total",
+  ]) ?? capabilities.maxUsers;
+};
+
+const resolveRoleLimit = (
+  capabilities: AdminContext["capabilities"],
+  role: InternalRole,
+): number | null => {
+  return resolvePlanNumericLimit(capabilities.planLimits, [
+    `roles.${role}`,
+    `roles.${role}.max`,
+    `${role}.max`,
+    `users.${role}`,
+  ]);
+};
+
+const isUsersUnlimited = (capabilities: AdminContext["capabilities"]): boolean => {
+  return resolvePlanBooleanLimit(capabilities.planLimits, [
+    "users_unlimited",
+    "users.unlimited",
+    "usersUnlimited",
+  ]) === true;
 };
 
 export const requireAdminContext = async (event: H3Event): Promise<AdminContext> => {
@@ -93,7 +177,7 @@ export const requireAdminContext = async (event: H3Event): Promise<AdminContext>
   if (authError || !authData.user) {
     throw createError({
       statusCode: 401,
-      statusMessage: "No se pudo validar la sesión del usuario.",
+      statusMessage: "No se pudo validar la sesion del usuario.",
     });
   }
 
@@ -107,10 +191,12 @@ export const requireAdminContext = async (event: H3Event): Promise<AdminContext>
     .eq("id", authData.user.id)
     .maybeSingle();
 
-  if (profileError || !profile?.organization_id || profile.role !== "admin" || profile.is_active === false) {
+  const actorRole = profile?.role;
+  const canManageUsers = actorRole === "admin" || actorRole === "manager";
+  if (profileError || !profile?.organization_id || !canManageUsers || profile.is_active === false) {
     throw createError({
       statusCode: 403,
-      statusMessage: "Solo administradores activos pueden gestionar usuarios.",
+      statusMessage: "Solo usuarios admin o manager activos pueden gestionar usuarios.",
     });
   }
 
@@ -130,11 +216,37 @@ export const requireAdminContext = async (event: H3Event): Promise<AdminContext>
     adminClient,
     organizationId: profile.organization_id,
     userId: profile.id,
+    actorRole,
     capabilities: parseCapabilities(capabilityData),
   };
 };
 
+export const assertPlanPermission = async (
+  context: AdminContext,
+  moduleKey: string,
+) => {
+  const enabled = resolvePlanPermission(context.capabilities.planPermissions, moduleKey, true);
+  if (enabled) {
+    return;
+  }
+
+  const message = "Tu plan actual no permite operar el modulo de usuarios.";
+  await auditPermissionDenied(context.adminClient, {
+    userId: context.userId,
+    organizationId: context.organizationId,
+    reason: "module_permission",
+    message,
+    module: moduleKey,
+  });
+
+  throw createError({
+    statusCode: 403,
+    statusMessage: message,
+  });
+};
+
 export const assertRoleRules = (
+  context: AdminContext,
   role: UserRole,
   branchId: string | null,
   assignedBranchIds: string[],
@@ -142,10 +254,33 @@ export const assertRoleRules = (
   canCreateManager: boolean,
   currentRole?: UserRole | null,
 ) => {
-  if (role === "manager" && currentRole !== "manager" && !canCreateManager) {
+  if (context.actorRole === "manager" && role !== "employee") {
     throw createError({
       statusCode: 403,
-      statusMessage: "Tu plan actual no permite crear ni promover usuarios con rol manager.",
+      statusMessage: "Un manager solo puede asignar el rol employee.",
+    });
+  }
+
+  if (context.actorRole === "admin" && role === "admin" && currentRole !== "admin") {
+    throw createError({
+      statusCode: 403,
+      statusMessage: "Solo system puede asignar el rol admin.",
+    });
+  }
+
+  if (role === "manager" && currentRole !== "manager" && !canCreateManager) {
+    const message = "Tu plan actual no permite crear ni promover usuarios con rol manager.";
+    void auditPermissionDenied(context.adminClient, {
+      userId: context.userId,
+      organizationId: context.organizationId,
+      reason: "role_permission",
+      message,
+      role,
+      currentRole: currentRole ?? null,
+    });
+    throw createError({
+      statusCode: 403,
+      statusMessage: message,
     });
   }
 
@@ -159,7 +294,7 @@ export const assertRoleRules = (
   if (role !== "employee" && assignedBranchIds.length > 0) {
     throw createError({
       statusCode: 400,
-      statusMessage: "Solo los empleados pueden tener asignaciones múltiples de sucursal.",
+      statusMessage: "Solo los empleados pueden tener asignaciones multiples de sucursal.",
     });
   }
 
@@ -176,13 +311,92 @@ export const assertRoleRules = (
   }
 };
 
-export const assertUserLimit = (capabilities: AdminContext["capabilities"]) => {
-  if (capabilities.currentUsersCount >= capabilities.maxUsers) {
+export const assertUserLimit = async (
+  context: AdminContext,
+  targetRole: UserRole,
+  currentRole?: UserRole | null,
+) => {
+  const { data: profileRows, error } = await context.adminClient
+    .from("profiles")
+    .select("role")
+    .eq("organization_id", context.organizationId)
+    .neq("role", "client");
+
+  if (error) {
     throw createError({
-      statusCode: 409,
-      statusMessage: `Tu plan alcanzó el límite de ${capabilities.maxUsers} usuario(s). Actualiza la suscripción para agregar más.`,
+      statusCode: 500,
+      statusMessage: "No se pudieron validar los limites de usuarios de la organizacion.",
     });
   }
+
+  const roleCounters: Record<InternalRole, number> = {
+    admin: 0,
+    manager: 0,
+    employee: 0,
+  };
+
+  for (const row of profileRows ?? []) {
+    if (isInternalRole(row.role)) {
+      roleCounters[row.role] += 1;
+    }
+  }
+
+  const currentInternal = isInternalRole(currentRole ?? null) ? 1 : 0;
+  const targetInternal = isInternalRole(targetRole) ? 1 : 0;
+  const currentTotal = roleCounters.admin + roleCounters.manager + roleCounters.employee;
+  const projectedTotal = currentTotal + targetInternal - currentInternal;
+
+  if (!isUsersUnlimited(context.capabilities)) {
+    const totalLimit = resolveTotalUsersLimit(context.capabilities);
+    if (projectedTotal > totalLimit) {
+      const message = `Tu plan alcanzo el limite de ${totalLimit} usuario(s). Actualiza la suscripcion para agregar mas.`;
+      await auditPermissionDenied(context.adminClient, {
+        userId: context.userId,
+        organizationId: context.organizationId,
+        reason: "users_limit",
+        message,
+        role: targetRole,
+        currentRole: currentRole ?? null,
+        expected: totalLimit,
+        current: projectedTotal,
+      });
+      throw createError({
+        statusCode: 409,
+        statusMessage: message,
+      });
+    }
+  }
+
+  if (!isInternalRole(targetRole)) {
+    return;
+  }
+
+  const roleLimit = resolveRoleLimit(context.capabilities, targetRole);
+  if (roleLimit === null) {
+    return;
+  }
+
+  const projectedRoleCount = roleCounters[targetRole] + (currentRole === targetRole ? 0 : 1);
+  if (projectedRoleCount <= roleLimit) {
+    return;
+  }
+
+  const message = `Tu plan alcanzo el limite de ${roleLimit} usuario(s) con rol ${targetRole}.`;
+  await auditPermissionDenied(context.adminClient, {
+    userId: context.userId,
+    organizationId: context.organizationId,
+    reason: "role_limit",
+    message,
+    role: targetRole,
+    currentRole: currentRole ?? null,
+    expected: roleLimit,
+    current: projectedRoleCount,
+  });
+
+  throw createError({
+    statusCode: 409,
+    statusMessage: message,
+  });
 };
 
 export const assertBranchesBelongToOrganization = async (
@@ -211,7 +425,7 @@ export const assertBranchesBelongToOrganization = async (
   if ((data ?? []).length !== uniqueBranchIds.length) {
     throw createError({
       statusCode: 400,
-      statusMessage: "Se detectaron sucursales fuera de la organización actual.",
+      statusMessage: "Se detectaron sucursales fuera de la organizacion actual.",
     });
   }
 };
@@ -256,7 +470,7 @@ export const readValidatedAdminBody = async <T>(event: H3Event, schema: z.ZodSch
   if (!parsed.success) {
     throw createError({
       statusCode: 400,
-      statusMessage: parsed.error.issues[0]?.message ?? "Payload inválido.",
+      statusMessage: parsed.error.issues[0]?.message ?? "Payload invalido.",
     });
   }
 

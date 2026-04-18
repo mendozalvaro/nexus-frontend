@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 import type { Database, Json } from "@/types/database.types";
-import { requireSystemAdminContext } from "../../../utils/system-admin";
+import { assertSystemModuleAccess, requireSystemAdminContext } from "../../../utils/system-admin";
 
 type SystemUserRow = Database["public"]["Tables"]["system_users"]["Row"];
 type SystemUserInsert = Database["public"]["Tables"]["system_users"]["Insert"];
@@ -18,7 +18,9 @@ const createSystemUserSchema = z.object({
 });
 
 export default defineEventHandler(async (event) => {
-  const { adminClient, userId } = await requireSystemAdminContext(event);
+  const context = await requireSystemAdminContext(event);
+  await assertSystemModuleAccess(context, "system_users", "can_manage");
+  const { adminClient, userId } = context;
   const body = await readBody(event);
   const parsedPayload = createSystemUserSchema.safeParse(body);
   if (!parsedPayload.success) {

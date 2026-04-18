@@ -44,7 +44,7 @@ export default defineNuxtRouteMiddleware(async (to) => {
   const fallbackPath = getDefaultPathForRole(profile?.role ?? null);
 
   const meta = to.meta as RoutePermissionMeta;
-  const { getAccessibleBranches, resolveRouteAccess } = usePermissions();
+  const { getAccessibleBranches, resolveRouteAccess, ensureRolePermissionsLoaded } = usePermissions();
   const { selectedBranchId, restoreSelectedBranch } = useBranchSelector();
 
   if (meta.requiresBranch && import.meta.client) {
@@ -68,6 +68,8 @@ export default defineNuxtRouteMiddleware(async (to) => {
       return navigateTo(`/select-branch?redirect=${encodeURIComponent(to.fullPath)}`);
     }
   }
+
+  await ensureRolePermissionsLoaded();
 
   const requestedBranchId = resolveRequestedBranchId(to);
   const branchIdToValidate = requestedBranchId ?? (meta.requiresBranch ? selectedBranchId.value : null);

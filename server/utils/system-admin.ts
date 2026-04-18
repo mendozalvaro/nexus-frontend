@@ -9,7 +9,18 @@ type AdminClient = ReturnType<typeof createClient<Database>>;
 export interface SystemAdminContext {
   adminClient: AdminClient;
   userId: string;
+  systemRole: "system" | "support";
 }
+
+export type SystemModuleAction =
+  | "can_view"
+  | "can_create"
+  | "can_edit"
+  | "can_delete"
+  | "can_export"
+  | "can_manage"
+  | "can_approve"
+  | "can_assign";
 
 const getBearerToken = (event: H3Event): string => {
   const header = getHeader(event, "authorization");
@@ -84,7 +95,7 @@ export const requireSystemAdminContext = async (
 
   const { data: systemUser, error: systemUserError } = await adminClient
     .from("system_users")
-    .select("user_id, is_active")
+    .select("user_id, role, is_active")
     .eq("user_id", authData.user.id)
     .eq("is_active", true)
     .maybeSingle();
@@ -99,5 +110,40 @@ export const requireSystemAdminContext = async (
   return {
     adminClient,
     userId: authData.user.id,
+    systemRole: (systemUser.role ?? "support") as "system" | "support",
   };
+};
+
+export const assertSystemModuleAccess = async (
+  context: SystemAdminContext,
+  moduleKey: string,
+  action: SystemModuleAction = "can_manage",
+) => {
+  if (context.systemRole === "system") {
+    return;
+  }
+
+  const { data, error } = await context.adminClient
+    .from("system_role_module_permissions")
+    .select("can_view, can_create, can_edit, can_delete, can_export, can_manage, can_approve, can_assign")
+    .eq("system_role", context.systemRole)
+    .eq("module_key", moduleKey)
+    .maybeSingle();
+
+  if (error) {
+    throw createError({
+      statusCode: 500,
+      statusMessage: "No se pudo validar permisos del rol system.",
+    });
+  }
+
+  const allowed = Boolean(data?.[action]);
+  if (allowed) {
+    return;
+  }
+
+  throw createError({
+    statusCode: 403,
+    statusMessage: "No tienes permisos para este modulo.",
+  });
 };

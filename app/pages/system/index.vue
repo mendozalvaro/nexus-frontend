@@ -17,6 +17,12 @@ const {
 
 const quickActions = [
     {
+        label: "Planes y Roles",
+        to: "/system/access",
+        icon: "i-heroicons-shield-check",
+        description: "Configura planes, limites y permisos por rol.",
+    },
+    {
         label: "Validacion de pagos",
         to: "/system/payment-validations",
         icon: "i-heroicons-credit-card",

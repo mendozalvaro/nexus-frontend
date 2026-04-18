@@ -9,6 +9,13 @@ import type {
   SubscriptionPlanSlug,
   SubscriptionResource,
 } from "@/types/subscription";
+import {
+  flattenPlanLimits,
+  readBooleanPlanPermissions,
+  resolvePlanBooleanLimit,
+  resolvePlanNumericLimit,
+  resolvePlanPermission,
+} from "@/utils/subscription-plan";
 
 type CapabilityRpcResponse = Database["public"]["Functions"]["get_organization_capabilities"]["Returns"];
 type ProfileRow = Database["public"]["Tables"]["profiles"]["Row"];
@@ -45,34 +52,6 @@ const readBoolean = (value: unknown, fallback = false): boolean => {
 
 const readNumber = (value: unknown, fallback = 0): number => {
   return typeof value === "number" && Number.isFinite(value) ? value : fallback;
-};
-
-const readBooleanRecord = (value: unknown): Record<string, boolean> => {
-  if (!isRecord(value)) {
-    return {};
-  }
-
-  const result: Record<string, boolean> = {};
-  for (const [key, raw] of Object.entries(value)) {
-    if (typeof raw === "boolean") {
-      result[key] = raw;
-    }
-  }
-  return result;
-};
-
-const readNumberRecord = (value: unknown): Record<string, number> => {
-  if (!isRecord(value)) {
-    return {};
-  }
-
-  const result: Record<string, number> = {};
-  for (const [key, raw] of Object.entries(value)) {
-    if (typeof raw === "number" && Number.isFinite(raw)) {
-      result[key] = raw;
-    }
-  }
-  return result;
 };
 
 const readStringArray = (value: unknown): string[] => {
@@ -192,8 +171,8 @@ const normalizeCapabilities = (payload: CapabilityRpcResponse): OrganizationCapa
     trialEndsAt: readNullableString(payload.trialEndsAt ?? payload.trial_ends_at),
     paymentMethod: readNullableString(payload.paymentMethod ?? payload.payment_method) as OrganizationCapabilities["paymentMethod"],
     paymentRequired: readBoolean(payload.paymentRequired ?? payload.payment_required, false),
-    planPermissions: readBooleanRecord(payload.permissions),
-    planLimits: readNumberRecord(payload.limits),
+    planPermissions: readBooleanPlanPermissions(payload.permissions),
+    planLimits: flattenPlanLimits(payload.limits),
     planFeatures: readStringArray(payload.features),
   };
 };
@@ -228,6 +207,14 @@ export const useSubscription = () => {
 
   const setFallbackCapabilities = (overrides: Partial<OrganizationCapabilities> = {}) => {
     capabilities.value = createFallbackCapabilities(overrides);
+  };
+
+  const getPlanNumericLimit = (candidates: string[]): number | null => {
+    return resolvePlanNumericLimit(capabilities.value?.planLimits, candidates);
+  };
+
+  const hasPlanPermission = (moduleKey: string, fallback = true): boolean => {
+    return resolvePlanPermission(capabilities.value?.planPermissions, moduleKey, fallback);
   };
 
   const resolveOrganizationId = async (): Promise<string | null> => {
@@ -349,14 +336,24 @@ export const useSubscription = () => {
     }
 
     if (resource === "branch") {
-      const maxBranchesFromLimits = capabilities.value.planLimits?.branches;
-      if (typeof maxBranchesFromLimits === "number" && Number.isFinite(maxBranchesFromLimits)) {
+      const maxBranchesFromLimits = getPlanNumericLimit(["branches", "branches.max"]);
+      if (maxBranchesFromLimits !== null) {
         return capabilities.value.currentBranchesCount < maxBranchesFromLimits;
       }
       return capabilities.value.canCreateBranch;
     }
-    const maxUsersFromLimits = capabilities.value.planLimits?.users;
-    if (typeof maxUsersFromLimits === "number" && Number.isFinite(maxUsersFromLimits)) {
+
+    const usersUnlimited = resolvePlanBooleanLimit(capabilities.value.planLimits, [
+      "users_unlimited",
+      "users.unlimited",
+      "usersUnlimited",
+    ]);
+    if (usersUnlimited === true) {
+      return true;
+    }
+
+    const maxUsersFromLimits = getPlanNumericLimit(["users", "users.max", "seats", "seats.total"]);
+    if (maxUsersFromLimits !== null) {
       return capabilities.value.currentUsersCount < maxUsersFromLimits;
     }
     return capabilities.value.currentUsersCount < capabilities.value.maxUsers;
@@ -377,10 +374,12 @@ export const useSubscription = () => {
     }
 
     if (resource === "branch") {
-      return `Tu plan ${capabilities.value.planName} alcanz\u00f3 el l\u00edmite de ${capabilities.value.maxBranches} sucursal(es). Actualiza tu suscripci\u00f3n para crear m\u00e1s sucursales.`;
+      const maxBranches = getPlanNumericLimit(["branches", "branches.max"]) ?? capabilities.value.maxBranches;
+      return `Tu plan ${capabilities.value.planName} alcanz\u00f3 el l\u00edmite de ${maxBranches} sucursal(es). Actualiza tu suscripci\u00f3n para crear m\u00e1s sucursales.`;
     }
 
-    return `Tu plan ${capabilities.value.planName} alcanz\u00f3 el l\u00edmite de ${capabilities.value.maxUsers} usuario(s). Actualiza tu suscripci\u00f3n para agregar m\u00e1s usuarios.`;
+    const maxUsers = getPlanNumericLimit(["users", "users.max", "seats", "seats.total"]) ?? capabilities.value.maxUsers;
+    return `Tu plan ${capabilities.value.planName} alcanz\u00f3 el l\u00edmite de ${maxUsers} usuario(s). Actualiza tu suscripci\u00f3n para agregar m\u00e1s usuarios.`;
   };
 
   /**
@@ -445,6 +444,8 @@ export const useSubscription = () => {
     error,
     loadCapabilities,
     isFeatureEnabled,
+    hasPlanPermission,
+    getPlanNumericLimit,
     canCreateResource,
     getUpgradeMessage,
     isExpiringSoon,

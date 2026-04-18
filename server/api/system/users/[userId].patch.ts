@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 import type { Database, Json } from "@/types/database.types";
-import { requireSystemAdminContext } from "../../../utils/system-admin";
+import { assertSystemModuleAccess, requireSystemAdminContext } from "../../../utils/system-admin";
 
 type SystemUserRow = Database["public"]["Tables"]["system_users"]["Row"];
 type SystemUserUpdate = Database["public"]["Tables"]["system_users"]["Update"];
@@ -20,7 +20,9 @@ const updateSystemUserSchema = z.object({
 });
 
 export default defineEventHandler(async (event) => {
-  const { adminClient } = await requireSystemAdminContext(event);
+  const context = await requireSystemAdminContext(event);
+  await assertSystemModuleAccess(context, "system_users", "can_manage");
+  const { adminClient } = context;
   const userId = getRouterParam(event, "userId");
 
   if (!userId) {

@@ -1,5 +1,6 @@
 import {
   assertBranchesBelongToOrganization,
+  assertPlanPermission,
   assertRoleRules,
   assertUserLimit,
   buildUserMetadata,
@@ -14,18 +15,21 @@ export default defineEventHandler(async (event) => {
   const context = await requireAdminContext(event);
   const body = await readValidatedAdminBody(event, createUserSchema);
 
+  await assertPlanPermission(context, "users");
+
   const email = sanitizeEmail(body.email);
   const assignedBranchIds = Array.from(new Set(body.assignedBranchIds));
   const branchIdsToValidate = body.branchId ? [body.branchId, ...assignedBranchIds] : assignedBranchIds;
 
   assertRoleRules(
+    context,
     body.role,
     body.branchId,
     assignedBranchIds,
     body.primaryBranchId,
     context.capabilities.canCreateManager,
   );
-  assertUserLimit(context.capabilities);
+  await assertUserLimit(context, body.role);
   await assertBranchesBelongToOrganization(context.adminClient, context.organizationId, branchIdsToValidate);
 
   const { data: existingProfile } = await context.adminClient

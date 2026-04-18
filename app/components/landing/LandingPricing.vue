@@ -135,7 +135,7 @@ const getBillingSuffix = (mode: BillingMode) => {
         </div>
       </div>
 
-      <div class="mt-12 grid gap-6 xl:grid-cols-4">
+      <div class="mt-12 grid gap-6 xl:grid-cols-3">
         <UCard
           v-for="(plan, index) in props.plans"
           :key="plan.id"

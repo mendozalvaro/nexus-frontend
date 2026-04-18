@@ -20,6 +20,34 @@ export default defineEventHandler(async (event) => {
     });
   }
 
+  const { data: targetProfile, error: targetError } = await context.adminClient
+    .from("profiles")
+    .select("id, role")
+    .eq("id", userId)
+    .eq("organization_id", context.organizationId)
+    .maybeSingle();
+
+  if (targetError || !targetProfile) {
+    throw createError({
+      statusCode: 404,
+      statusMessage: "No se encontro el usuario dentro de tu organizacion.",
+    });
+  }
+
+  if (context.actorRole === "manager" && targetProfile.role !== "employee") {
+    throw createError({
+      statusCode: 403,
+      statusMessage: "Un manager solo puede desactivar usuarios employee.",
+    });
+  }
+
+  if (targetProfile.role === "admin") {
+    throw createError({
+      statusCode: 403,
+      statusMessage: "Solo system puede desactivar usuarios admin.",
+    });
+  }
+
   const { error } = await context.adminClient
     .from("profiles")
     .update({ is_active: false })

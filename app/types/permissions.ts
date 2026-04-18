@@ -49,6 +49,8 @@ export type PermissionNamespace =
   | "profile";
 
 export type PermissionGrant = Permission | `${PermissionNamespace}.*`;
+export type RoleFlagTemplate = Record<Permission, boolean>;
+export type RoleTemplateKey = UserRole | "custom";
 
 export interface RoutePermissionMeta {
   permission?: Permission;
@@ -128,6 +130,63 @@ export const ROLE_PERMISSIONS: Record<UserRole, PermissionGrant[]> = {
     "reports.view",
     "profile.*",
   ],
+};
+
+export const PERMISSION_CATALOG = [
+  "pos.view",
+  "pos.create",
+  "pos.edit",
+  "pos.delete",
+  "catalog.view",
+  "catalog.edit",
+  "inventory.view",
+  "inventory.adjust",
+  "inventory.transfer",
+  "inventory.delete",
+  "service_assignment.view",
+  "service_assignment.edit",
+  "appointments.view",
+  "appointments.create",
+  "appointments.edit",
+  "appointments.delete",
+  "appointments.cancel",
+  "users.view",
+  "users.create",
+  "users.edit",
+  "users.delete",
+  "branches.view",
+  "branches.create",
+  "branches.edit",
+  "branches.delete",
+  "reports.view",
+  "reports.export",
+  "reports.advanced",
+  "settings.view",
+  "settings.edit",
+  "profile.view",
+  "profile.edit",
+] as const satisfies Permission[];
+
+const buildRoleFlagTemplate = (grants: PermissionGrant[]): RoleFlagTemplate => {
+  const scoped = new Set(grants);
+  const template = {} as RoleFlagTemplate;
+
+  for (const permission of PERMISSION_CATALOG) {
+    const [moduleNamespace] = permission.split(".");
+    const wildcard = `${moduleNamespace ?? ""}.*` as PermissionGrant;
+
+    template[permission] = scoped.has(permission) || scoped.has(wildcard);
+  }
+
+  return template;
+};
+
+export const ROLE_FLAG_TEMPLATES: Record<RoleTemplateKey, RoleFlagTemplate> = {
+  admin: buildRoleFlagTemplate(ROLE_PERMISSIONS.admin),
+  manager: buildRoleFlagTemplate(ROLE_PERMISSIONS.manager),
+  employee: buildRoleFlagTemplate(ROLE_PERMISSIONS.employee),
+  client: buildRoleFlagTemplate(ROLE_PERMISSIONS.client),
+  custom: buildRoleFlagTemplate(ROLE_PERMISSIONS.employee),
 };
 
 export const ROUTE_PERMISSIONS: Record<string, RoutePermissionMeta> = {

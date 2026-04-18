@@ -1,6 +1,7 @@
 import type { Database } from "@/types/database.types";
 
 export type SubscriptionStatus = Database["public"]["Enums"]["sub_status"] | "inactive";
+export type PlanLimitScalar = number | boolean;
 
 export type SubscriptionPlanSlug = "emprende" | "crecimiento" | "enterprise";
 
@@ -25,7 +26,7 @@ export interface OrganizationCapabilities {
   paymentMethod?: "tarjeta" | "efectivo" | "transferencia" | "qr" | null;
   paymentRequired?: boolean;
   planPermissions?: Record<string, boolean>;
-  planLimits?: Record<string, number>;
+  planLimits?: Record<string, PlanLimitScalar>;
   planFeatures?: string[];
 }
 

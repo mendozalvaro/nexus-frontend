@@ -54,7 +54,13 @@ export const useUsers = () => {
   const supabase = useSupabaseClient<Database>();
   const { resolveAccessToken } = useSessionAccess();
   const { profile, fetchProfile } = useAuth();
-  const { capabilities, loadCapabilities, getUpgradeMessage } = useSubscription();
+  const {
+    capabilities,
+    loadCapabilities,
+    getUpgradeMessage,
+    canCreateResource,
+    getPlanNumericLimit,
+  } = useSubscription();
 
   const roleOptions: Array<{ label: string; value: UsersFilters["role"] }> = [
     { label: "Todos los roles", value: "all" },
@@ -92,10 +98,11 @@ export const useUsers = () => {
 
   const loadUsers = async (): Promise<UsersData> => {
     const currentProfile = profile.value ?? (await fetchProfile());
-    if (!currentProfile?.organization_id || currentProfile.role !== "admin") {
+    const canManageUsers = currentProfile?.role === "admin" || currentProfile?.role === "manager";
+    if (!currentProfile?.organization_id || !canManageUsers) {
       throw createError({
         statusCode: 403,
-        statusMessage: "Solo administradores pueden acceder al módulo de usuarios.",
+        statusMessage: "Solo usuarios admin o manager pueden acceder al modulo de usuarios.",
       });
     }
 
@@ -218,7 +225,17 @@ export const useUsers = () => {
       return false;
     }
 
-    return capabilities.value.currentUsersCount < capabilities.value.maxUsers;
+    return canCreateResource("user");
+  });
+
+  const isOverUserLimit = computed(() => {
+    if (!capabilities.value) {
+      return false;
+    }
+
+    const usersLimit = getPlanNumericLimit(["users", "users.max", "seats", "seats.total"])
+      ?? capabilities.value.maxUsers;
+    return capabilities.value.currentUsersCount > usersLimit;
   });
 
   return {
@@ -232,5 +249,7 @@ export const useUsers = () => {
     deactivateUser,
     userLimitMessage,
     canCreateMoreUsers,
+    isOverUserLimit,
   };
 };
+
