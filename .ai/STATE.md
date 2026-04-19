@@ -1,8 +1,8 @@
 ﻿# Multi-Agent Workflow State
 
 ## Current State
-- **last_step**: validate_manager_inventory_denial_and_fix_permission_loading_race
-- **pending**: harden_server_side_module_enforcement_for_inventory_and_sensitive_modules
+- **last_step**: harden_dev_endpoints_and_remove_appointment_tenant_fallback
+- **pending**: [Fase 2] harden_server_side_module_enforcement_for_inventory_and_sensitive_modules
 - **agent**: codex
 
 ## Files Created
@@ -25,10 +25,16 @@
 - server/api/system/roles/[roleId].patch.ts
 - server/api/system/roles/[roleId]/permissions.put.ts
 - app/pages/system/access.vue
+- server/utils/dev-security.ts
+- app/composables/test/security-hardening.spec.ts
 
 ## Files Modified
 - app/composables/useAuth.ts
 - app/middleware/permissions.ts
+- nuxt.config.ts
+- server/api/dev/confirm-email.post.ts
+- server/api/dev/get-confirmation-link.get.ts
+- server/utils/appointments.ts
 - app/types/database.types.ts
 - server/api/clients/profile.get.ts
 - server/api/clients/upsert.ts
@@ -104,4 +110,14 @@
 - Verificacion E2E posterior al fix: `manager` ya no puede entrar a `/inventory` por URL directa y es redirigido a `/dashboard`; menu lateral sin item Inventario.
 - Limpieza de entorno de prueba: se revirtio asignacion temporal de sucursal en `manager@nexuspos.demo`.
 - Validacion final: `npm run typecheck` en verde.
-- Proxima tarea propuesta: **harden_server_side_module_enforcement_for_inventory_and_sensitive_modules** para evitar bypass por consumo directo de APIs (inventario/catalogo/reportes) sin depender solo del middleware frontend.
+- Proxima tarea propuesta (movida a fase 2): **harden_server_side_module_enforcement_for_inventory_and_sensitive_modules** para evitar bypass por consumo directo de APIs (inventario/catalogo/reportes) sin depender solo del middleware frontend.
+- Hardening aplicado en esta sesion:
+  - Se elimino fallback automatico cross-tenant en `requireAppointmentContext`; ahora exige `organization_id` explicito del perfil.
+  - Se agrego control de acceso en `/api/dev/*` con header `x-dev-admin-key` validado contra `runtimeConfig.devAdminKey` (`NUXT_DEV_ADMIN_KEY`).
+  - Se elimino password hardcodeada del endpoint dev de confirmacion de email.
+- Archivos creados:
+  - `server/utils/dev-security.ts`
+  - `app/composables/test/security-hardening.spec.ts`
+- Validacion de cierre:
+  - `npm run typecheck` => OK.
+  - `npm run test` => OK (21 tests, 5 files).

@@ -85,3 +85,17 @@
   - Limpieza: se revirtio asignacion temporal de sucursal usada para aislar la prueba.
 - Validacion: `npm run typecheck` => exit code 0.
 - Estado: handoff listo con pendiente `harden_server_side_module_enforcement_for_inventory_and_sensitive_modules`.
+
+## 2026-04-19 07:41:03 - codex
+- Step completado: harden_dev_endpoints_and_remove_appointment_tenant_fallback
+- Acciones:
+  - Se elimino el fallback automatico de organizacion en server/utils/appointments.ts para evitar asignaciones cross-tenant en agenda.
+  - Se agrego validacion de x-dev-admin-key para endpoints /api/dev/* mediante utilidad compartida server/utils/dev-security.ts.
+  - Se elimino la password hardcodeada del endpoint dev de confirmacion de email.
+  - Se agregaron pruebas de regresion en pp/composables/test/security-hardening.spec.ts.
+- Validacion:
+  - 
+pm run typecheck => exit code 0.
+  - 
+pm run test => 21 passed (5 files).
+- Estado: handoff listo; pendiente se mantiene en fase 2 (harden_server_side_module_enforcement_for_inventory_and_sensitive_modules).
