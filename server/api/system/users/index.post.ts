@@ -13,9 +13,16 @@ const createSystemUserSchema = z.object({
     .string()
     .min(8, "La contraseña debe tener al menos 8 caracteres."),
   role: z.enum(["system", "support"]).default("system"),
-  permissions: z.any().optional().default([]),
   isActive: z.boolean().default(true),
 });
+
+const resolvePermissionsByRole = (role: "system" | "support"): Json => {
+  if (role === "system") {
+    return ["system.*"] as Json;
+  }
+
+  return [] as Json;
+};
 
 export default defineEventHandler(async (event) => {
   const context = await requireSystemAdminContext(event);
@@ -54,7 +61,7 @@ export default defineEventHandler(async (event) => {
     email: payload.email,
     full_name: payload.fullName,
     role: payload.role,
-    permissions: (payload.permissions ?? []) as Json,
+    permissions: resolvePermissionsByRole(payload.role),
     is_active: payload.isActive,
     created_by: userId,
   };

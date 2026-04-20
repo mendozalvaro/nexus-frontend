@@ -206,12 +206,16 @@ const navigationItems = computed<NavigationItem[]>(() => {
 });
 
 const userMenuItems = computed<UserMenuItem[][]>(() => {
+  const profilePath = isSystemArea.value
+    ? "/system/profile"
+    : currentRoleDefinition.value?.profilePath ?? "/profile";
+
   const items: UserMenuItem[][] = [
     [
       {
         label: "Perfil",
         icon: "i-heroicons-user-circle",
-        to: currentRoleDefinition.value?.profilePath ?? "/profile",
+        to: profilePath,
       },
     ],
   ];

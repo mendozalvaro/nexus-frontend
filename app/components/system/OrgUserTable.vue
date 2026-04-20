@@ -15,6 +15,8 @@ interface Props {
 interface Emits {
     (e: "block", user: OrganizationUser): void;
     (e: "reset-password", user: OrganizationUser): void;
+    (e: "confirm-email", user: OrganizationUser): void;
+    (e: "resend-email", user: OrganizationUser): void;
     (e: "previous-page"): void;
     (e: "next-page"): void;
 }
@@ -70,6 +72,9 @@ defineEmits<Emits>();
                                                     <UBadge :color="user.is_active ? 'success' : 'neutral'" variant="soft">
                                                         {{ user.is_active ? "Activo" : "Bloqueado" }}
                                                     </UBadge>
+                                                    <UBadge :color="user.email_verified ? 'success' : 'warning'" variant="soft">
+                                                        {{ user.email_verified ? "Email verificado" : "Email pendiente" }}
+                                                    </UBadge>
                                                     <UDropdownMenu
                                                         :items="[
                                                             [{
@@ -80,10 +85,20 @@ defineEmits<Emits>();
                                                             [{
                                                                 label: 'Resetear contrasena',
                                                                 icon: 'i-heroicons-key',
-                                                                click: () => $emit('reset-password', user),
+                                                             click: () => $emit('reset-password', user),
+                                                         }],
+                                                            [{
+                                                                label: 'Confirmar email',
+                                                                icon: 'i-heroicons-check-badge',
+                                                                click: () => $emit('confirm-email', user),
                                                             }],
-                                                        ]"
-                                                    >
+                                                            [{
+                                                                label: 'Reenviar email',
+                                                                icon: 'i-heroicons-paper-airplane',
+                                                                click: () => $emit('resend-email', user),
+                                                            }],
+                                                         ]"
+                                                     >
                                                         <UButton icon="i-heroicons-ellipsis-horizontal-20-solid" color="gray" variant="ghost" size="sm" />
                                                     </UDropdownMenu>
                                                 </div>
@@ -127,10 +142,10 @@ defineEmits<Emits>();
                                                             [{
                                                                 label: 'Resetear contrasena',
                                                                 icon: 'i-heroicons-key',
-                                                                click: () => $emit('reset-password', user),
-                                                            }],
-                                                        ]"
-                                                    >
+                                                             click: () => $emit('reset-password', user),
+                                                         }],
+                                                         ]"
+                                                     >
                                                         <UButton icon="i-heroicons-ellipsis-horizontal-20-solid" color="gray" variant="ghost" size="sm" />
                                                     </UDropdownMenu>
                                                 </div>

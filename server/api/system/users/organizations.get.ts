@@ -65,6 +65,19 @@ export default defineEventHandler(async (event) => {
     orgsMap = new Map((organizations ?? []).map((organization) => [organization.id, organization.name]));
   }
 
+  const verificationEntries = await Promise.all(
+    (data ?? []).map(async (user) => {
+      const { data: authData, error: authError } = await adminClient.auth.admin.getUserById(user.id);
+      if (authError) {
+        return [user.id, false] as const;
+      }
+
+      return [user.id, Boolean(authData.user?.email_confirmed_at)] as const;
+    }),
+  );
+
+  const verificationMap = new Map<string, boolean>(verificationEntries);
+
   const rows = (data ?? []).map((user) => {
     const organizationId = user.organization_id ?? "";
 
@@ -74,6 +87,7 @@ export default defineEventHandler(async (event) => {
       email: user.email ?? "",
       role: user.role ?? "employee",
       is_active: user.is_active ?? true,
+      email_verified: verificationMap.get(user.id) ?? false,
       organization_id: organizationId,
       organization_name: orgsMap.get(organizationId) ?? "",
       created_at: user.created_at ?? "",

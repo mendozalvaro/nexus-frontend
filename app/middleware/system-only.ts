@@ -15,7 +15,12 @@ export default defineNuxtRouteMiddleware(async () => {
     .eq("user_id", user.id)
     .maybeSingle();
 
-  if (error || !data || !data.is_active || data.role !== "system") {
+  if (
+    error
+    || !data
+    || !data.is_active
+    || (data.role !== "system" && data.role !== "support")
+  ) {
     return navigateTo("/dashboard");
   }
 

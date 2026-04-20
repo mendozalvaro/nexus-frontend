@@ -32,10 +32,13 @@ const {
     loadSystemUsers,
     loadOrgUsers,
     loadClients,
+    confirmOrgUserEmail,
+    resendOrgUserEmail,
+    setScopedUserStatus,
+    resetScopedUserPassword,
     createSystemUser,
     updateSystemUser,
     toggleSystemUserStatus,
-    parsePermissions,
 } = useSystemAdmin();
 const currentUser = useSupabaseUser();
 
@@ -53,10 +56,11 @@ const formState = reactive({
     password: "",
     confirmPassword: "",
     role: "system",
-    permissionsJson: "[]",
 });
 const formError = ref<string | null>(null);
 const selfDeactivateAlert = ref<string | null>(null);
+const orgEmailActionAlert = ref<string | null>(null);
+const userActionAlert = ref<string | null>(null);
 
 const isEditing = computed(() => Boolean(selectedUser.value));
 const systemUserPageCount = computed(() =>
@@ -121,7 +125,6 @@ const setFormFromUser = (user: SystemUserRow) => {
     formState.password = "";
     formState.confirmPassword = "";
     formState.role = user.role;
-    formState.permissionsJson = JSON.stringify(user.permissions ?? [], null, 2);
     isSystemUserModalOpen.value = true;
 };
 
@@ -132,7 +135,6 @@ const resetForm = () => {
     formState.password = "";
     formState.confirmPassword = "";
     formState.role = "system";
-    formState.permissionsJson = "[]";
     formError.value = null;
 };
 
@@ -176,21 +178,12 @@ const saveUser = async () => {
         }
     }
 
-    let permissions: SystemUserFormInput["permissions"];
-    try {
-        permissions = parsePermissions(formState.permissionsJson);
-    } catch {
-        formError.value = "Permisos invalidos. Usa JSON valido.";
-        return;
-    }
-
     const payload: SystemUserFormInput = {
         userId: selectedUser.value?.user_id,
         email: formState.email.trim(),
         fullName: formState.fullName.trim(),
         password: formState.password.trim() || null,
         role: formState.role,
-        permissions,
         isActive: selectedUser.value?.is_active ?? true,
     };
 
@@ -252,19 +245,67 @@ const loadClientPage = async (page: number) => {
 };
 
 const handleBlockOrgUser = async (user: OrganizationUser) => {
-    console.log("Block org user:", user.id);
+    userActionAlert.value = null;
+    try {
+        const response = await setScopedUserStatus(
+            user.id,
+            "organization",
+            !user.is_active,
+        );
+        userActionAlert.value = response.message;
+    } catch {
+        // error state already managed by composable
+    }
 };
 
 const handleResetOrgUserPassword = async (user: OrganizationUser) => {
-    console.log("Reset password for org user:", user.id);
+    userActionAlert.value = null;
+    try {
+        const response = await resetScopedUserPassword(user.id, "organization");
+        userActionAlert.value = `${response.message} Temporal: ${response.temporaryPassword}`;
+    } catch {
+        // error state already managed by composable
+    }
+};
+
+const handleConfirmOrgUserEmail = async (user: OrganizationUser) => {
+    orgEmailActionAlert.value = null;
+    try {
+        const response = await confirmOrgUserEmail(user.id);
+        orgEmailActionAlert.value = response.message;
+    } catch {
+        // error state already managed by composable
+    }
+};
+
+const handleResendOrgUserEmail = async (user: OrganizationUser) => {
+    orgEmailActionAlert.value = null;
+    try {
+        const response = await resendOrgUserEmail(user.id);
+        orgEmailActionAlert.value = response.message;
+    } catch {
+        // error state already managed by composable
+    }
 };
 
 const handleBlockClient = async (user: ClientUser) => {
-    console.log("Block client:", user.id);
+    userActionAlert.value = null;
+    try {
+        const response = await setScopedUserStatus(user.id, "client", !user.is_active);
+        userActionAlert.value = response.message;
+    } catch {
+        // error state already managed by composable
+    }
 };
 
 const handleResetClientPassword = async (user: ClientUser) => {
-    console.log("Reset password for client:", user.id);
+    userActionAlert.value = null;
+    try {
+        const response = await resetScopedUserPassword(user.id, "client");
+        userActionAlert.value = `${response.message} Temporal: ${response.temporaryPassword}`;
+    } catch {
+        // error state already managed by composable
+    }
 };
 
 const handleToggleSystemUser = async (user: SystemUserRow) => {
@@ -344,9 +385,18 @@ onMounted(async () => {
                         Cargar usuarios de organizaciones
                     </UButton>
                 </div>
+                <UAlert
+                    v-if="orgEmailActionAlert"
+                    color="success"
+                    variant="soft"
+                    icon="i-heroicons-check-circle"
+                    class="mb-4"
+                    :title="orgEmailActionAlert"
+                />
                 <OrgUserTable :grouped-users="groupedOrgUsers" :loading="orgUsersLoading" :page="orgUserPage"
                     :page-count="orgUserPageCount" @block="handleBlockOrgUser"
                     @reset-password="handleResetOrgUserPassword" @previous-page="loadOrgUserPage(orgUserPage - 1)"
+                    @confirm-email="handleConfirmOrgUserEmail" @resend-email="handleResendOrgUserEmail"
                     @next-page="loadOrgUserPage(orgUserPage + 1)" />
             </template>
 
@@ -365,6 +415,10 @@ onMounted(async () => {
         <div v-if="error"
             class="rounded-3xl border border-rose-200/80 bg-rose-50/80 p-4 text-sm text-rose-800 dark:border-rose-900/70 dark:bg-rose-950/30 dark:text-rose-200">
             {{ error }}
+        </div>
+        <div v-if="userActionAlert"
+            class="rounded-3xl border border-emerald-200/80 bg-emerald-50/80 p-4 text-sm text-emerald-800 dark:border-emerald-900/70 dark:bg-emerald-950/30 dark:text-emerald-200">
+            {{ userActionAlert }}
         </div>
     </div>
 </template>

@@ -7,7 +7,6 @@ interface FormState {
   password: string;
   confirmPassword: string;
   role: string;
-  permissionsJson: string;
 }
 
 interface Props {

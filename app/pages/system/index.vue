@@ -34,6 +34,12 @@ const quickActions = [
         icon: "i-heroicons-users",
         description: "Administra accesos y permisos de usuarios system.",
     },
+    {
+        label: "Mi perfil",
+        to: "/system/profile",
+        icon: "i-heroicons-user-circle",
+        description: "Actualiza datos y credenciales de tu cuenta system.",
+    },
 ];
 
 onMounted(async () => {

@@ -11,10 +11,14 @@ export interface OrganizationUser {
   email: string;
   role: string;
   is_active: boolean;
+  email_verified: boolean;
   organization_id: string;
   organization_name: string;
   created_at: string;
 }
+
+export type OrgUserEmailAction = "confirm" | "resend";
+export type UserAccountScope = "organization" | "client";
 
 export interface ClientUser {
   id: string;
@@ -46,7 +50,6 @@ export interface SystemUserFormInput {
   fullName: string;
   password?: string | null;
   role: string;
-  permissions: Json;
   isActive: boolean;
 }
 
@@ -429,11 +432,132 @@ export const useSystemAdmin = () => {
     }
   };
 
-  const parsePermissions = (value: string): Json => {
+  const triggerOrgUserEmailAction = async (
+    userId: string,
+    action: OrgUserEmailAction,
+  ): Promise<{ success: true; action: OrgUserEmailAction; userId: string; message: string }> => {
+    actionLoading.value = true;
+    error.value = null;
+
     try {
-      return JSON.parse(value);
-    } catch (parseError) {
-      throw parseError;
+      return await $fetch(`/api/system/users/${userId}/email`, {
+        method: "POST",
+        headers: await getSystemRequestHeaders(),
+        body: { action },
+      });
+    } catch (requestError) {
+      error.value = getReadableErrorMessage(
+        requestError,
+        "No pudimos ejecutar la accion de email para el usuario.",
+      );
+      throw requestError;
+    } finally {
+      actionLoading.value = false;
+    }
+  };
+
+  const confirmOrgUserEmail = async (userId: string) => {
+    const response = await triggerOrgUserEmailAction(userId, "confirm");
+    const index = orgUsers.value.findIndex((entry) => entry.id === userId);
+    if (index >= 0) {
+      orgUsers.value[index] = {
+        ...orgUsers.value[index]!,
+        email_verified: true,
+      };
+    }
+
+    return response;
+  };
+
+  const resendOrgUserEmail = async (userId: string) => {
+    return await triggerOrgUserEmailAction(userId, "resend");
+  };
+
+  const setScopedUserStatus = async (
+    userId: string,
+    scope: UserAccountScope,
+    isActive: boolean,
+  ): Promise<{ success: true; action: "set_status"; userId: string; isActive: boolean; message: string }> => {
+    actionLoading.value = true;
+    error.value = null;
+
+    try {
+      const response = await $fetch<{
+        success: true;
+        action: "set_status";
+        userId: string;
+        isActive: boolean;
+        message: string;
+      }>(`/api/system/users/${userId}/account`, {
+        method: "PATCH",
+        headers: await getSystemRequestHeaders(),
+        body: {
+          scope,
+          action: "set_status",
+          isActive,
+        },
+      });
+
+      if (scope === "organization") {
+        const index = orgUsers.value.findIndex((entry) => entry.id === userId);
+        if (index >= 0) {
+          orgUsers.value[index] = {
+            ...orgUsers.value[index]!,
+            is_active: response.isActive,
+          };
+        }
+      } else {
+        const index = clients.value.findIndex((entry) => entry.id === userId);
+        if (index >= 0) {
+          clients.value[index] = {
+            ...clients.value[index]!,
+            is_active: response.isActive,
+          };
+        }
+      }
+
+      return response;
+    } catch (requestError) {
+      error.value = getReadableErrorMessage(
+        requestError,
+        "No pudimos actualizar el estado del usuario.",
+      );
+      throw requestError;
+    } finally {
+      actionLoading.value = false;
+    }
+  };
+
+  const resetScopedUserPassword = async (
+    userId: string,
+    scope: UserAccountScope,
+  ): Promise<{ success: true; action: "reset_password"; userId: string; temporaryPassword: string; message: string }> => {
+    actionLoading.value = true;
+    error.value = null;
+
+    try {
+      return await $fetch<{
+        success: true;
+        action: "reset_password";
+        userId: string;
+        temporaryPassword: string;
+        message: string;
+      }>(`/api/system/users/${userId}/account`, {
+        method: "PATCH",
+        headers: await getSystemRequestHeaders(),
+        body: {
+          scope,
+          action: "reset_password",
+        },
+      });
+    } catch (requestError) {
+      error.value = getReadableErrorMessage(
+        requestError,
+        "No pudimos resetear la contrasena del usuario.",
+      );
+      throw requestError;
+    } finally {
+      actionLoading.value = false;
     }
   };
 
@@ -454,7 +578,6 @@ export const useSystemAdmin = () => {
             fullName: input.fullName,
             password: input.password,
             role: input.role,
-            permissions: input.permissions,
             isActive: input.isActive,
           },
         },
@@ -498,7 +621,6 @@ export const useSystemAdmin = () => {
             fullName: input.fullName,
             password: input.password,
             role: input.role,
-            permissions: input.permissions,
             isActive: input.isActive,
           },
         },
@@ -568,7 +690,6 @@ export const useSystemAdmin = () => {
     fullName: "",
     password: "",
     role: "system",
-    permissions: [],
     isActive: true,
   });
 
@@ -828,6 +949,10 @@ export const useSystemAdmin = () => {
     loadSystemUsers,
     loadOrgUsers,
     loadClients,
+    confirmOrgUserEmail,
+    resendOrgUserEmail,
+    setScopedUserStatus,
+    resetScopedUserPassword,
     loadPlans,
     loadRoles,
     createSystemUser,
@@ -839,6 +964,5 @@ export const useSystemAdmin = () => {
     updateRolePermissions,
     getDefaultSystemUserForm,
     getDefaultPlanForm,
-    parsePermissions,
   };
 };

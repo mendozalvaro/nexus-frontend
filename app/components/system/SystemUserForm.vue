@@ -9,7 +9,6 @@ interface Props {
         password: string;
         confirmPassword: string;
         role: string;
-        permissionsJson: string;
     };
     formError: string | null;
     actionLoading: boolean;
@@ -71,11 +70,6 @@ const formState = computed({
                     { label: 'system', value: 'system' },
                     { label: 'support', value: 'support' },
                 ]" />
-            </div>
-
-            <div class="space-y-3">
-                <label class="text-sm font-medium text-slate-700 dark:text-slate-300">Permisos (JSON)</label>
-                <UTextarea v-model="formState.permissionsJson" :rows="4" placeholder='["system.access"]' />
             </div>
 
             <div v-if="formError"

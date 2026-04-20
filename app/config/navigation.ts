@@ -173,4 +173,9 @@ export const SYSTEM_NAVIGATION_ITEMS: NavigationItem[] = [
     icon: "i-heroicons-users",
     to: "/system/users",
   },
+  {
+    label: "Perfil",
+    icon: "i-heroicons-user-circle",
+    to: "/system/profile",
+  },
 ];
