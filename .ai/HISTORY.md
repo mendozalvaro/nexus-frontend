@@ -99,3 +99,21 @@ pm run typecheck => exit code 0.
   - 
 pm run test => 21 passed (5 files).
 - Estado: handoff listo; pendiente se mantiene en fase 2 (harden_server_side_module_enforcement_for_inventory_and_sensitive_modules).
+## 2026-04-20 08:49:52 - codex
+- Step completado: finalize_system_users_and_system_profile_module
+- Acciones:
+  - `/system/users`: agregado flujo operativo para usuarios de organizacion/clientes (bloqueo/desbloqueo y reset password) y acciones de email (confirmar/reenviar) solo para admins de organizacion.
+  - `/system/users`: badge de verificacion de email agregado y restringido a admins de organizacion.
+  - `SystemUserForm`: removidos `perfil sugerido` y `permisos` manuales; ahora el rol define permisos.
+  - Backend `system users` (`index.post`, `[userId].patch`): permisos derivados por rol (`system` => `["system.*"]`, `support` => `[]`).
+  - Nuevo `/system/profile`:
+    - API `GET /api/system/profile`
+    - API `PATCH /api/system/profile`
+    - pagina `app/pages/system/profile.vue` para ver/editar email, nombre y contrasena propia.
+  - Navegacion/menu actualizado para incluir acceso a `/system/profile`.
+  - Middleware `system-only` actualizado para permitir `system` y `support` activos.
+- Validacion:
+  - `npm run typecheck` => exit code 0.
+- Estado:
+  - Modulo system users/profile cerrado por solicitud de usuario.
+  - Pending global se mantiene: `[Fase 2] harden_server_side_module_enforcement_for_inventory_and_sensitive_modules`.

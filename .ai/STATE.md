@@ -1,7 +1,7 @@
 ﻿# Multi-Agent Workflow State
 
 ## Current State
-- **last_step**: harden_dev_endpoints_and_remove_appointment_tenant_fallback
+- **last_step**: finalize_system_users_and_system_profile_module
 - **pending**: [Fase 2] harden_server_side_module_enforcement_for_inventory_and_sensitive_modules
 - **agent**: codex
 
@@ -27,6 +27,11 @@
 - app/pages/system/access.vue
 - server/utils/dev-security.ts
 - app/composables/test/security-hardening.spec.ts
+- server/api/system/users/[userId]/account.patch.ts
+- server/api/system/users/[userId]/email.post.ts
+- server/api/system/profile.get.ts
+- server/api/system/profile.patch.ts
+- app/pages/system/profile.vue
 
 ## Files Modified
 - app/composables/useAuth.ts
@@ -74,6 +79,14 @@
 - app/config/navigation.ts
 - app/pages/system/index.vue
 - app/middleware/permissions.ts
+- app/pages/system/users.vue
+- app/components/system/SystemUserForm.vue
+- app/components/system/SystemUserModal.vue
+- app/components/system/OrgUserTable.vue
+- app/middleware/system-only.ts
+- server/api/system/users/index.post.ts
+- server/api/system/users/[userId].patch.ts
+- server/api/system/users/organizations.get.ts
 
 ## Notes
 - Migracion aplicada en Supabase linked: `supabase db query --linked -f supabase/migrations/013_clients_multiorg.sql -o json`.
@@ -121,3 +134,12 @@
 - Validacion de cierre:
   - `npm run typecheck` => OK.
   - `npm run test` => OK (21 tests, 5 files).
+- Modulo `/system/users` y `/system/profile` completado:
+  - Confirmar/Reenviar email solo para admins de organizacion.
+  - Badge de verificacion de email visible solo en admins de organizacion.
+  - Bloquear/desbloquear y reset password operativo para usuarios de organizacion/clientes.
+  - Formulario de system users simplificado: sin perfil sugerido ni permisos manuales; permisos derivados por rol en backend.
+  - Nuevo `/system/profile` (GET/PATCH) para editar datos propios de `system_users`.
+  - Middleware `system-only` ampliado para acceso de roles `system` y `support` activos.
+- Validacion modulo system:
+  - `npm run typecheck` => OK.
