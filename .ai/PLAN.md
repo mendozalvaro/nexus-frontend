@@ -6,6 +6,7 @@
 ## Completed Tasks
 - workflow_setup: Configurar sistema de persistencia multi-agent
 - implement_composable_tests: Implementar suite completa de tests unitarios para composables críticos (useAuth, usePOS, useInventory, useAppointments)
+- persist_module_completion_ledger_in_handoff_flow: persistencia obligatoria de módulos completos en `.ai/STATE.md` + registro en handoff.
 
 ## Current Assignment
 - Agent: (none)

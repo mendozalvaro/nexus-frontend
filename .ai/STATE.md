@@ -5,6 +5,34 @@
 - **pending**: [Fase 2] harden_server_side_module_enforcement_for_inventory_and_sensitive_modules
 - **agent**: codex
 
+## Module Completion Ledger
+- **completed_modules**:
+  - dashboard (staff)
+  - catalogo
+  - inventory
+  - service-assignment
+  - branches
+  - profile (staff)
+  - client/dashboard
+  - client/profile
+  - system/index
+  - system/access
+  - system/payment-validations
+  - system/users
+  - system/profile
+- **pending_modules**:
+  - pos
+  - appointments (staff)
+  - users (staff)
+  - reports (staff)
+  - settings
+  - client/appointments
+  - client/bookings
+  - client/reports
+- **module_evidence_notes**:
+  - placeholder detectado en paginas: `pos`, `appointments`, `users`, `reports`, `settings`, `client/appointments`, `client/bookings`, `client/reports`.
+  - ruta vacia detectada: `app/pages/[slug]/catalog.vue` (0 bytes).
+
 ## Files Created
 - supabase/migrations/013_clients_multiorg.sql
 - app/types/client.ts

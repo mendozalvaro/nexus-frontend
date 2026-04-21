@@ -160,3 +160,13 @@ pm run typecheck => exit code 0.
 - Estado:
   - Handoff de contexto completado.
   - Pending global se mantiene: [Fase 2] harden_server_side_module_enforcement_for_inventory_and_sensitive_modules.
+
+## 2026-04-21 20:05:00 - codex
+- Step completado: persist_module_completion_ledger_in_handoff_flow
+- Acciones:
+  - Se actualizo .github/copilot-instructions.md para exigir persistencia de modulos cerrados al 100% en cada handoff.
+  - Se agrego en .ai/STATE.md la seccion Module Completion Ledger con completed_modules, pending_modules y notas de evidencia.
+  - Se formalizo regla para no marcar como completo un modulo en estado placeholder/en preparacion o sin cobertura funcional backend.
+- Estado:
+  - Persistencia de estado de modulos habilitada para handoffs futuros.
+  - Pending global se mantiene: [Fase 2] harden_server_side_module_enforcement_for_inventory_and_sensitive_modules.
