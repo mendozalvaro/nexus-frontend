@@ -1,7 +1,7 @@
 ﻿# Multi-Agent Workflow State
 
 ## Current State
-- **last_step**: fix_onboarding_rpc_profile_fk_and_reduce_registration_request_churn
+- **last_step**: implement_branch_selector_role_scope_and_admin_pos_branch_context
 - **pending**: [Fase 2] harden_server_side_module_enforcement_for_inventory_and_sensitive_modules
 - **agent**: codex
 
@@ -89,8 +89,25 @@
 - server/api/system/users/[userId].patch.ts
 - server/api/system/users/organizations.get.ts
 - app/pages/onboarding/payment.vue
+- app/pages/pos.vue
+- app/components/forms/CheckoutForm.vue
 
 ## Notes
+- Selector de sucursal en layout ahora aplica solo a `manager` y `employee`.
+- Regla visual aplicada en aside/mobile:
+  - `>1` sucursales: selector.
+  - `=1` sucursal: nombre fijo.
+  - `0` sucursales: estado "Sin sucursal asignada".
+- Middleware de permisos actualizado para exigir contexto de sucursal (`requiresBranch`) solo en `manager/employee`; `admin` no depende de selector global.
+- POS (`app/pages/pos.vue`) ahora incluye contexto de venta para `admin`:
+  - `>1` sucursales: selector local en modulo.
+  - `=1` sucursal: nombre fijo.
+  - `0` sucursales: alerta + CTA a `/branches`.
+- Checkout POS (`app/components/forms/CheckoutForm.vue`) actualizado:
+  - selector editable solo para `admin` con mas de una sucursal,
+  - en otros casos muestra sucursal fija,
+  - bloqueo de submit si no hay sucursal valida.
+- Validacion tecnica: `npm run typecheck` => OK.
 - Onboarding fix aplicado en BD linked: `supabase db query --linked -f supabase/migrations/20260421_fix_onboarding_profile_fk.sql -o json`.
 - Causa raiz del bloqueo `Empresa -> Pago` corregida: `create_onboarding_organization` ahora asegura `upsert` de `profiles` antes de insertar en `employee_branch_assignments`, evitando FK `employee_branch_assignments_user_id_fkey`.
 - Validacion E2E post-fix (DevTools):

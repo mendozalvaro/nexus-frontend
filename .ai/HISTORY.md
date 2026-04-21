@@ -134,3 +134,16 @@ pm run typecheck => exit code 0.
 - Estado:
   - Onboarding desbloqueado y con menor ruido de red en flujo de registro.
   - Pending global se mantiene: [Fase 2] harden_server_side_module_enforcement_for_inventory_and_sensitive_modules.
+## 2026-04-21 12:45:13 - codex
+- Step completado: implement_branch_selector_role_scope_and_admin_pos_branch_context
+- Acciones:
+  - `app/layouts/default.vue`: selector de sucursal restringido a roles `manager/employee`; comportamiento `>1 selector`, `=1 nombre`, `0 sin sucursal asignada`.
+  - `app/middleware/permissions.ts`: `requiresBranch` obligatorio solo para `manager/employee`; `admin` sin dependencia de branch selector global.
+  - `app/pages/pos.vue`: agregado contexto de venta para `admin` dentro del modulo (selector local/fijo/empty state con CTA a `/branches`).
+  - `app/components/forms/CheckoutForm.vue`: selector editable solo para `admin` con multiples sucursales; resto solo lectura; submit bloqueado sin sucursal valida.
+  - Criterio de filtros por modulo confirmado: sin cambios en `dashboard`; `inventory` mantiene default `Todas`; otros modulos en estado base sin forzar filtro extra.
+- Validacion:
+  - `npm run typecheck` => exit code 0.
+- Estado:
+  - Cambio de UX/permiso por rol aplicado y estable.
+  - Pending global se mantiene: [Fase 2] harden_server_side_module_enforcement_for_inventory_and_sensitive_modules.
