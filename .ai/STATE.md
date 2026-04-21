@@ -1,7 +1,7 @@
 ﻿# Multi-Agent Workflow State
 
 ## Current State
-- **last_step**: finalize_system_users_and_system_profile_module
+- **last_step**: fix_onboarding_rpc_profile_fk_and_reduce_registration_request_churn
 - **pending**: [Fase 2] harden_server_side_module_enforcement_for_inventory_and_sensitive_modules
 - **agent**: codex
 
@@ -32,6 +32,7 @@
 - server/api/system/profile.get.ts
 - server/api/system/profile.patch.ts
 - app/pages/system/profile.vue
+- supabase/migrations/20260421_fix_onboarding_profile_fk.sql
 
 ## Files Modified
 - app/composables/useAuth.ts
@@ -87,8 +88,20 @@
 - server/api/system/users/index.post.ts
 - server/api/system/users/[userId].patch.ts
 - server/api/system/users/organizations.get.ts
+- app/pages/onboarding/payment.vue
 
 ## Notes
+- Onboarding fix aplicado en BD linked: `supabase db query --linked -f supabase/migrations/20260421_fix_onboarding_profile_fk.sql -o json`.
+- Causa raiz del bloqueo `Empresa -> Pago` corregida: `create_onboarding_organization` ahora asegura `upsert` de `profiles` antes de insertar en `employee_branch_assignments`, evitando FK `employee_branch_assignments_user_id_fkey`.
+- Validacion E2E post-fix (DevTools):
+  - `POST /rest/v1/rpc/create_onboarding_organization` paso de `409` a `200`.
+  - Flujo completo validado: `login -> onboarding/organization -> onboarding/payment -> onboarding/success -> dashboard`.
+- Reduccion de solicitudes repetidas en onboarding:
+  - `app/pages/onboarding/payment.vue`: debounce + dedupe + throttle para `savePaymentProgress`.
+  - `app/composables/useAuth.ts`: `fetchClientProfile` solo para rol `client` con `organization_id` (evita llamadas innecesarias en staff/admin durante onboarding).
+- Hallazgo residual observado en sesiones previas: `GET /api/clients/profile` con `organizationId=undefined` dejo de reproducirse en el flujo de onboarding admin luego del ajuste de `useAuth`.
+- Verificacion tecnica:
+  - `npm run typecheck` => OK tras cambios.
 - Migracion aplicada en Supabase linked: `supabase db query --linked -f supabase/migrations/013_clients_multiorg.sql -o json`.
 - Tipos regenerados: `supabase gen types typescript --project-id ohdvqqgfebwseeudtwae` -> `app/types/database.types.ts`.
 - Verificado en tipos: tablas `clients` y `client_org` presentes.

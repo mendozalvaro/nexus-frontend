@@ -117,3 +117,20 @@ pm run test => 21 passed (5 files).
 - Estado:
   - Modulo system users/profile cerrado por solicitud de usuario.
   - Pending global se mantiene: `[Fase 2] harden_server_side_module_enforcement_for_inventory_and_sensitive_modules`.
+
+## 2026-04-21 00:00:00 - codex
+- Step completado: fix_onboarding_rpc_profile_fk_and_reduce_registration_request_churn
+- Acciones:
+  - Se reprodujo y diagnostico el bloqueo de onboarding en create_onboarding_organization (409 por FK employee_branch_assignments_user_id_fkey al no existir fila en profiles).
+  - Se creo migracion supabase/migrations/20260421_fix_onboarding_profile_fk.sql con upsert de profiles dentro de la RPC antes de asignar sucursal.
+  - Se aplico la migracion en Supabase linked y se valido cambio de resultado RPC (409 -> 200).
+  - Se reviso flujo con DevTools y se detecto churn de requests en onboarding.
+  - Se optimizo pp/pages/onboarding/payment.vue con debounce + dedupe + throttle para savePaymentProgress.
+  - Se optimizo pp/composables/useAuth.ts para no llamar /api/clients/profile en usuarios no client.
+- Validacion:
+  - E2E: login -> organization -> payment -> success -> dashboard completado.
+  - 
+pm run typecheck => exit code 0.
+- Estado:
+  - Onboarding desbloqueado y con menor ruido de red en flujo de registro.
+  - Pending global se mantiene: [Fase 2] harden_server_side_module_enforcement_for_inventory_and_sensitive_modules.
