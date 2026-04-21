@@ -82,6 +82,34 @@ NO SUGERIR CAMBIOS
 - Componentes organizados por dominio/feature
 - Logs forenses con checksums para tablas críticas
 
+## Metodologia de Orquestacion de Modulos (Obligatoria)
+
+Estandar obligatorio para modulos nuevos y refactors progresivos. Aplicar como regla general, no acoplada a un modulo especifico.
+
+- Patron de 3 capas obligatorio:
+  - **Page Orchestrator**: estado UI, carga de datos, casos de uso y coordinacion.
+  - **Composable de Dominio**: acceso a datos, mutaciones, normalizacion de payloads/respuestas.
+  - **Componentes Presentacionales**: solo UI; comunicacion por `props`/`emits`; sin logica de negocio.
+- Carga de datos por recurso (no bloque monolitico), con claves independientes de cache/async-data.
+- Refresh selectivo por entidad/operacion; prohibido refresh global cuando no sea necesario.
+- Derivados de UI en `computed` dentro del orquestador (filtros, conteos, etiquetas derivadas).
+- Multi-tenant enforcement obligatorio en capa dominio/API (`organization_id` + RLS).
+- Errores de mutacion: manejo explicito (`try/catch`) y feedback de UI; evitar promesas no manejadas.
+- Compatibilidad: cuando exista loader agregado legacy, mantenerlo como composicion de loaders parciales.
+
+### Checklist obligatorio para nuevos modulos/refactors
+
+- Separacion de 3 capas aplicada.
+- Refresh selectivo implementado.
+- Componentes sin acceso directo a DB/API.
+- Contexto tenant validado.
+- Errores de mutacion controlados.
+
+### Nota de adopcion
+
+- Aplica a modulos nuevos y refactors progresivos.
+- Excepciones solo con limitacion tecnica explicita y documentada en PR/handoff.
+
 ## Reglas de auth en Nexus POS
 - No hacer `supabase.auth.getUser()` en cada componente. Usar `useAuth()`
 - En `/server/api`: Usar `const user = await serverSupabaseUser(event)` + validar `organization_id`

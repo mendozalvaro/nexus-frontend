@@ -147,3 +147,16 @@ pm run typecheck => exit code 0.
 - Estado:
   - Cambio de UX/permiso por rol aplicado y estable.
   - Pending global se mantiene: [Fase 2] harden_server_side_module_enforcement_for_inventory_and_sensitive_modules.
+
+## 2026-04-21 19:40:00 - codex
+- Step completado: standardize_module_orchestration_context_methodology
+- Acciones:
+  - Se documento metodologia obligatoria de orquestacion modular en `.github/copilot-instructions.md` y `.ai/PROJECT_CONTEXT.md`.
+  - Se estandarizo patron de 3 capas (Page Orchestrator, Composable de Dominio, Componentes Presentacionales) para modulos nuevos y refactors.
+  - Se formalizo carga por recurso, refresh selectivo por entidad, derivados en `computed`, enforcement tenant y manejo explicito de errores de mutacion.
+  - Se agrego checklist obligatorio y nota de adopcion con excepciones documentadas en PR/handoff.
+- Validacion:
+  - Validacion documental cruzada en ambos archivos con terminologia consistente y enfoque generico.
+- Estado:
+  - Handoff de contexto completado.
+  - Pending global se mantiene: [Fase 2] harden_server_side_module_enforcement_for_inventory_and_sensitive_modules.

@@ -1,7 +1,7 @@
 ﻿# Multi-Agent Workflow State
 
 ## Current State
-- **last_step**: implement_branch_selector_role_scope_and_admin_pos_branch_context
+- **last_step**: standardize_module_orchestration_context_methodology
 - **pending**: [Fase 2] harden_server_side_module_enforcement_for_inventory_and_sensitive_modules
 - **agent**: codex
 
@@ -91,6 +91,8 @@
 - app/pages/onboarding/payment.vue
 - app/pages/pos.vue
 - app/components/forms/CheckoutForm.vue
+- .github/copilot-instructions.md
+- .ai/PROJECT_CONTEXT.md
 
 ## Notes
 - Selector de sucursal en layout ahora aplica solo a `manager` y `employee`.
@@ -173,3 +175,14 @@
   - Middleware `system-only` ampliado para acceso de roles `system` y `support` activos.
 - Validacion modulo system:
   - `npm run typecheck` => OK.
+- Estandar global de arquitectura modular agregado al contexto:
+  - `.github/copilot-instructions.md`
+  - `.ai/PROJECT_CONTEXT.md`
+- Metodologia registrada como obligatoria para cualquier modulo/refactor:
+  - patron 3 capas (orquestador/composable dominio/componentes presentacionales),
+  - carga por recurso con claves independientes,
+  - refresh selectivo por entidad (evitar refresh global innecesario),
+  - derivados en `computed` en orquestador,
+  - enforcement tenant (`organization_id` + RLS),
+  - manejo explicito de errores de mutacion.
+- Se agrego checklist obligatorio y nota de adopcion con excepciones documentadas en PR/handoff.
