@@ -1,7 +1,7 @@
 ﻿# Multi-Agent Workflow State
 
 ## Current State
-- **last_step**: standardize_module_orchestration_context_methodology
+- **last_step**: finalize_users_staff_multibranch_assignment_validation
 - **pending**: [Fase 2] harden_server_side_module_enforcement_for_inventory_and_sensitive_modules
 - **agent**: codex
 
@@ -12,6 +12,7 @@
   - inventory
   - service-assignment
   - branches
+  - users (staff)
   - profile (staff)
   - client/dashboard
   - client/profile
@@ -23,14 +24,13 @@
 - **pending_modules**:
   - pos
   - appointments (staff)
-  - users (staff)
   - reports (staff)
   - settings
   - client/appointments
   - client/bookings
   - client/reports
 - **module_evidence_notes**:
-  - placeholder detectado en paginas: `pos`, `appointments`, `users`, `reports`, `settings`, `client/appointments`, `client/bookings`, `client/reports`.
+  - placeholder detectado en paginas: `pos`, `appointments`, `reports`, `settings`, `client/appointments`, `client/bookings`, `client/reports`.
   - ruta vacia detectada: `app/pages/[slug]/catalog.vue` (0 bytes).
 
 ## Files Created
@@ -61,6 +61,7 @@
 - server/api/system/profile.patch.ts
 - app/pages/system/profile.vue
 - supabase/migrations/20260421_fix_onboarding_profile_fk.sql
+- server/api/admin/users/index.get.ts
 
 ## Files Modified
 - app/composables/useAuth.ts
@@ -214,3 +215,18 @@
   - enforcement tenant (`organization_id` + RLS),
   - manejo explicito de errores de mutacion.
 - Se agrego checklist obligatorio y nota de adopcion con excepciones documentadas en PR/handoff.
+- Modulo `users (staff)` cerrado:
+  - pagina orquestadora operativa: `app/pages/users.vue`.
+  - composable de dominio con carga y mutaciones: `app/composables/useUsers.ts`.
+  - componentes presentacionales: `app/components/users/UserTable.vue`, `app/components/users/UserAssignByRoleModal.vue`, `app/components/forms/UserForm.vue`.
+  - endpoints backend y enforcement de rol/tenant: `server/api/admin/users.post.ts`, `server/api/admin/users/[id].patch.ts`, `server/api/admin/users/[id]/deactivate.post.ts`, `server/utils/admin-users.ts`.
+- Validacion tecnica cierre users (staff):
+  - `npm run typecheck` => OK (2026-04-22).
+- Ajuste final modulo `users (staff)`:
+  - Carga de usuarios para orquestador migrada a endpoint server-side (`GET /api/admin/users`) con contexto admin/manager para exponer candidatos activos de toda la organizacion.
+  - En asignaciones, se listan usuarios activos del rol objetivo excluyendo solo los ya asignados a la sucursal seleccionada.
+  - Boton `Anadir manager` oculto para actor `manager` (solo visible para `admin`).
+- Validacion smoke final users (staff):
+  - `admin` mantiene capacidad de crear/asignar `manager` y `employee`.
+  - `manager` solo puede crear `employee`, sin opcion de asignar manager, y puede asignar employees en esquema multi-sucursal.
+  - `npm run typecheck` => OK (2026-04-22).

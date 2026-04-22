@@ -514,11 +514,12 @@ const clearFilters = () => {
             </div>
             <div class="flex flex-wrap gap-2">
               <UButton
+                v-if="canAssignManager"
                 size="sm"
                 color="warning"
                 variant="soft"
                 icon="i-lucide-user-cog"
-                :disabled="!canAssignManager || !hasAssignableUsers('manager', node.branch.value)"
+                :disabled="!hasAssignableUsers('manager', node.branch.value)"
                 @click="openAssignByRole('manager', node.branch.value)"
               >
                 Anadir manager

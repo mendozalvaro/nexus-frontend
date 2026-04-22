@@ -170,3 +170,29 @@ pm run typecheck => exit code 0.
 - Estado:
   - Persistencia de estado de modulos habilitada para handoffs futuros.
   - Pending global se mantiene: [Fase 2] harden_server_side_module_enforcement_for_inventory_and_sensitive_modules.
+
+## 2026-04-22 09:35:00 - codex
+- Step completado: finalize_users_staff_module_and_update_ledger
+- Acciones:
+  - Se valido implementacion activa del modulo `users (staff)` en pagina orquestadora (`app/pages/users.vue`), composable de dominio (`app/composables/useUsers.ts`) y componentes presentacionales (`app/components/users/*`, `app/components/forms/UserForm.vue`).
+  - Se verifico cobertura backend de mutaciones con enforcement de tenant/rol en `server/api/admin/users.post.ts`, `server/api/admin/users/[id].patch.ts`, `server/api/admin/users/[id]/deactivate.post.ts` y utilidades de `server/utils/admin-users.ts`.
+  - Se actualizo `.ai/STATE.md` moviendo `users (staff)` de `pending_modules` a `completed_modules` y ajustando notas de evidencia.
+- Validacion:
+  - `npm run typecheck` => exit code 0.
+- Estado:
+  - Modulo `users (staff)` cerrado en ledger.
+  - Pending global se mantiene: `[Fase 2] harden_server_side_module_enforcement_for_inventory_and_sensitive_modules`.
+
+## 2026-04-22 10:40:00 - codex
+- Step completado: finalize_users_staff_multibranch_assignment_validation
+- Acciones:
+  - Se agrego endpoint `GET /api/admin/users` en `server/api/admin/users/index.get.ts` para cargar usuarios/branches con contexto server-side (admin/manager) y evitar sesgo de RLS del cliente en el orquestador.
+  - `app/composables/useUsers.ts` ahora consume el endpoint server-side para poblar candidatos de asignacion.
+  - `app/pages/users.vue`: boton `Anadir manager` oculto para actor `manager`; se mantiene para `admin`.
+  - Se valido que la lista de candidatos de asignacion muestre usuarios activos no asignados a la sucursal objetivo, habilitando escenario de empleados multi-sucursal.
+- Validacion:
+  - Smoke test E2E en UI con `admin` y `manager`.
+  - `npm run typecheck` => exit code 0.
+- Estado:
+  - Modulo `users (staff)` confirmado como completo con criterio multi-sucursal.
+  - Pending global se mantiene: `[Fase 2] harden_server_side_module_enforcement_for_inventory_and_sensitive_modules`.

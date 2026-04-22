@@ -15,7 +15,7 @@ import {
 } from "@/utils/subscription-plan";
 
 type UserRole = Database["public"]["Enums"]["user_role"];
-type InternalRole = Exclude<UserRole, "client">;
+export type InternalRole = Exclude<UserRole, "client">;
 
 interface AdminContext {
   adminClient: ReturnType<typeof createClient<Database>>;
