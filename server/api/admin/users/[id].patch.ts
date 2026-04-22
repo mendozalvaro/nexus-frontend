@@ -93,7 +93,6 @@ export default defineEventHandler(async (event) => {
       fullName: body.fullName,
       organizationId: context.organizationId,
       role: body.role,
-      branchId: body.branchId,
     }),
   });
 
@@ -110,7 +109,6 @@ export default defineEventHandler(async (event) => {
       full_name: body.fullName,
       email,
       role: body.role,
-      branch_id: body.branchId,
     })
     .eq("id", userId)
     .eq("organization_id", context.organizationId);

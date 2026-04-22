@@ -194,7 +194,7 @@ const buildStatsMaps = (
   branchIds: string[],
   transactions: Array<Pick<TransactionRow, "branch_id" | "final_amount">>,
   appointments: Array<Pick<AppointmentRow, "id" | "branch_id">>,
-  profiles: Array<Pick<ProfileRow, "id" | "branch_id" | "is_active">>,
+  profiles: Array<Pick<ProfileRow, "id" | "is_active" | "role">>,
   assignments: Array<Pick<AssignmentRow, "branch_id" | "user_id">>,
   inventory: Array<
     Pick<InventoryRow, "branch_id" | "quantity" | "min_stock_level">
@@ -229,15 +229,16 @@ const buildStatsMaps = (
     );
   }
 
-  for (const profile of profiles) {
-    if (profile.is_active === false || !profile.branch_id) {
-      continue;
-    }
-
-    employeeMap.get(profile.branch_id)?.add(profile.id);
-  }
+  const activeStaffUserIds = new Set(
+    profiles
+      .filter((profile) => profile.is_active !== false && profile.role !== "client" && profile.role !== "admin")
+      .map((profile) => profile.id),
+  );
 
   for (const assignment of assignments) {
+    if (!activeStaffUserIds.has(assignment.user_id)) {
+      continue;
+    }
     employeeMap.get(assignment.branch_id)?.add(assignment.user_id);
   }
 
@@ -394,7 +395,7 @@ export const useBranches = () => {
         .in("branch_id", branchIds),
       supabase
         .from("profiles")
-        .select("id, branch_id, is_active")
+        .select("id, is_active, role")
         .eq("organization_id", organizationId)
         .neq("role", "client"),
       supabase
@@ -512,7 +513,7 @@ export const useBranches = () => {
         .eq("branch_id", branchId),
       supabase
         .from("profiles")
-        .select("id, branch_id, is_active")
+        .select("id, is_active, role")
         .eq("organization_id", organizationId)
         .neq("role", "client"),
       supabase

@@ -234,7 +234,7 @@ export const requirePOSContext = async (event: H3Event): Promise<POSContext> => 
 
   const role = ensureStaffRole(profile.role);
 
-  let allowedBranchIds = profile.branch_id ? [profile.branch_id] : [];
+  let allowedBranchIds: string[] = [];
 
   if (role === "admin") {
     const { data: branches, error: branchesError } = await adminClient
@@ -264,7 +264,7 @@ export const requirePOSContext = async (event: H3Event): Promise<POSContext> => 
       });
     }
 
-    const uniqueBranchIds = new Set<string>(allowedBranchIds);
+    const uniqueBranchIds = new Set<string>();
     for (const assignment of assignments ?? []) {
       uniqueBranchIds.add(assignment.branch_id);
     }
@@ -451,7 +451,9 @@ export const assertEmployeeCanDeliverService = async (
 ) => {
   const assignments = await getEmployeeAssignments(context, employee.id);
   const assignmentForBranch = assignments.find((assignment) => assignment.branch_id === branchId) ?? null;
-  const operatesInBranch = employee.branch_id === branchId || Boolean(assignmentForBranch);
+  const employeePrimaryBranchId = assignments.find((assignment) => assignment.is_primary)?.branch_id
+    ?? null;
+  const operatesInBranch = employeePrimaryBranchId === branchId || Boolean(assignmentForBranch);
 
   if (!operatesInBranch) {
     throw createError({

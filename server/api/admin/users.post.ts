@@ -54,7 +54,6 @@ export default defineEventHandler(async (event) => {
       fullName: body.fullName,
       organizationId: context.organizationId,
       role: body.role,
-      branchId: body.branchId,
     }),
   });
 
@@ -69,7 +68,6 @@ export default defineEventHandler(async (event) => {
     const { error: profileError } = await context.adminClient.from("profiles").insert({
       id: authUserData.user.id,
       organization_id: context.organizationId,
-      branch_id: body.branchId,
       full_name: body.fullName,
       email,
       role: body.role,

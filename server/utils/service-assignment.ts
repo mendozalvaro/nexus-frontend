@@ -116,10 +116,6 @@ export const assertUserOperatesInBranch = (
   branchId: string,
   assignments: AssignmentRow[],
 ) => {
-  if (user.branch_id === branchId) {
-    return;
-  }
-
   const hasAssignment = assignments.some((assignment) => assignment.user_id === user.id && assignment.branch_id === branchId);
   if (!hasAssignment) {
     throw createError({
@@ -168,8 +164,7 @@ export const replaceServiceCoverage = async (
   for (const branch of branches) {
     const selectedUserIds = branchCoverageMap.get(branch.id) ?? [];
     const eligibleUsers = users.filter((user) => {
-      return user.branch_id === branch.id
-        || assignments.some((assignment) => assignment.user_id === user.id && assignment.branch_id === branch.id);
+      return assignments.some((assignment) => assignment.user_id === user.id && assignment.branch_id === branch.id);
     });
 
     for (const user of eligibleUsers) {

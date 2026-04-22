@@ -57,6 +57,19 @@ export interface AppointmentContext {
   organizationId: string;
 }
 
+export const resolveOrganizationIdForAppointmentProfile = (
+  profile: Pick<ProfileRow, "organization_id">,
+): string => {
+  if (!profile.organization_id) {
+    throw createError({
+      statusCode: 403,
+      statusMessage: "No se pudo determinar la organizacion asociada para la agenda.",
+    });
+  }
+
+  return profile.organization_id;
+};
+
 const sanitizeNullableString = (value: string | null | undefined): string | null => {
   const normalized = value?.trim() ?? "";
   return normalized.length > 0 ? normalized : null;
@@ -97,47 +110,6 @@ const getBearerToken = (event: H3Event): string => {
   return header.slice("Bearer ".length);
 };
 
-const resolveFallbackClientOrganization = async (
-  adminClient: ReturnType<typeof createClient<Database>>,
-  userId: string,
-): Promise<string | null> => {
-  const { data: appointment, error: appointmentError } = await adminClient
-    .from("appointments")
-    .select("organization_id, start_time")
-    .eq("customer_id", userId)
-    .order("start_time", { ascending: false })
-    .limit(1)
-    .maybeSingle<Pick<AppointmentRow, "organization_id" | "start_time">>();
-
-  if (appointmentError) {
-    throw createError({
-      statusCode: 500,
-      statusMessage: "No se pudo resolver el contexto del cliente.",
-    });
-  }
-
-  if (appointment?.organization_id) {
-    return appointment.organization_id;
-  }
-
-  const { data: branch, error: branchError } = await adminClient
-    .from("branches")
-    .select("organization_id, created_at")
-    .eq("is_active", true)
-    .order("created_at", { ascending: true })
-    .limit(1)
-    .maybeSingle<Pick<BranchRow, "organization_id" | "created_at">>();
-
-  if (branchError) {
-    throw createError({
-      statusCode: 500,
-      statusMessage: "No se pudo resolver una organización activa para reservas.",
-    });
-  }
-
-  return branch?.organization_id ?? null;
-};
-
 export const requireAppointmentContext = async (event: H3Event): Promise<AppointmentContext> => {
   const { url, anonKey, serviceRoleKey } = getSupabaseServerConfig(event);
   const token = getBearerToken(event);
@@ -171,32 +143,7 @@ export const requireAppointmentContext = async (event: H3Event): Promise<Appoint
     });
   }
 
-  let organizationId = profile.organization_id;
-
-  if (!organizationId && profile.role === "client") {
-    organizationId = await resolveFallbackClientOrganization(adminClient, profile.id);
-
-    if (organizationId) {
-      const { error: updateError } = await adminClient
-        .from("profiles")
-        .update({ organization_id: organizationId })
-        .eq("id", profile.id);
-
-      if (updateError) {
-        throw createError({
-          statusCode: 500,
-          statusMessage: "No se pudo completar el contexto del cliente para reservas.",
-        });
-      }
-    }
-  }
-
-  if (!organizationId) {
-    throw createError({
-      statusCode: 403,
-      statusMessage: "No se pudo determinar la organización asociada para la agenda.",
-    });
-  }
+  const organizationId = resolveOrganizationIdForAppointmentProfile(profile);
 
   if (!profile.role) {
     throw createError({
@@ -368,6 +315,40 @@ const getEmployeeAssignments = async (
   return data ?? [];
 };
 
+const resolveUserBranchScope = async (
+  context: AppointmentContext,
+  userId: string,
+): Promise<{ branchIds: Set<string>; primaryBranchId: string | null }> => {
+  const { data, error } = await context.adminClient
+    .from("employee_branch_assignments")
+    .select("branch_id, is_primary")
+    .eq("user_id", userId)
+    .returns<Array<Pick<AssignmentRow, "branch_id" | "is_primary">>>();
+
+  if (error) {
+    throw createError({
+      statusCode: 500,
+      statusMessage: "No se pudieron validar las sucursales asignadas del usuario.",
+    });
+  }
+
+  const branchIds = new Set<string>();
+  let primaryBranchId: string | null = null;
+
+  for (const assignment of data ?? []) {
+    branchIds.add(assignment.branch_id);
+    if (assignment.is_primary && !primaryBranchId) {
+      primaryBranchId = assignment.branch_id;
+    }
+  }
+
+  if (!primaryBranchId) {
+    primaryBranchId = (data ?? [])[0]?.branch_id ?? null;
+  }
+
+  return { branchIds, primaryBranchId };
+};
+
 export const assertEmployeeCanDeliverAppointmentService = async (
   context: AppointmentContext,
   employee: ProfileRow,
@@ -376,7 +357,9 @@ export const assertEmployeeCanDeliverAppointmentService = async (
 ) => {
   const assignments = await getEmployeeAssignments(context, employee.id);
   const assignmentForBranch = assignments.find((assignment) => assignment.branch_id === branchId) ?? null;
-  const operatesInBranch = employee.branch_id === branchId || Boolean(assignmentForBranch);
+  const employeePrimaryBranchId = assignments.find((assignment) => assignment.is_primary)?.branch_id
+    ?? null;
+  const operatesInBranch = employeePrimaryBranchId === branchId || Boolean(assignmentForBranch);
 
   if (!operatesInBranch) {
     throw createError({
@@ -410,7 +393,8 @@ export const assertBranchScope = async (
   }
 
   if (context.role === "manager") {
-    if (context.profile.branch_id !== branchId) {
+    const managerScope = await resolveUserBranchScope(context, context.userId);
+    if (managerScope.primaryBranchId !== branchId) {
       throw createError({
         statusCode: 403,
         statusMessage: "Los managers solo pueden gestionar citas de su sucursal principal.",
@@ -421,28 +405,8 @@ export const assertBranchScope = async (
   }
 
   if (context.role === "employee") {
-    const assignedBranchIds = new Set<string>();
-    if (context.profile.branch_id) {
-      assignedBranchIds.add(context.profile.branch_id);
-    }
-
-    const { data, error } = await context.adminClient
-      .from("employee_branch_assignments")
-      .select("branch_id")
-      .eq("user_id", context.userId);
-
-    if (error) {
-      throw createError({
-        statusCode: 500,
-        statusMessage: "No se pudieron validar las sucursales asignadas del empleado.",
-      });
-    }
-
-    for (const item of data ?? []) {
-      assignedBranchIds.add(item.branch_id);
-    }
-
-    if (!assignedBranchIds.has(branchId)) {
+    const employeeScope = await resolveUserBranchScope(context, context.userId);
+    if (!employeeScope.branchIds.has(branchId)) {
       throw createError({
         statusCode: 403,
         statusMessage: "Solo puedes operar sobre citas de tus sucursales asignadas.",
@@ -581,7 +545,8 @@ export const assertAppointmentMutationScope = async (
   }
 
   if (context.role === "manager") {
-    if (appointment.branch_id !== context.profile.branch_id) {
+    const managerScope = await resolveUserBranchScope(context, context.userId);
+    if (appointment.branch_id !== managerScope.primaryBranchId) {
       throw createError({
         statusCode: 403,
         statusMessage: "Los managers solo pueden gestionar citas de su sucursal.",

@@ -334,10 +334,11 @@ export const usePOS = () => {
       })),
       employees: payload.employees.map((employee) => {
         const assignments = assignmentsByEmployee.get(employee.id) ?? [];
+        const primaryAssignment = assignments.find((assignment) => assignment.is_primary) ?? assignments[0] ?? null;
         return {
           id: employee.id,
           fullName: employee.full_name,
-          branchId: employee.branch_id,
+          branchId: primaryAssignment?.branch_id ?? null,
           role: employee.role,
           assignedBranchIds: Array.from(new Set(assignments.map((assignment) => assignment.branch_id))),
           serviceIds: Array.from(new Set(assignments.flatMap((assignment) => parseSkills(assignment.skills)))),

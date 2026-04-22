@@ -5,11 +5,21 @@ export default defineEventHandler(async (event) => {
   const { branches, services, categories, users, assignments } = await loadServiceAssignmentOverview(context);
   const categoryMap = new Map(categories.map((category) => [category.id, category]));
   const totalBranches = branches.length;
+  const primaryAssignmentByUserId = new Map<string, string | null>();
+  for (const assignment of assignments) {
+    if (assignment.is_primary) {
+      primaryAssignmentByUserId.set(assignment.user_id, assignment.branch_id);
+      continue;
+    }
+
+    if (!primaryAssignmentByUserId.has(assignment.user_id)) {
+      primaryAssignmentByUserId.set(assignment.user_id, assignment.branch_id);
+    }
+  }
 
   const branchUsers = branches.map((branch) => {
     const eligibleUsers = users.filter((user) => {
-      return user.branch_id === branch.id
-        || assignments.some((assignment) => assignment.user_id === user.id && assignment.branch_id === branch.id);
+      return assignments.some((assignment) => assignment.user_id === user.id && assignment.branch_id === branch.id);
     });
 
     return {
@@ -18,7 +28,7 @@ export default defineEventHandler(async (event) => {
         id: user.id,
         fullName: user.full_name,
         role: user.role,
-        primaryBranchId: user.branch_id,
+        primaryBranchId: primaryAssignmentByUserId.get(user.id) ?? null,
       })),
     };
   });

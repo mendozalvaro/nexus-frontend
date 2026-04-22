@@ -265,10 +265,6 @@ export const usePermissions = () => {
     }
 
     if (profile.value.role === "manager" || profile.value.role === "employee") {
-      if (profile.value.branch_id === branchId) {
-        return true;
-      }
-
       const assignmentUserId = profile.value.id ?? user.value?.id;
       if (!assignmentUserId) {
         return false;
@@ -322,10 +318,6 @@ export const usePermissions = () => {
 
     if (profile.value.role === "manager" || profile.value.role === "employee") {
       const branchIds = new Set<string>();
-
-      if (profile.value.branch_id) {
-        branchIds.add(profile.value.branch_id);
-      }
 
       const assignmentUserId = profile.value.id ?? user.value?.id;
       if (assignmentUserId) {

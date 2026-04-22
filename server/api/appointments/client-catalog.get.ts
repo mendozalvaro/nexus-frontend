@@ -79,6 +79,7 @@ export default defineEventHandler(async (event) => {
   const assignmentRows = assignments ?? [];
   const employeesView = (employees ?? []).map((employee) => {
     const employeeAssignments = assignmentRows.filter((assignment) => assignment.user_id === employee.id);
+    const primaryAssignment = employeeAssignments.find((assignment) => assignment.is_primary) ?? employeeAssignments[0] ?? null;
     const serviceIdsByBranch: Record<string, string[]> = {};
 
     for (const assignment of employeeAssignments) {
@@ -87,6 +88,7 @@ export default defineEventHandler(async (event) => {
 
     return {
       ...employee,
+      primaryBranchId: primaryAssignment?.branch_id ?? null,
       assignedBranchIds: Array.from(new Set(employeeAssignments.map((assignment) => assignment.branch_id))),
       serviceIdsByBranch,
     };

@@ -100,6 +100,7 @@ interface AppointmentCatalogResponse {
   branches: BranchRow[];
   services: ServiceRow[];
   employees: Array<ProfileRow & {
+    primaryBranchId?: string | null;
     assignedBranchIds?: string[];
     serviceIdsByBranch?: Record<string, string[]>;
   }>;
@@ -186,13 +187,14 @@ const toAppointmentServiceOption = (service: ServiceRow): AppointmentServiceOpti
 
 const toAppointmentEmployeeOption = (
   profile: ProfileRow & {
+    primaryBranchId?: string | null;
     assignedBranchIds?: string[];
     serviceIdsByBranch?: Record<string, string[]>;
   },
 ): AppointmentEmployeeOption => ({
   label: profile.full_name,
   value: profile.id,
-  branchId: profile.branch_id,
+  branchId: profile.primaryBranchId ?? profile.assignedBranchIds?.[0] ?? null,
   assignedBranchIds: profile.assignedBranchIds ?? [],
   serviceIdsByBranch: "serviceIdsByBranch" in profile && profile.serviceIdsByBranch
     ? profile.serviceIdsByBranch
@@ -360,7 +362,7 @@ export const useAppointments = () => {
         .order("full_name", { ascending: true }),
       supabase
         .from("employee_branch_assignments")
-        .select("user_id, branch_id, skills"),
+        .select("user_id, branch_id, is_primary, skills"),
     ]);
 
     const firstError = branchesError ?? servicesError ?? employeesError ?? assignmentsError;
@@ -373,11 +375,18 @@ export const useAppointments = () => {
 
     const branchOptions = (branches ?? []).map(toAppointmentBranchOption);
     const assignmentsByEmployee = new Map<string, string[]>();
+    const primaryBranchByEmployee = new Map<string, string | null>();
     const serviceCoverageByEmployee = new Map<string, Record<string, string[]>>();
     for (const assignment of assignments ?? []) {
       const current = assignmentsByEmployee.get(assignment.user_id) ?? [];
       current.push(assignment.branch_id);
       assignmentsByEmployee.set(assignment.user_id, current);
+
+      if (assignment.is_primary) {
+        primaryBranchByEmployee.set(assignment.user_id, assignment.branch_id);
+      } else if (!primaryBranchByEmployee.has(assignment.user_id)) {
+        primaryBranchByEmployee.set(assignment.user_id, assignment.branch_id);
+      }
 
       const currentCoverage = serviceCoverageByEmployee.get(assignment.user_id) ?? {};
       currentCoverage[assignment.branch_id] = parseServiceSkills(assignment.skills);
@@ -386,15 +395,16 @@ export const useAppointments = () => {
 
     const employeeOptions = (employees ?? []).map((employee) => toAppointmentEmployeeOption({
       ...employee,
+      primaryBranchId: primaryBranchByEmployee.get(employee.id) ?? null,
       assignedBranchIds: Array.from(new Set(assignmentsByEmployee.get(employee.id) ?? [])),
       serviceIdsByBranch: serviceCoverageByEmployee.get(employee.id) ?? {},
     }));
 
-    const filteredBranches = scopeRole === "manager" && currentProfile.branch_id
-      ? branchOptions.filter((branch) => branch.value === currentProfile.branch_id)
+    const managerBranchId = primaryBranchByEmployee.get(currentProfile.id) ?? null;
+    const filteredBranches = scopeRole === "manager" && managerBranchId
+      ? branchOptions.filter((branch) => branch.value === managerBranchId)
       : branchOptions;
 
-    const managerBranchId = currentProfile.branch_id;
     const filteredEmployees = scopeRole === "manager" && managerBranchId
       ? employeeOptions.filter((employee) => employee.branchId === managerBranchId || employee.assignedBranchIds.includes(managerBranchId))
       : scopeRole === "employee"
@@ -448,8 +458,11 @@ export const useAppointments = () => {
       query = query.eq("status", filters.status);
     }
 
-    if (scopeRole === "manager" && currentProfile.branch_id) {
-      query = query.eq("branch_id", currentProfile.branch_id);
+    if (scopeRole === "manager" && catalog.branches.length > 0) {
+      const managerBranchId = catalog.branches[0]?.value ?? null;
+      if (managerBranchId) {
+        query = query.eq("branch_id", managerBranchId);
+      }
     }
 
     if (scopeRole === "employee") {

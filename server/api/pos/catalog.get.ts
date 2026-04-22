@@ -80,12 +80,23 @@ export default defineEventHandler(async (event) => {
 
   const accessibleBranches = branches ?? [];
   const accessibleBranchIds = accessibleBranches.map((branch) => branch.id);
+  const employeePrimaryBranchMap = new Map<string, string | null>();
+  for (const assignment of assignments ?? []) {
+    if (assignment.is_primary) {
+      employeePrimaryBranchMap.set(assignment.user_id, assignment.branch_id);
+      continue;
+    }
+    if (!employeePrimaryBranchMap.has(assignment.user_id)) {
+      employeePrimaryBranchMap.set(assignment.user_id, assignment.branch_id);
+    }
+  }
   const employeeRows = (employees ?? []).filter((employee) => {
     if (context.role === "admin") {
       return true;
     }
 
-    if (employee.branch_id && accessibleBranchIds.includes(employee.branch_id)) {
+    const primaryBranchId = employeePrimaryBranchMap.get(employee.id) ?? null;
+    if (primaryBranchId && accessibleBranchIds.includes(primaryBranchId)) {
       return true;
     }
 
@@ -115,7 +126,7 @@ export default defineEventHandler(async (event) => {
 
   return {
     organizationId: context.organizationId,
-    currentBranchId: context.profile.branch_id,
+    currentBranchId: context.allowedBranchIds[0] ?? null,
     branches: accessibleBranches,
     categories: categories ?? [],
     products: products ?? [],

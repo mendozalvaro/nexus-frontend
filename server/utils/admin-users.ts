@@ -291,10 +291,17 @@ export const assertRoleRules = (
     });
   }
 
-  if (role !== "employee" && assignedBranchIds.length > 0) {
+  if (role === "manager" && assignedBranchIds.length > 0) {
     throw createError({
       statusCode: 400,
-      statusMessage: "Solo los empleados pueden tener asignaciones multiples de sucursal.",
+      statusMessage: "Los managers solo pueden tener una sucursal primaria.",
+    });
+  }
+
+  if (role === "admin" && assignedBranchIds.length > 0) {
+    throw createError({
+      statusCode: 400,
+      statusMessage: "Los usuarios admin no gestionan asignaciones de sucursal.",
     });
   }
 
@@ -440,7 +447,28 @@ export const syncEmployeeAssignments = async (
 ) => {
   await adminClient.from("employee_branch_assignments").delete().eq("user_id", userId);
 
-  if (role !== "employee" || !branchId) {
+  if ((role === "admin" || role === "client") || !branchId) {
+    return;
+  }
+
+  if (role === "manager") {
+    const { error: managerAssignmentError } = await adminClient
+      .from("employee_branch_assignments")
+      .insert({
+        user_id: userId,
+        branch_id: branchId,
+        is_primary: true,
+        can_manage_inventory: true,
+        can_override_prices: false,
+      });
+
+    if (managerAssignmentError) {
+      throw createError({
+        statusCode: 500,
+        statusMessage: "No se pudo guardar la sucursal primaria del manager.",
+      });
+    }
+
     return;
   }
 
@@ -483,10 +511,9 @@ export const buildUserMetadata = (payload: {
   fullName: string;
   organizationId: string;
   role: UserRole;
-  branchId: string | null;
+  branchId?: string | null;
 }) => ({
   full_name: payload.fullName,
   organization_id: payload.organizationId,
   role: payload.role,
-  branch_id: payload.branchId,
 });

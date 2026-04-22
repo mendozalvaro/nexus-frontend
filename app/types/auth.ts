@@ -21,7 +21,6 @@ export interface UpdateProfileInput {
   full_name?: string;
   phone?: string | null;
   avatar_url?: string | null;
-  branch_id?: string | null;
 }
 
 export interface AuthOperationResult<T = void> {

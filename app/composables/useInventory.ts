@@ -360,7 +360,6 @@ export const useInventory = () => {
       };
     }
 
-    const primaryBranchId = currentProfile.branch_id;
     const { data: assignments, error: assignmentsError } = await supabase
       .from("employee_branch_assignments")
       .select("branch_id")
@@ -374,12 +373,7 @@ export const useInventory = () => {
       });
     }
 
-    const allowedBranchIds = Array.from(
-      new Set([
-        ...(primaryBranchId ? [primaryBranchId] : []),
-        ...(assignments ?? []).map((assignment) => assignment.branch_id),
-      ]),
-    );
+    const allowedBranchIds = Array.from(new Set((assignments ?? []).map((assignment) => assignment.branch_id)));
 
     if (allowedBranchIds.length === 0) {
       return {

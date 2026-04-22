@@ -123,7 +123,7 @@ const summary = computed(() => {
 const contextItems = computed(() => [
   { label: "Usuario", value: profile.value?.full_name ?? "Sin perfil" },
   { label: "Rol", value: profile.value?.role ?? "Sin rol" },
-  { label: "Sucursal base", value: catalog.value.branches.find((branch) => branch.value === profile.value?.branch_id)?.label ?? "No restringida" },
+  { label: "Sucursal base", value: filters.branchId ? (catalog.value.branches.find((branch) => branch.value === filters.branchId)?.label ?? "No restringida") : "No restringida" },
   { label: "Servicios visibles", value: catalog.value.services.length },
   { label: "Colaboradores visibles", value: catalog.value.employees.length },
 ]);

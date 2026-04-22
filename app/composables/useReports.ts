@@ -258,11 +258,7 @@ export const useReports = () => {
       timeZone: localTimeZone,
     }).format(new Date(value));
 
-  const resolveManagerBranchId = async (profile: Pick<ProfileRow, "id" | "branch_id">) => {
-    if (profile.branch_id) {
-      return profile.branch_id;
-    }
-
+  const resolveManagerBranchId = async (profile: Pick<ProfileRow, "id">) => {
     const { data, error } = await supabase
       .from("employee_branch_assignments")
       .select("branch_id, is_primary")
@@ -292,9 +288,9 @@ export const useReports = () => {
 
     const { data: profile, error } = await supabase
       .from("profiles")
-      .select("id, organization_id, role, branch_id")
+      .select("id, organization_id, role")
       .eq("id", userId)
-      .maybeSingle<Pick<ProfileRow, "id" | "organization_id" | "role" | "branch_id">>();
+      .maybeSingle<Pick<ProfileRow, "id" | "organization_id" | "role">>();
 
     if (error || !profile?.organization_id || (profile.role !== "admin" && profile.role !== "manager")) {
       throw createError({
@@ -349,7 +345,7 @@ export const useReports = () => {
   };
 
   const loadFilterSupport = async (context: ReportsResolvedContext): Promise<LoadedFiltersSupport> => {
-    const [branchesResult, employeesResult, categoriesResult] = await Promise.all([
+    const [branchesResult, employeesResult, assignmentsResult, categoriesResult] = await Promise.all([
       supabase
         .from("branches")
         .select("id, name, code")
@@ -358,10 +354,15 @@ export const useReports = () => {
         .order("name", { ascending: true }),
       supabase
         .from("profiles")
-        .select("id, full_name, branch_id, role")
+        .select("id, full_name, role")
         .eq("organization_id", context.organizationId)
         .in("role", ["manager", "employee"])
         .order("full_name", { ascending: true }),
+      supabase
+        .from("employee_branch_assignments")
+        .select("user_id, branch_id")
+        .in("branch_id", context.branchIds)
+        .returns<Array<Pick<AssignmentRow, "user_id" | "branch_id">>>(),
       supabase
         .from("categories")
         .select("id, name, type, is_active")
@@ -371,23 +372,27 @@ export const useReports = () => {
         .order("name", { ascending: true }),
     ]);
 
-    if (branchesResult.error || employeesResult.error || categoriesResult.error) {
+    if (branchesResult.error || employeesResult.error || categoriesResult.error || assignmentsResult.error) {
       throw createError({
         statusCode: 500,
         statusMessage: branchesResult.error?.message
           ?? employeesResult.error?.message
+          ?? assignmentsResult.error?.message
           ?? categoriesResult.error?.message
           ?? "No se pudieron cargar los filtros de reportes.",
       });
     }
 
     const branchRows = branchesResult.data ?? [];
+    const assignmentRows = assignmentsResult.data ?? [];
     const employeeRows = (employeesResult.data ?? []).filter((employee) => {
       if (context.role === "admin") {
         return true;
       }
 
-      return employee.branch_id === context.assignedBranchId;
+      return assignmentRows.some((assignment) =>
+        assignment.user_id === employee.id && assignment.branch_id === context.assignedBranchId,
+      );
     });
 
     const categories = (categoriesResult.data ?? []) as Array<Pick<CategoryRow, "id" | "name" | "type" | "is_active">>;

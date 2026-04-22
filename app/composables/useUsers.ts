@@ -131,7 +131,7 @@ export const useUsers = () => {
 
     const { data: profiles, error: profilesError } = await supabase
       .from("profiles")
-      .select("id, organization_id, branch_id, full_name, email, role, is_active, created_at, last_login_at")
+      .select("id, organization_id, full_name, email, role, is_active, created_at, last_login_at")
       .eq("organization_id", currentProfile.organization_id)
       .neq("role", "client")
       .order("full_name", { ascending: true });
@@ -173,18 +173,27 @@ export const useUsers = () => {
       return accumulator;
     }, new Map<string, UserBranchAssignment[]>());
 
-    const users = (profiles ?? []).map((user) => ({
-      id: user.id,
-      fullName: user.full_name,
-      email: user.email,
-      role: (user.role ?? "employee") as Exclude<UserRole, "client">,
-      branchId: user.branch_id,
-      branchName: user.branch_id ? (branchLookup.get(user.branch_id) ?? null) : null,
-      isActive: user.is_active ?? true,
-      createdAt: user.created_at,
-      lastLoginAt: user.last_login_at,
-      assignedBranches: assignmentsByUser.get(user.id) ?? [],
-    }));
+    const primaryBranchByUser = new Map<string, string | null>();
+    for (const [userId, userAssignments] of assignmentsByUser.entries()) {
+      const primaryAssignment = userAssignments.find((assignment) => assignment.isPrimary);
+      primaryBranchByUser.set(userId, primaryAssignment?.branchId ?? userAssignments[0]?.branchId ?? null);
+    }
+
+    const users = (profiles ?? []).map((user) => {
+      const primaryBranchId = primaryBranchByUser.get(user.id) ?? null;
+      return {
+        id: user.id,
+        fullName: user.full_name,
+        email: user.email,
+        role: (user.role ?? "employee") as Exclude<UserRole, "client">,
+        branchId: primaryBranchId,
+        branchName: primaryBranchId ? (branchLookup.get(primaryBranchId) ?? null) : null,
+        isActive: user.is_active ?? true,
+        createdAt: user.created_at,
+        lastLoginAt: user.last_login_at,
+        assignedBranches: assignmentsByUser.get(user.id) ?? [],
+      };
+    });
 
     return {
       organizationId: currentProfile.organization_id,

@@ -1,4 +1,4 @@
-export type Json =
+﻿export type Json =
   | string
   | number
   | boolean
@@ -881,7 +881,6 @@ export type Database = {
       profiles: {
         Row: {
           avatar_url: string | null
-          branch_id: string | null
           created_at: string | null
           email: string
           full_name: string
@@ -896,7 +895,6 @@ export type Database = {
         }
         Insert: {
           avatar_url?: string | null
-          branch_id?: string | null
           created_at?: string | null
           email: string
           full_name: string
@@ -911,7 +909,6 @@ export type Database = {
         }
         Update: {
           avatar_url?: string | null
-          branch_id?: string | null
           created_at?: string | null
           email?: string
           full_name?: string
@@ -925,13 +922,6 @@ export type Database = {
           updated_at?: string | null
         }
         Relationships: [
-          {
-            foreignKeyName: "profiles_branch_id_fkey"
-            columns: ["branch_id"]
-            isOneToOne: false
-            referencedRelation: "branches"
-            referencedColumns: ["id"]
-          },
           {
             foreignKeyName: "profiles_organization_id_fkey"
             columns: ["organization_id"]

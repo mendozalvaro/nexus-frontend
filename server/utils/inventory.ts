@@ -200,7 +200,7 @@ export const requireInventoryContext = async (event: H3Event): Promise<Inventory
 
   const role = ensureStaffRole(profile.role);
 
-  let allowedBranchIds = profile.branch_id ? [profile.branch_id] : [];
+  let allowedBranchIds: string[] = [];
   if (role === "admin") {
     const { data: branches, error: branchesError } = await adminClient
       .from("branches")
@@ -231,7 +231,7 @@ export const requireInventoryContext = async (event: H3Event): Promise<Inventory
       });
     }
 
-    const uniqueBranchIds = new Set<string>(allowedBranchIds);
+    const uniqueBranchIds = new Set<string>();
     for (const assignment of assignments ?? []) {
       uniqueBranchIds.add(assignment.branch_id);
     }
@@ -637,4 +637,3 @@ export const mapInventoryError = (error: unknown, fallbackMessage: string): neve
     statusMessage: message,
   });
 };
-

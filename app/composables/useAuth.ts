@@ -322,9 +322,19 @@ export const useAuth = () => {
       if (orgContext.value.activeOrganizationId === null && data?.organization_id) {
         orgContext.value.activeOrganizationId = data.organization_id;
       }
-      await fetchClientProfile({
-        force: forceRefresh,
-      });
+
+      // Only clients need client profile hydration.
+      if (data?.role === "client" && data.organization_id) {
+        await fetchClientProfile({
+          force: forceRefresh,
+          organizationId: data.organization_id,
+        });
+      } else {
+        clientProfile.value = null;
+        clientProfileFetchedForUserId.value = null;
+        clientProfileFetchedForOrgId.value = null;
+        clientProfileFetchedAt.value = 0;
+      }
       return data ?? null;
     } catch (fetchError) {
       const message =
@@ -598,10 +608,6 @@ export const useAuth = () => {
         avatar_url:
           typeof updates.avatar_url === "string" || updates.avatar_url === null
             ? sanitizeNullableString(updates.avatar_url)
-            : undefined,
-        branch_id:
-          typeof updates.branch_id === "string" || updates.branch_id === null
-            ? sanitizeNullableString(updates.branch_id)
             : undefined,
       };
 

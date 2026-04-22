@@ -37,13 +37,6 @@ export default defineEventHandler(async (event) => {
   assertEmployeeSelectionAllowed(context, employee.id);
   await assertEmployeeCanDeliverAppointmentService(context, employee, service, branch.id);
 
-  if (employee.branch_id && employee.branch_id !== branch.id && context.role !== "admin") {
-    throw createError({
-      statusCode: 409,
-      statusMessage: "El empleado seleccionado no opera en la sucursal indicada.",
-    });
-  }
-
   const { startIso, endIso } = buildAppointmentWindow(body.date, body.startTimeLocal, service.duration_minutes);
   await validateEmployeeAvailability(context, employee.id, startIso, endIso);
 

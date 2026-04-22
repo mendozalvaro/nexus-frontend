@@ -142,7 +142,7 @@ export const requireCatalogContext = async (event: H3Event): Promise<CatalogCont
 
   const role = ensureCatalogRole(profile.role);
 
-  let allowedBranchIds = profile.branch_id ? [profile.branch_id] : [];
+  let allowedBranchIds: string[] = [];
   if (role === "admin") {
     const { data: branches, error: branchesError } = await adminClient
       .from("branches")
@@ -172,7 +172,7 @@ export const requireCatalogContext = async (event: H3Event): Promise<CatalogCont
       });
     }
 
-    const uniqueBranchIds = new Set<string>(allowedBranchIds);
+    const uniqueBranchIds = new Set<string>();
     for (const assignment of assignments ?? []) {
       uniqueBranchIds.add(assignment.branch_id);
     }
