@@ -157,6 +157,7 @@ Estandar obligatorio para modulos nuevos y refactors progresivos. Aplicar como r
 3. **Actualizar estado**: Modificar `last_step`, `pending`, `files_created`, `files_modified`
 4. **Commit handoff**: Usar `ai-handoff` para registrar el punto de transición
 5. **Historial**: Actualizar `.ai/HISTORY.md` con timestamp y resumen
+6. **Persistencia de módulos**: Si un módulo queda **terminado al 100%**, registrar su cierre en `.ai/STATE.md` dentro de `completed_modules` y en `.ai/HISTORY.md` con evidencia mínima (page/composable/api y validación ejecutada).
 
 ### Archivos de Persistencia
 - `.ai/STATE.md`: Estado actual del workflow (last_step, pending, archivos modificados)
@@ -170,6 +171,7 @@ Estandar obligatorio para modulos nuevos y refactors progresivos. Aplicar como r
 - Si hay conflictos con reglas del proyecto, abortar y reportar
 - Mantener contexto mínimo pero suficiente para continuidad
 - Usar `ai-handoff` para commits de transición (optimiza tokens al separar contextos)
+- No marcar módulos como "completos" si la página está en estado placeholder/en preparación o sin cobertura funcional de backend.
 
 ### Flujo Típico
 1. Agente A lee STATE.md → ejecuta tarea → actualiza STATE.md → `ai-handoff` y registra log en HISTORY.md

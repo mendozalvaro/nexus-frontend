@@ -12,6 +12,7 @@ export default defineNuxtConfig({
   },
   runtimeConfig: {
     supabaseServiceRoleKey: process.env.NUXT_SUPABASE_SERVICE_ROLE_KEY ?? "",
+    devAdminKey: process.env.NUXT_DEV_ADMIN_KEY ?? "",
     public: {},
   },
 

@@ -41,6 +41,11 @@ const validationInfo = ref<PaymentValidationInfo | null>(null);
 const approvedRedirectSeconds = ref(3);
 
 let redirectTimer: ReturnType<typeof setTimeout> | null = null;
+let progressSaveTimer: ReturnType<typeof setTimeout> | null = null;
+let lastProgressSnapshot: string | null = null;
+let lastProgressSavedAt = 0;
+const MIN_PROGRESS_SAVE_INTERVAL_MS = 5000;
+const PROGRESS_SAVE_DEBOUNCE_MS = 2000;
 
 const formattedSubmittedAt = computed(() =>
   validationInfo.value?.submittedAt
@@ -178,6 +183,57 @@ const onSubmit = async () => {
   await navigateTo("/onboarding/success", { replace: true });
 };
 
+const buildProgressSnapshot = (organizationId: string) =>
+  JSON.stringify({
+    organizationId,
+    pageState: pageState.value,
+    paymentMethod: draft.value.paymentMethod,
+    transactionRef: draft.value.transactionRef,
+    confirmTransfer: draft.value.confirmTransfer,
+  });
+
+const schedulePaymentProgressSave = () => {
+  const organizationId = profile.value?.organization_id;
+  if (!organizationId || !session.value?.user) {
+    return;
+  }
+
+  if (pageState.value === "pending" || pageState.value === "approved") {
+    return;
+  }
+
+  const nextSnapshot = buildProgressSnapshot(organizationId);
+  if (nextSnapshot === lastProgressSnapshot) {
+    return;
+  }
+
+  if (progressSaveTimer) {
+    clearTimeout(progressSaveTimer);
+  }
+
+  const elapsedSinceLastSave = Date.now() - lastProgressSavedAt;
+  const throttleDelay = elapsedSinceLastSave >= MIN_PROGRESS_SAVE_INTERVAL_MS
+    ? 0
+    : MIN_PROGRESS_SAVE_INTERVAL_MS - elapsedSinceLastSave;
+  const nextDelay = Math.max(PROGRESS_SAVE_DEBOUNCE_MS, throttleDelay);
+
+  progressSaveTimer = setTimeout(async () => {
+    const latestOrganizationId = profile.value?.organization_id;
+    if (!latestOrganizationId || !session.value?.user) {
+      return;
+    }
+
+    const latestSnapshot = buildProgressSnapshot(latestOrganizationId);
+    if (latestSnapshot === lastProgressSnapshot) {
+      return;
+    }
+
+    await savePaymentProgress(latestOrganizationId, pageState.value);
+    lastProgressSnapshot = latestSnapshot;
+    lastProgressSavedAt = Date.now();
+  }, nextDelay);
+};
+
 if (import.meta.client) {
   onMounted(async () => {
     const resolution = await resolvePostAuthDestination();
@@ -192,14 +248,7 @@ if (import.meta.client) {
 
 watch(
   () => [draft.value.transactionRef, draft.value.confirmTransfer, pageState.value],
-  async () => {
-    const organizationId = profile.value?.organization_id;
-    if (!organizationId || !session.value?.user) {
-      return;
-    }
-
-    await savePaymentProgress(organizationId, pageState.value);
-  },
+  schedulePaymentProgressSave,
   { deep: false },
 );
 
@@ -210,6 +259,10 @@ onBeforeUnmount(() => {
 
   if (preview.value?.objectUrl) {
     URL.revokeObjectURL(preview.value.objectUrl);
+  }
+
+  if (progressSaveTimer) {
+    clearTimeout(progressSaveTimer);
   }
 });
 </script>

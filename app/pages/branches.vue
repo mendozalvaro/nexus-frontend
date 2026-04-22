@@ -1,11 +1,11 @@
 <script setup lang="ts">
-import { h, resolveComponent } from "vue";
-import BranchForm from "@/components/forms/BranchForm.vue";
+import BranchesCrudTab from "@/components/branches/BranchesCrudTab.vue";
+import BranchesFormModal from "@/components/branches/BranchesFormModal.vue";
+import BranchesSummaryTab from "@/components/branches/BranchesSummaryTab.vue";
+import BranchesTabs from "@/components/branches/BranchesTabs.vue";
 
-import type {
-  BranchListItem,
-  BranchMutationPayload,
-} from "@/composables/useBranches";
+import type { BranchesTabKey } from "@/components/branches/BranchesTabs.vue";
+import type { BranchListItem, BranchMutationPayload } from "@/composables/useBranches";
 
 definePageMeta({
   layout: "default",
@@ -16,6 +16,7 @@ definePageMeta({
 });
 
 const searchQuery = ref("");
+const activeTab = ref<BranchesTabKey>("summary");
 const mutationLoading = ref(false);
 const branchModalOpen = ref(false);
 const editingBranch = ref<BranchListItem | null>(null);
@@ -29,7 +30,7 @@ const {
   canCreateMoreBranches,
 } = useBranches();
 
-const { data, refresh } = await useAsyncData(
+const { data, pending, refresh } = await useAsyncData(
   "branches-module",
   () => loadBranches(),
   { server: false },
@@ -87,108 +88,47 @@ const handleBranchSubmit = async (payload: BranchMutationPayload) => {
 
 const handleBranchStatusChange = async (branchId: string, isActive: boolean) => {
   try {
-    const result = await updateBranchStatus(branchId, isActive);
-    console.log("Branch status updated successfully:", result);
-    // Refrescar datos después de actualización exitosa
-    await new Promise(resolve => setTimeout(resolve, 300));
+    await updateBranchStatus(branchId, isActive);
+    await new Promise((resolve) => setTimeout(resolve, 300));
     await refresh();
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : "Error desconocido";
     console.error("Error updating branch status:", errorMessage);
   }
 };
-
-const branchColumns = computed(() => {
-  const UBadge = resolveComponent("UBadge");
-  const UButton = resolveComponent("UButton");
-
-  return [
-    {
-      accessorKey: "name",
-      header: "Sucursal",
-      cell: ({ row }: { row: { original: BranchListItem } }) =>
-        h("div", { class: "space-y-1" }, [
-          h("p", { class: "font-medium text-slate-950 dark:text-white" }, row.original.name),
-          h("p", { class: "text-xs text-slate-500 dark:text-slate-400" }, row.original.code),
-        ]),
-    },
-    {
-      accessorKey: "address",
-      header: "Dirección",
-      cell: ({ row }: { row: { original: BranchListItem } }) =>
-        h("span", { class: "text-sm text-slate-600 dark:text-slate-300" }, row.original.address ?? "No definida"),
-    },
-    {
-      accessorKey: "phone",
-      header: "Teléfono",
-      cell: ({ row }: { row: { original: BranchListItem } }) =>
-        h("span", { class: "text-sm text-slate-600 dark:text-slate-300" }, row.original.phone ?? "No asignado"),
-    },
-    {
-      accessorKey: "stats.employeesCount",
-      header: "Empleados",
-      cell: ({ row }: { row: { original: BranchListItem } }) =>
-        h("span", { class: "text-sm text-slate-600 dark:text-slate-300" }, `${row.original.stats.employeesCount}`),
-    },
-    {
-      accessorKey: "stats.salesTotal",
-      header: "Ventas",
-      cell: ({ row }: { row: { original: BranchListItem } }) =>
-        h("span", { class: "text-sm font-medium text-slate-950 dark:text-white" }, `Bs ${row.original.stats.salesTotal.toFixed(2)}`),
-    },
-    {
-      accessorKey: "isActive",
-      header: "Estado",
-      cell: ({ row }: { row: { original: BranchListItem } }) =>
-        h(UBadge, { color: row.original.isActive ? "success" : "neutral", variant: "soft" }, () => row.original.isActive ? "Activo" : "Inactivo"),
-    },
-    {
-      id: "actions",
-      header: "Acciones",
-      cell: ({ row }: { row: { original: BranchListItem } }) =>
-        h("div", { class: "flex flex-col gap-2 sm:flex-row" }, [
-          h(UButton, { size: "sm", color: "neutral", variant: "ghost", class: "min-h-10", onClick: () => openBranchModal(row.original) }, () => "Editar"),
-          h(UButton, { size: "sm", color: row.original.isActive ? "error" : "success", variant: "ghost", class: "min-h-10", onClick: () => handleBranchStatusChange(row.original.id, !row.original.isActive) }, () => row.original.isActive ? "Desactivar" : "Activar"),
-        ]),
-    },
-  ];
-});
 </script>
 
 <template>
   <div class="space-y-6 md:space-y-8">
-    <UiModuleHero eyebrow="Administracion" title="Sucursales"
-      description="Gestiona sucursales, estados y configuracion operativa para tu organizacion desde un espacio centralizado."
-      icon="i-lucide-building-2">
-      <template #actions>
-        <UButton color="primary" icon="i-lucide-plus" @click="openBranchModal()" :disabled="!canCreateMoreBranches">
-          Nueva sucursal
-        </UButton>
-      </template>
-    </UiModuleHero>
+    <BranchesTabs v-model="activeTab" />
 
-    <UiSearchFilters title="Buscar sucursales" description="Filtra por nombre, codigo, direccion o telefono." surface>
-      <template #controls>
-        <UInput v-model="searchQuery" icon="i-lucide-search" placeholder="Buscar..."
-          :ui="{ base: 'min-h-11 text-base' }" />
-      </template>
-      <template #summary>
-        {{ filteredBranches.length }} sucursal(es)
-      </template>
-    </UiSearchFilters>
+    <BranchesSummaryTab
+      v-if="activeTab === 'summary'"
+      :branches="branchList"
+      :loading="pending || mutationLoading"
+    />
 
-    <UiDataTable :data="filteredBranches" :columns="branchColumns" :loading="false"
-      empty="No hay sucursales disponibles." min-width-class="min-w-[60rem] rounded-[1.5rem]" />
+    <BranchesCrudTab
+      v-else
+      :rows="filteredBranches"
+      :search-query="searchQuery"
+      :loading="pending || mutationLoading"
+      :can-create-more-branches="canCreateMoreBranches"
+      @update:search-query="searchQuery = $event"
+      @create="openBranchModal()"
+      @edit="openBranchModal($event)"
+      @toggle-status="handleBranchStatusChange($event.branchId, $event.nextState)"
+    />
 
-    <UModal :open="branchModalOpen" :title="editingBranch ? 'Editar sucursal' : 'Nueva sucursal'"
-      :description="editingBranch ? 'Actualiza los datos de la sucursal.' : 'Crea una sucursal para tu organizacion.'"
-      @update:open="branchModalOpen = $event">
-      <template #body>
-        <BranchForm :mode="editingBranch ? 'edit' : 'create'" :loading="mutationLoading"
-          :initial-value="editingBranchInitial" :submit-label="editingBranch ? 'Guardar cambios' : 'Crear sucursal'"
-          :limit-message="editingBranch ? null : branchLimitMessage" @submit="handleBranchSubmit"
-          @cancel="branchModalOpen = false" />
-      </template>
-    </UModal>
+    <BranchesFormModal
+      :open="branchModalOpen"
+      :mode="editingBranch ? 'edit' : 'create'"
+      :loading="mutationLoading"
+      :initial-value="editingBranchInitial"
+      :limit-message="branchLimitMessage"
+      @update:open="branchModalOpen = $event"
+      @submit="handleBranchSubmit"
+      @cancel="branchModalOpen = false"
+    />
   </div>
 </template>

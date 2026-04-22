@@ -1,4 +1,7 @@
 ﻿<script setup lang="ts">
+import InventoryMovementTable from "@/components/features/InventoryMovementTable.vue";
+import InventoryStockTable from "@/components/features/InventoryStockTable.vue";
+import InventoryMovementModal from "@/components/modals/InventoryMovementModal.vue";
 import type {
   InventoryAdjustmentPayload,
   InventoryMovementFilters,
@@ -30,6 +33,16 @@ const {
   getMovementLabel,
   getMovementColor,
 } = useInventory();
+const { user, profile, fetchProfile } = useAuth();
+
+await fetchProfile();
+
+const inventoryScopeKey = computed(() => {
+  return `${user.value?.id ?? "anon"}:${profile.value?.organization_id ?? "none"}:${profile.value?.role ?? "none"}`;
+});
+
+const overviewAsyncKey = computed(() => `inventory-overview:${inventoryScopeKey.value}`);
+const movementsAsyncKey = computed(() => `inventory-movements:${inventoryScopeKey.value}`);
 
 const movementFilters = reactive<InventoryMovementFilters>(createDefaultMovementFilters());
 
@@ -48,17 +61,21 @@ const movementDateTo = computed({
 });
 
 const { data: overviewData, pending: overviewPending, refresh: refreshOverview } = await useAsyncData(
-  "inventory-overview",
+  overviewAsyncKey,
   () => loadOverview(),
-  { server: false },
+  {
+    server: false,
+    watch: [inventoryScopeKey],
+  },
 );
 
 const { data: movementsData, pending: movementsPending, refresh: refreshMovements } = await useAsyncData(
-  "inventory-movements",
+  movementsAsyncKey,
   () => loadAdjustmentsPage({ ...movementFilters }),
   {
     server: false,
     watch: [
+      () => inventoryScopeKey.value,
       () => movementFilters.branchId,
       () => movementFilters.productId,
       () => movementFilters.movementType,
@@ -161,31 +178,6 @@ const goToStockFromAlert = (productId: string) => {
 
 <template>
   <div class="space-y-6 md:space-y-8">
-    <UiModuleHero
-      eyebrow="Operacion"
-      title="Inventario"
-      description="Controla existencias, registra movimientos y sigue alertas de stock sin mezclar configuracion comercial con operacion diaria."
-      icon="i-lucide-boxes"
-    >
-      <template #actions>
-        <UButton color="primary" icon="i-lucide-package-plus" @click="openMovementModal()">
-          Registrar movimiento
-        </UButton>
-      </template>
-    </UiModuleHero>
-
-    <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-      <UiStatCard
-        v-for="item in metrics"
-        :key="item.label"
-        :label="item.label"
-        :value="item.value"
-        :icon="item.icon"
-        :icon-class="item.iconClass"
-        :icon-wrapper-class="item.iconWrapperClass"
-      />
-    </div>
-
     <div class="flex flex-wrap gap-2">
       <UButton :variant="activeTab === 'summary' ? 'solid' : 'soft'" :color="activeTab === 'summary' ? 'primary' : 'neutral'" @click="activeTab = 'summary'">
         Resumen
@@ -204,6 +196,31 @@ const goToStockFromAlert = (productId: string) => {
       title="Senales clave del inventario"
       description="Detecta rapido quiebres, movimientos recientes y prioridades para reponer o ajustar."
     >
+      <UiModuleHero
+        eyebrow="Operacion"
+        title="Inventario"
+        description="Controla existencias, registra movimientos y sigue alertas de stock sin mezclar configuracion comercial con operacion diaria."
+        icon="i-lucide-boxes"
+      >
+        <template #actions>
+          <UButton color="primary" icon="i-lucide-package-plus" @click="openMovementModal()">
+            Registrar movimiento
+          </UButton>
+        </template>
+      </UiModuleHero>
+
+      <div class="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <UiStatCard
+          v-for="item in metrics"
+          :key="item.label"
+          :label="item.label"
+          :value="item.value"
+          :icon="item.icon"
+          :icon-class="item.iconClass"
+          :icon-wrapper-class="item.iconWrapperClass"
+        />
+      </div>
+
       <div class="mb-4 flex justify-end">
         <UButton color="primary" variant="soft" icon="i-lucide-box" @click="activeTab = 'stock'">
           Ir a stock

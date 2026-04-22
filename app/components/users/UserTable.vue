@@ -6,6 +6,7 @@ import type { UserListRow } from "@/composables/useUsers";
 const props = defineProps<{
   rows: UserListRow[];
   loading?: boolean;
+  actorRole?: "admin" | "manager";
 }>();
 
 const emits = defineEmits<{
@@ -13,7 +14,7 @@ const emits = defineEmits<{
   deactivate: [UserListRow];
 }>();
 
-const sortBy = ref<"fullName" | "role" | "branchName" | "lastLoginAt">("fullName");
+const sortBy = ref<"fullName" | "role" | "lastLoginAt">("fullName");
 const sortDirection = ref<"asc" | "desc">("asc");
 const page = ref(1);
 const pageSize = 10;
@@ -42,6 +43,14 @@ const paginatedRows = computed(() => {
   const start = (page.value - 1) * pageSize;
   return sortedRows.value.slice(start, start + pageSize);
 });
+
+const canManageRow = (row: UserListRow) => {
+  if (props.actorRole === "manager") {
+    return row.role === "employee";
+  }
+
+  return row.role !== "admin";
+};
 
 const columns = computed(() => {
   const UBadge = resolveComponent("UBadge");
@@ -76,11 +85,6 @@ const columns = computed(() => {
         ),
     },
     {
-      accessorKey: "branchName",
-      header: "Sucursal",
-      cell: ({ row }: { row: { original: UserListRow } }) => row.original.branchName ?? "Sin sucursal",
-    },
-    {
       accessorKey: "isActive",
       header: "Estado",
       cell: ({ row }: { row: { original: UserListRow } }) =>
@@ -89,11 +93,6 @@ const columns = computed(() => {
           { color: row.original.isActive ? "success" : "neutral", variant: "soft" },
           () => (row.original.isActive ? "Activo" : "Inactivo"),
         ),
-    },
-    {
-      accessorKey: "assignedBranches",
-      header: "Asignaciones",
-      cell: ({ row }: { row: { original: UserListRow } }) => row.original.assignedBranches.length || "1",
     },
     {
       accessorKey: "lastLoginAt",
@@ -120,6 +119,7 @@ const columns = computed(() => {
               variant: "ghost",
               size: "sm",
               class: "min-h-10 justify-center sm:min-h-9",
+              disabled: !canManageRow(row.original),
               onClick: () => emits("edit", row.original),
             },
             () => "Editar",
@@ -131,7 +131,7 @@ const columns = computed(() => {
               variant: "ghost",
               size: "sm",
               class: "min-h-10 justify-center sm:min-h-9",
-              disabled: !row.original.isActive,
+              disabled: !row.original.isActive || !canManageRow(row.original),
               onClick: () => emits("deactivate", row.original),
             },
             () => "Desactivar",
@@ -151,7 +151,6 @@ const columns = computed(() => {
             <select v-model="sortBy" class="min-h-10 w-full bg-transparent text-sm outline-none">
               <option value="fullName">Ordenar por nombre</option>
               <option value="role">Ordenar por rol</option>
-              <option value="branchName">Ordenar por sucursal</option>
               <option value="lastLoginAt">Ordenar por ultimo acceso</option>
             </select>
           </div>

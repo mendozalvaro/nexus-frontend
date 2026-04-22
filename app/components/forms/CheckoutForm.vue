@@ -24,6 +24,7 @@ const emits = defineEmits<{
   cancel: [];
   "search-customers": [string];
 }>();
+const { profile } = useAuth();
 
 const state = reactive({
   branchId: props.selectedBranchId,
@@ -44,6 +45,21 @@ watch(
     state.branchId = value;
   },
   { immediate: true },
+);
+
+watch(
+  () => props.branches,
+  (branches) => {
+    if (branches.length === 0) {
+      state.branchId = "";
+      return;
+    }
+
+    if (!branches.some((branch) => branch.id === state.branchId)) {
+      state.branchId = branches[0]?.id ?? "";
+    }
+  },
+  { immediate: true, deep: true },
 );
 
 watch(
@@ -99,6 +115,14 @@ const schema = z.object({
   }
 });
 
+const canSwitchBranch = computed(() =>
+  profile.value?.role === "admin" && props.branches.length > 1,
+);
+
+const selectedBranchName = computed(() =>
+  props.branches.find((branch) => branch.id === state.branchId)?.name ?? "Sin sucursal",
+);
+
 const preview = computed(() => {
   const normalizedValue = state.discountType === "none" ? 0 : state.discountValue;
   const discountAmount = state.discountType === "percentage"
@@ -114,6 +138,10 @@ const preview = computed(() => {
 });
 
 const submit = () => {
+  if (!state.branchId) {
+    return;
+  }
+
   emits("submit", {
     branchId: state.branchId,
     customer: state.customerMode === "existing"
@@ -139,12 +167,21 @@ const submit = () => {
 <template>
   <UForm :schema="schema" :state="state" class="space-y-5" @submit="submit">
     <UFormField label="Sucursal" name="branchId">
-      <div class="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm dark:border-slate-800 dark:bg-slate-950">
+      <div
+        v-if="canSwitchBranch"
+        class="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm dark:border-slate-800 dark:bg-slate-950"
+      >
         <select v-model="state.branchId" class="w-full bg-transparent outline-none" :disabled="loading">
           <option v-for="branch in branches" :key="branch.id" :value="branch.id">
             {{ branch.name }}
           </option>
         </select>
+      </div>
+      <div
+        v-else
+        class="rounded-xl border border-slate-200/80 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-700 dark:border-slate-800 dark:bg-slate-900/70 dark:text-slate-200"
+      >
+        {{ selectedBranchName }}
       </div>
     </UFormField>
 
@@ -235,7 +272,7 @@ const submit = () => {
       <UButton color="neutral" variant="ghost" :disabled="loading" @click="emits('cancel')">
         Cancelar
       </UButton>
-      <UButton type="submit" color="primary" :loading="loading">
+      <UButton type="submit" color="primary" :loading="loading" :disabled="!state.branchId">
         Confirmar venta
       </UButton>
     </div>

@@ -55,7 +55,7 @@ const canCreateManager = computed(() => capabilities.value?.canCreateManager ?? 
 const canAssignManager = computed(() => actorRole.value === "admin");
 
 const branchFilterOptions = computed(() => [
-  { label: "Todas las sucursales", value: null as string | null },
+  { label: "Todas las sucursales", value: "__all__" },
   ...branchOptions.value.map((branch) => ({ label: branch.label, value: branch.value })),
 ]);
 
@@ -65,6 +65,13 @@ const statusFilterOptions = computed(() =>
     value: status.value,
   })),
 );
+
+const branchFilterModel = computed<string>({
+  get: () => filters.branchId ?? "__all__",
+  set: (value) => {
+    filters.branchId = value === "__all__" ? null : value;
+  },
+});
 
 const filteredUsers = computed(() => {
   const query = filters.search.trim().toLowerCase();
@@ -443,18 +450,18 @@ const clearFilters = () => {
             />
 
             <USelect
-              v-model="filters.branchId"
-              :options="branchFilterOptions"
-              option-attribute="label"
-              value-attribute="value"
+              v-model="branchFilterModel"
+              :items="branchFilterOptions"
+              label-key="label"
+              value-key="value"
               class="w-full"
             />
 
             <USelect
               v-model="filters.status"
-              :options="statusFilterOptions"
-              option-attribute="label"
-              value-attribute="value"
+              :items="statusFilterOptions"
+              label-key="label"
+              value-key="value"
               class="w-full"
             />
           </div>
@@ -600,7 +607,7 @@ const clearFilters = () => {
       :open="assignByRoleModalOpen"
       :role="assignByRoleDraft?.role ?? null"
       :branch-label="branchOptions.find((branch) => branch.value === assignByRoleDraft?.branchId)?.label ?? 'Sucursal'"
-      :options="assignByRoleOptions"
+      :items="assignByRoleOptions"
       :loading="mutationLoading"
       @update:open="assignByRoleModalOpen = $event"
       @submit="handleAssignByRoleSubmit"

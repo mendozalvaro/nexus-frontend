@@ -101,7 +101,7 @@ export const useCatalog = () => {
     name: payload.name,
     sku: payload.sku,
     description: payload.description,
-    imageUrl: payload.imageUrl,
+    imageUrl: payload.imageUrl ?? "",
     costPrice: payload.costPrice,
     salePrice: payload.salePrice,
     categoryId: payload.categoryId,
@@ -111,13 +111,13 @@ export const useCatalog = () => {
   const toServiceRequest = (payload: CatalogServicePayload) => ({
     name: payload.name,
     description: payload.description,
-    imageUrl: payload.imageUrl,
+    imageUrl: payload.imageUrl ?? "",
     price: payload.price,
     durationMinutes: payload.durationMinutes,
     categoryId: payload.categoryId,
   });
 
-  const loadCatalog = async (): Promise<CatalogData> => {
+  const ensureOrganizationId = async () => {
     const currentProfile = await ensureProfile();
     if (!currentProfile?.organization_id) {
       throw createError({
@@ -126,85 +126,131 @@ export const useCatalog = () => {
       });
     }
 
-    const organizationId = currentProfile.organization_id;
-    const [{ data: products, error: productsError }, { data: services, error: servicesError }, { data: categories, error: categoriesError }] = await Promise.all([
-      supabase
-        .from("products")
-        .select("*")
-        .eq("organization_id", organizationId)
-        .order("name", { ascending: true })
-        .returns<ProductRow[]>(),
-      supabase
-        .from("services")
-        .select("*")
-        .eq("organization_id", organizationId)
-        .order("name", { ascending: true })
-        .returns<ServiceRow[]>(),
-      supabase
-        .from("categories")
-        .select("*")
-        .eq("organization_id", organizationId)
-        .order("name", { ascending: true })
-        .returns<CategoryRow[]>(),
-    ]);
+    return currentProfile.organization_id;
+  };
 
-    const firstError = productsError ?? servicesError ?? categoriesError;
-    if (firstError) {
+  const loadProducts = async (): Promise<CatalogProductItem[]> => {
+    const organizationId = await ensureOrganizationId();
+    const { data, error } = await supabase
+      .from("products")
+      .select("*")
+      .eq("organization_id", organizationId)
+      .order("name", { ascending: true })
+      .returns<ProductRow[]>();
+
+    if (error) {
       throw createError({
         statusCode: 500,
-        statusMessage: firstError.message,
+        statusMessage: error.message,
       });
     }
 
-    const categoryRows = categories ?? [];
-    const categoryMap = new Map(categoryRows.map((category) => [category.id, category]));
+    return (data ?? []).map((product) => ({
+      id: product.id,
+      name: product.name,
+      sku: product.sku,
+      description: product.description,
+      imageUrl: product.image_url ?? null,
+      costPrice: Number(product.cost_price ?? 0),
+      salePrice: Number(product.sale_price),
+      categoryId: product.category_id,
+      categoryName: null,
+      trackInventory: product.track_inventory ?? true,
+      isActive: product.is_active ?? true,
+    }));
+  };
+
+  const loadServices = async (): Promise<CatalogServiceItem[]> => {
+    const organizationId = await ensureOrganizationId();
+    const { data, error } = await supabase
+      .from("services")
+      .select("*")
+      .eq("organization_id", organizationId)
+      .order("name", { ascending: true })
+      .returns<ServiceRow[]>();
+
+    if (error) {
+      throw createError({
+        statusCode: 500,
+        statusMessage: error.message,
+      });
+    }
+
+    return (data ?? []).map((service) => ({
+      id: service.id,
+      name: service.name,
+      description: service.description,
+      imageUrl: service.image_url ?? null,
+      price: Number(service.price),
+      durationMinutes: service.duration_minutes,
+      categoryId: service.category_id,
+      categoryName: null,
+      isActive: service.is_active ?? true,
+    }));
+  };
+
+  const loadCategories = async (): Promise<CatalogCategoryItem[]> => {
+    const organizationId = await ensureOrganizationId();
+    const { data, error } = await supabase
+      .from("categories")
+      .select("*")
+      .eq("organization_id", organizationId)
+      .order("name", { ascending: true })
+      .returns<CategoryRow[]>();
+
+    if (error) {
+      throw createError({
+        statusCode: 500,
+        statusMessage: error.message,
+      });
+    }
+
+    const categoryMap = new Map((data ?? []).map((category) => [category.id, category]));
+    return (data ?? []).map((category) => ({
+      id: category.id,
+      name: category.name,
+      type: category.type as "product" | "service",
+      parentId: category.parent_id,
+      parentName: category.parent_id ? (categoryMap.get(category.parent_id)?.name ?? null) : null,
+      isActive: category.is_active ?? true,
+      linkedCount: 0,
+    }));
+  };
+
+  const loadCatalog = async (): Promise<CatalogData> => {
+    const [products, services, categories] = await Promise.all([
+      loadProducts(),
+      loadServices(),
+      loadCategories(),
+    ]);
+
+    const categoryMap = new Map(categories.map((category) => [category.id, category]));
     const productsCountByCategory = new Map<string, number>();
     const servicesCountByCategory = new Map<string, number>();
 
-    for (const product of products ?? []) {
-      if (product.category_id) {
-        productsCountByCategory.set(product.category_id, (productsCountByCategory.get(product.category_id) ?? 0) + 1);
+    for (const product of products) {
+      if (product.categoryId) {
+        productsCountByCategory.set(product.categoryId, (productsCountByCategory.get(product.categoryId) ?? 0) + 1);
       }
     }
 
-    for (const service of services ?? []) {
-      if (service.category_id) {
-        servicesCountByCategory.set(service.category_id, (servicesCountByCategory.get(service.category_id) ?? 0) + 1);
+    for (const service of services) {
+      if (service.categoryId) {
+        servicesCountByCategory.set(service.categoryId, (servicesCountByCategory.get(service.categoryId) ?? 0) + 1);
       }
     }
 
     return {
-      products: (products ?? []).map((product) => ({
-        id: product.id,
-        name: product.name,
-        sku: product.sku,
-        description: product.description,
-        imageUrl: product.image_url ?? null,
-        costPrice: Number(product.cost_price ?? 0),
-        salePrice: Number(product.sale_price),
-        categoryId: product.category_id,
-        categoryName: product.category_id ? (categoryMap.get(product.category_id)?.name ?? null) : null,
-        trackInventory: product.track_inventory ?? true,
-        isActive: product.is_active ?? true,
+      products: products.map((product) => ({
+        ...product,
+        categoryName: product.categoryId ? (categoryMap.get(product.categoryId)?.name ?? null) : null,
       })),
-      services: (services ?? []).map((service) => ({
-        id: service.id,
-        name: service.name,
-        description: service.description,
-        imageUrl: service.image_url ?? null,
-        price: Number(service.price),
-        durationMinutes: service.duration_minutes,
-        categoryId: service.category_id,
-        categoryName: service.category_id ? (categoryMap.get(service.category_id)?.name ?? null) : null,
-        isActive: service.is_active ?? true,
+      services: services.map((service) => ({
+        ...service,
+        categoryName: service.categoryId ? (categoryMap.get(service.categoryId)?.name ?? null) : null,
       })),
-      categories: categoryRows.map((category) => ({
-        id: category.id,
-        name: category.name,
-        type: category.type as "product" | "service",
-        parentId: category.parent_id,
-        parentName: category.parent_id ? (categoryMap.get(category.parent_id)?.name ?? null) : null,
-        isActive: category.is_active ?? true,
+      categories: categories.map((category) => ({
+        ...category,
         linkedCount: category.type === "product"
           ? (productsCountByCategory.get(category.id) ?? 0)
           : (servicesCountByCategory.get(category.id) ?? 0),
@@ -286,6 +332,9 @@ export const useCatalog = () => {
 
   return {
     loadCatalog,
+    loadProducts,
+    loadServices,
+    loadCategories,
     createProduct,
     updateProduct,
     updateProductStatus,

@@ -46,8 +46,10 @@ export default defineNuxtRouteMiddleware(async (to) => {
   const meta = to.meta as RoutePermissionMeta;
   const { getAccessibleBranches, resolveRouteAccess, ensureRolePermissionsLoaded } = usePermissions();
   const { selectedBranchId, restoreSelectedBranch } = useBranchSelector();
+  const requiresScopedBranch = Boolean(meta.requiresBranch)
+    && (profile?.role === "manager" || profile?.role === "employee");
 
-  if (meta.requiresBranch && import.meta.client) {
+  if (requiresScopedBranch && import.meta.client) {
     const accessibleBranches = await getAccessibleBranches();
     await restoreSelectedBranch(accessibleBranches);
 
@@ -72,7 +74,7 @@ export default defineNuxtRouteMiddleware(async (to) => {
   await ensureRolePermissionsLoaded();
 
   const requestedBranchId = resolveRequestedBranchId(to);
-  const branchIdToValidate = requestedBranchId ?? (meta.requiresBranch ? selectedBranchId.value : null);
+  const branchIdToValidate = requestedBranchId ?? (requiresScopedBranch ? selectedBranchId.value : null);
   const resolution = await resolveRouteAccess(meta, branchIdToValidate);
 
   if (!resolution.allowed) {

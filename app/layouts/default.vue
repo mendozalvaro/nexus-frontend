@@ -73,6 +73,10 @@ const userInitials = computed(() => {
   return `${parts[0]?.[0] ?? ""}${parts[1]?.[0] ?? ""}`.toUpperCase() || "NP";
 });
 
+const isBranchScopedRole = computed(() =>
+  profile.value?.role === "manager" || profile.value?.role === "employee",
+);
+
 const selectedBranch = computed(() =>
   accessibleBranches.value.find((branch) => branch.id === selectedBranchId.value)
   ?? accessibleBranches.value[0]
@@ -81,22 +85,17 @@ const selectedBranch = computed(() =>
 
 const hasBranches = computed(() => accessibleBranches.value.length > 0);
 
-const showBranchContext = computed(() => !isSystemArea.value);
+const showBranchContext = computed(() =>
+  !isSystemArea.value && isBranchScopedRole.value,
+);
+
+const canSwitchBranch = computed(() =>
+  showBranchContext.value && accessibleBranches.value.length > 1,
+);
 
 const branchEmptyState = computed(() => {
   if (hasBranches.value) {
     return null;
-  }
-
-  if (profile.value?.role === "admin") {
-    return {
-      title: "Sin sucursal",
-      description:
-        "Todavia no configuraste sucursales para esta organizacion. Crea la primera para comenzar a operar.",
-      actionLabel: "Crear sucursal",
-      actionTo: "/branches",
-      icon: "i-heroicons-building-office-2",
-    };
   }
 
   return {
@@ -274,10 +273,12 @@ const loadBranchContext = async () => {
 
   try {
     accessibleBranches.value = await getAccessibleBranches();
-    const restoredBranchId = await restoreSelectedBranch(accessibleBranches.value);
 
-    if (!selectedBranchId.value && restoredBranchId) {
-      setSelectedBranch(restoredBranchId);
+    if (isBranchScopedRole.value) {
+      const restoredBranchId = await restoreSelectedBranch(accessibleBranches.value);
+      if (!selectedBranchId.value && restoredBranchId) {
+        setSelectedBranch(restoredBranchId);
+      }
     }
   } finally {
     branchLoading.value = false;
@@ -354,6 +355,10 @@ const loadAccountStatus = async () => {
 };
 
 const handleBranchChange = async (branchId: string | null) => {
+  if (!canSwitchBranch.value) {
+    return;
+  }
+
   setSelectedBranch(branchId);
   await reloadNuxtApp({
     path: route.fullPath,
@@ -384,7 +389,7 @@ watch(
 watch(
   () => accessibleBranches.value,
   async (branches) => {
-    if (branches.length === 0 || selectedBranchId.value) {
+    if (!isBranchScopedRole.value || branches.length === 0 || selectedBranchId.value) {
       return;
     }
 
@@ -518,7 +523,7 @@ if (import.meta.client) {
             </div>
           </div>
 
-          <LayoutBranchSelector v-if="selectedBranch" :branches="accessibleBranches" :model-value="selectedBranchId"
+          <LayoutBranchSelector v-if="canSwitchBranch && selectedBranch" :branches="accessibleBranches" :model-value="selectedBranchId"
             :disabled="branchLoading" @update:model-value="handleBranchChange" />
 
           <div v-else-if="branchEmptyState"
@@ -609,10 +614,28 @@ if (import.meta.client) {
             </div>
           </div>
 
-          <LayoutBranchSelector v-if="!isSystemArea && accessibleBranches.length > 0" :branches="accessibleBranches"
+          <LayoutBranchSelector v-if="canSwitchBranch" :branches="accessibleBranches"
             :model-value="selectedBranchId" :disabled="branchLoading" @update:model-value="handleBranchChange" />
 
-          <div v-else-if="!isSystemArea && branchEmptyState"
+          <div v-else-if="showBranchContext && selectedBranch"
+            class="rounded-2xl border border-slate-200/80 bg-slate-50/80 p-4 dark:border-slate-800 dark:bg-slate-950/40">
+            <div class="flex items-start gap-3">
+              <div
+                class="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-sky-100 text-sky-700 dark:bg-sky-950/50 dark:text-sky-300">
+                <UIcon name="i-heroicons-building-storefront" class="h-5 w-5" />
+              </div>
+              <div class="min-w-0">
+                <p class="text-sm font-semibold text-slate-900 dark:text-white">
+                  {{ selectedBranch.name }}
+                </p>
+                <p class="mt-1 text-sm leading-6 text-slate-500 dark:text-slate-400">
+                  {{ selectedBranch.address || "Sucursal fija para tu sesion." }}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div v-else-if="showBranchContext && branchEmptyState"
             class="rounded-2xl border border-dashed border-slate-300/80 bg-slate-50/80 p-4 dark:border-slate-700 dark:bg-slate-950/40">
             <div class="flex items-start gap-3">
               <div

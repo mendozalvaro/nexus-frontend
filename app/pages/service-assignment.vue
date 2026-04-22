@@ -15,6 +15,7 @@ definePageMeta({
 
 const searchQuery = ref("");
 const incompleteOnly = ref(false);
+const activeTab = ref<"summary" | "coverage">("summary");
 const modalOpen = ref(false);
 const mutationLoading = ref(false);
 const selectedService = ref<ServiceAssignmentService | null>(null);
@@ -149,14 +150,51 @@ const columns = computed(() => {
 
 <template>
   <div class="space-y-6 md:space-y-8">
-    <UiModuleHero
-      eyebrow="Cobertura operativa"
-      title="Asignacion de servicio"
-      description="Define que usuarios pueden prestar cada servicio por sucursal para que citas y POS respeten la cobertura real."
-      icon="i-lucide-users-round"
-    />
+    <div class="flex flex-wrap gap-2">
+      <UButton :variant="activeTab === 'summary' ? 'solid' : 'soft'" :color="activeTab === 'summary' ? 'primary' : 'neutral'" @click="activeTab = 'summary'">
+        Resumen
+      </UButton>
+      <UButton :variant="activeTab === 'coverage' ? 'solid' : 'soft'" :color="activeTab === 'coverage' ? 'primary' : 'neutral'" @click="activeTab = 'coverage'">
+        Cobertura
+      </UButton>
+    </div>
 
-    <UiSearchFilters title="Buscar servicio" description="Filtra por nombre, categoria o descripcion." surface>
+    <UiSectionShell
+      v-if="activeTab === 'summary'"
+      eyebrow="Resumen"
+      title="Estado general de cobertura"
+      description="Revisa capacidad global y entra a la gestion detallada por servicio."
+    >
+      <UiModuleHero
+        eyebrow="Cobertura operativa"
+        title="Asignacion de servicio"
+        description="Define que usuarios pueden prestar cada servicio por sucursal para que citas y POS respeten la cobertura real."
+        icon="i-lucide-users-round"
+      />
+
+      <div class="mt-5 grid grid-cols-1 gap-4 md:grid-cols-3">
+        <UCard :ui="{ body: 'p-4' }">
+          <p class="text-xs uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">Servicios totales</p>
+          <p class="mt-2 text-2xl font-semibold text-slate-950 dark:text-white">{{ summary.totalServices }}</p>
+        </UCard>
+        <UCard :ui="{ body: 'p-4' }">
+          <p class="text-xs uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">Cobertura completa</p>
+          <p class="mt-2 text-2xl font-semibold text-emerald-600 dark:text-emerald-400">{{ summary.coveredServices }}</p>
+        </UCard>
+        <UCard :ui="{ body: 'p-4' }">
+          <p class="text-xs uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">Cobertura pendiente</p>
+          <p class="mt-2 text-2xl font-semibold text-amber-600 dark:text-amber-400">{{ summary.incompleteServices }}</p>
+        </UCard>
+      </div>
+
+      <div class="mt-4 flex justify-end">
+        <UButton color="primary" variant="soft" icon="i-lucide-users-round" @click="activeTab = 'coverage'">
+          Gestionar cobertura
+        </UButton>
+      </div>
+    </UiSectionShell>
+
+    <UiSearchFilters v-else title="Buscar servicio" description="Filtra por nombre, categoria o descripcion." surface>
       <template #controls>
         <div class="flex flex-col gap-3 md:flex-row md:items-center">
           <UInput v-model="searchQuery" icon="i-lucide-search" placeholder="Buscar servicio..." :ui="{ base: 'min-h-11 text-base' }" />
@@ -168,7 +206,7 @@ const columns = computed(() => {
       </template>
     </UiSearchFilters>
 
-    <div class="grid grid-cols-1 gap-4 md:grid-cols-3">
+    <div v-if="activeTab === 'coverage'" class="grid grid-cols-1 gap-4 md:grid-cols-3">
       <UCard :ui="{ body: 'p-4' }">
         <p class="text-xs uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">Servicios totales</p>
         <p class="mt-2 text-2xl font-semibold text-slate-950 dark:text-white">{{ summary.totalServices }}</p>
@@ -184,6 +222,7 @@ const columns = computed(() => {
     </div>
 
     <UiDataTable
+      v-if="activeTab === 'coverage'"
       :data="filteredServices"
       :columns="columns"
       :loading="pending"

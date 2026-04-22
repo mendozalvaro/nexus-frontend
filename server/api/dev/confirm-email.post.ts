@@ -1,7 +1,8 @@
 import { createClient } from "@supabase/supabase-js";
-import { createError, readBody } from "h3";
+import { createError, getHeader, readBody } from "h3";
 import type { H3Event } from "h3";
 import type { Database } from "@/types/database.types";
+import { assertValidDevAdminKey } from "../../utils/dev-security";
 
 export default defineEventHandler(async (event: H3Event) => {
   // Only allow in development
@@ -11,6 +12,11 @@ export default defineEventHandler(async (event: H3Event) => {
       statusMessage: "Not found",
     });
   }
+
+  const config = useRuntimeConfig(event);
+  const devAdminKey = config.devAdminKey;
+  const requestKey = getHeader(event, "x-dev-admin-key");
+  assertValidDevAdminKey(requestKey ?? undefined, devAdminKey);
 
   const body = await readBody(event);
   const email = body.email?.toLowerCase();
@@ -22,7 +28,6 @@ export default defineEventHandler(async (event: H3Event) => {
     });
   }
 
-  const config = useRuntimeConfig(event);
   const url = process.env.NUXT_PUBLIC_SUPABASE_URL;
   const serviceRoleKey = config.supabaseServiceRoleKey;
 
@@ -60,7 +65,6 @@ export default defineEventHandler(async (event: H3Event) => {
       user.id,
       {
         email_confirm: true,
-        password: "4lv4r1t0M$",
       },
     );
 

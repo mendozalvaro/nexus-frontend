@@ -1,8 +1,13 @@
 <script setup lang="ts">
-import { h, resolveComponent } from "vue";
-import CategoryForm from "@/components/forms/CategoryForm.vue";
-import ProductForm from "@/components/forms/ProductForm.vue";
-import ServiceForm from "@/components/forms/ServiceForm.vue";
+import CatalogCategoriesTable from "@/components/catalog/CatalogCategoriesTable.vue";
+import CatalogCategoryModal from "@/components/catalog/CatalogCategoryModal.vue";
+import CatalogProductModal from "@/components/catalog/CatalogProductModal.vue";
+import CatalogProductsTable from "@/components/catalog/CatalogProductsTable.vue";
+import CatalogServicesTable from "@/components/catalog/CatalogServicesTable.vue";
+import CatalogServiceModal from "@/components/catalog/CatalogServiceModal.vue";
+import CatalogSummaryPanel from "@/components/catalog/CatalogSummaryPanel.vue";
+import CatalogTabs from "@/components/catalog/CatalogTabs.vue";
+import CatalogToolbar from "@/components/catalog/CatalogToolbar.vue";
 
 import type {
   CatalogCategoryItem,
@@ -20,9 +25,11 @@ definePageMeta({
   roles: ["admin", "manager"],
 });
 
-const activeTab = ref<"products" | "services" | "categories">("products");
+type CatalogTab = "summary" | "products" | "services" | "categories";
+const activeTab = ref<CatalogTab>("summary");
 const searchQuery = ref("");
 const mutationLoading = ref(false);
+const mutationError = ref<string | null>(null);
 const productModalOpen = ref(false);
 const serviceModalOpen = ref(false);
 const categoryModalOpen = ref(false);
@@ -31,7 +38,9 @@ const editingService = ref<CatalogServiceItem | null>(null);
 const editingCategory = ref<CatalogCategoryItem | null>(null);
 
 const {
-  loadCatalog,
+  loadProducts,
+  loadServices,
+  loadCategories,
   createProduct,
   updateProduct,
   updateProductStatus,
@@ -42,41 +51,70 @@ const {
   updateCategory,
   updateCategoryStatus,
 } = useCatalog();
-const { ensureTenantContext, uploadCatalogImage, resolveCatalogImage } = useCatalogMedia();
+const { ensureTenantContext, uploadCatalogImage } = useCatalogMedia();
 
-const { data, refresh } = await useAsyncData(
-  "catalog-module",
-  () => loadCatalog(),
+const { data: productsData, refresh: refreshProducts, pending: pendingProducts } = await useAsyncData(
+  "catalog-products",
+  () => loadProducts(),
   { server: false },
 );
 
-const catalog = computed(() => data.value ?? { products: [], services: [], categories: [] });
+const { data: servicesData, refresh: refreshServices, pending: pendingServices } = await useAsyncData(
+  "catalog-services",
+  () => loadServices(),
+  { server: false },
+);
+
+const { data: categoriesData, refresh: refreshCategories, pending: pendingCategories } = await useAsyncData(
+  "catalog-categories",
+  () => loadCategories(),
+  { server: false },
+);
+
+const categoryMap = computed(() => new Map((categoriesData.value ?? []).map((category) => [category.id, category])));
+
+const products = computed(() =>
+  (productsData.value ?? []).map((item) => ({
+    ...item,
+    categoryName: item.categoryId ? (categoryMap.value.get(item.categoryId)?.name ?? null) : null,
+  })),
+);
+
+const services = computed(() =>
+  (servicesData.value ?? []).map((item) => ({
+    ...item,
+    categoryName: item.categoryId ? (categoryMap.value.get(item.categoryId)?.name ?? null) : null,
+  })),
+);
+
+const categories = computed(() => {
+  const productsCountByCategory = new Map<string, number>();
+  const servicesCountByCategory = new Map<string, number>();
+
+  for (const product of products.value) {
+    if (product.categoryId) {
+      productsCountByCategory.set(product.categoryId, (productsCountByCategory.get(product.categoryId) ?? 0) + 1);
+    }
+  }
+
+  for (const service of services.value) {
+    if (service.categoryId) {
+      servicesCountByCategory.set(service.categoryId, (servicesCountByCategory.get(service.categoryId) ?? 0) + 1);
+    }
+  }
+
+  return (categoriesData.value ?? []).map((item) => ({
+    ...item,
+    linkedCount: item.type === "product"
+      ? (productsCountByCategory.get(item.id) ?? 0)
+      : (servicesCountByCategory.get(item.id) ?? 0),
+  }));
+});
+
+const pending = computed(() => pendingProducts.value || pendingServices.value || pendingCategories.value);
+const catalog = computed(() => ({ products: products.value, services: services.value, categories: categories.value }));
 const productCategories = computed(() => catalog.value.categories.filter((category) => category.type === "product"));
 const serviceCategories = computed(() => catalog.value.categories.filter((category) => category.type === "service"));
-const editingProductInitial = computed(() => {
-  if (!editingProduct.value) {
-    return undefined;
-  }
-
-  return {
-    ...editingProduct.value,
-    sku: editingProduct.value.sku ?? "",
-    description: editingProduct.value.description ?? "",
-    imageUrl: editingProduct.value.imageUrl ?? "",
-  };
-});
-
-const editingServiceInitial = computed(() => {
-  if (!editingService.value) {
-    return undefined;
-  }
-
-  return {
-    ...editingService.value,
-    description: editingService.value.description ?? "",
-    imageUrl: editingService.value.imageUrl ?? "",
-  };
-});
 
 const filteredProducts = computed(() => {
   const query = searchQuery.value.trim().toLowerCase();
@@ -132,8 +170,54 @@ const openCategoryModal = (category?: CatalogCategoryItem) => {
   categoryModalOpen.value = true;
 };
 
+const closeProductModal = () => {
+  productModalOpen.value = false;
+};
+
+const closeServiceModal = () => {
+  serviceModalOpen.value = false;
+};
+
+const closeCategoryModal = () => {
+  categoryModalOpen.value = false;
+};
+
+const resolveErrorMessage = (error: unknown, fallback: string) => {
+  if (
+    error
+    && typeof error === "object"
+    && "statusMessage" in error
+    && typeof (error as { statusMessage?: unknown }).statusMessage === "string"
+  ) {
+    return (error as { statusMessage: string }).statusMessage;
+  }
+
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+
+  return fallback;
+};
+
+const handleCreateForTab = () => {
+  if (activeTab.value === "products") {
+    openProductModal();
+    return;
+  }
+
+  if (activeTab.value === "services") {
+    openServiceModal();
+    return;
+  }
+
+  if (activeTab.value === "categories") {
+    openCategoryModal();
+  }
+};
+
 const handleProductSubmit = async (payload: CatalogProductPayload) => {
   mutationLoading.value = true;
+  mutationError.value = null;
   try {
     const nextPayload: CatalogProductPayload = { ...payload };
     if (payload.imageFile) {
@@ -148,9 +232,13 @@ const handleProductSubmit = async (payload: CatalogProductPayload) => {
     } else {
       await createProduct(nextPayload);
     }
-    productModalOpen.value = false;
+
+    closeProductModal();
     editingProduct.value = null;
-    await refresh();
+    await refreshProducts();
+  } catch (error) {
+    mutationError.value = resolveErrorMessage(error, "No se pudo crear/actualizar el producto.");
+    console.error("[CATALOGO] Product submit failed:", error);
   } finally {
     mutationLoading.value = false;
   }
@@ -158,6 +246,7 @@ const handleProductSubmit = async (payload: CatalogProductPayload) => {
 
 const handleServiceSubmit = async (payload: CatalogServicePayload) => {
   mutationLoading.value = true;
+  mutationError.value = null;
   try {
     const nextPayload: CatalogServicePayload = { ...payload };
     if (payload.imageFile) {
@@ -172,9 +261,13 @@ const handleServiceSubmit = async (payload: CatalogServicePayload) => {
     } else {
       await createService(nextPayload);
     }
-    serviceModalOpen.value = false;
+
+    closeServiceModal();
     editingService.value = null;
-    await refresh();
+    await refreshServices();
+  } catch (error) {
+    mutationError.value = resolveErrorMessage(error, "No se pudo crear/actualizar el servicio.");
+    console.error("[CATALOGO] Service submit failed:", error);
   } finally {
     mutationLoading.value = false;
   }
@@ -182,167 +275,84 @@ const handleServiceSubmit = async (payload: CatalogServicePayload) => {
 
 const handleCategorySubmit = async (payload: CatalogCategoryPayload) => {
   mutationLoading.value = true;
+  mutationError.value = null;
   try {
     if (editingCategory.value) {
       await updateCategory(editingCategory.value.id, payload);
     } else {
       await createCategory(payload);
     }
-    categoryModalOpen.value = false;
+
+    closeCategoryModal();
     editingCategory.value = null;
-    await refresh();
+    await refreshCategories();
+  } catch (error) {
+    mutationError.value = resolveErrorMessage(error, "No se pudo crear/actualizar la categoria.");
+    console.error("[CATALOGO] Category submit failed:", error);
   } finally {
     mutationLoading.value = false;
   }
 };
 
-const productColumns = computed(() => {
-  const UBadge = resolveComponent("UBadge");
-  const UButton = resolveComponent("UButton");
+const handleToggleProductStatus = async ({ id, nextState }: { id: string; nextState: boolean }) => {
+  mutationError.value = null;
+  try {
+    await updateProductStatus(id, nextState);
+    await refreshProducts();
+  } catch (error) {
+    mutationError.value = resolveErrorMessage(error, "No se pudo actualizar el estado del producto.");
+    console.error("[CATALOGO] Product status failed:", error);
+  }
+};
 
-  return [
-    {
-      accessorKey: "name",
-      header: "Producto",
-      cell: ({ row }: { row: { original: CatalogProductItem } }) =>
-        h("div", { class: "flex items-center gap-3" }, [
-          row.original.imageUrl
-            ? h("img", { src: resolveCatalogImage(row.original.imageUrl, "product"), alt: row.original.name, class: "h-10 w-10 rounded-lg object-cover" })
-            : h("img", { src: resolveCatalogImage(null, "product"), alt: "Placeholder de producto", class: "h-10 w-10 rounded-lg object-cover" }),
-          h("div", { class: "space-y-1 min-w-0" }, [
-            h("p", { class: "truncate font-medium text-slate-950 dark:text-white" }, row.original.name),
-            h("p", { class: "text-xs text-slate-500 dark:text-slate-400" }, row.original.sku ?? "Sin SKU"),
-          ]),
-        ]),
-    },
-    {
-      accessorKey: "categoryName",
-      header: "Categoria",
-      cell: ({ row }: { row: { original: CatalogProductItem } }) =>
-        h("span", { class: "text-sm text-slate-600 dark:text-slate-300" }, row.original.categoryName ?? "Sin categoria"),
-    },
-    {
-      accessorKey: "salePrice",
-      header: "Venta",
-      cell: ({ row }: { row: { original: CatalogProductItem } }) =>
-        h("span", { class: "text-sm font-medium text-slate-950 dark:text-white" }, `Bs ${row.original.salePrice.toFixed(2)}`),
-    },
-    {
-      accessorKey: "trackInventory",
-      header: "Inventario",
-      cell: ({ row }: { row: { original: CatalogProductItem } }) =>
-        h(UBadge, { color: row.original.trackInventory ? "primary" : "neutral", variant: "soft" }, () => row.original.trackInventory ? "Controlado" : "Libre"),
-    },
-    {
-      accessorKey: "isActive",
-      header: "Estado",
-      cell: ({ row }: { row: { original: CatalogProductItem } }) =>
-        h(UBadge, { color: row.original.isActive ? "success" : "neutral", variant: "soft" }, () => row.original.isActive ? "Activo" : "Inactivo"),
-    },
-    {
-      id: "actions",
-      header: "Acciones",
-      cell: ({ row }: { row: { original: CatalogProductItem } }) =>
-        h("div", { class: "flex flex-col gap-2 sm:flex-row" }, [
-          h(UButton, { size: "sm", color: "neutral", variant: "ghost", class: "min-h-10", onClick: () => openProductModal(row.original) }, () => "Editar"),
-          h(UButton, { size: "sm", color: row.original.isActive ? "error" : "success", variant: "ghost", class: "min-h-10", onClick: async () => { await updateProductStatus(row.original.id, !row.original.isActive); await refresh(); } }, () => row.original.isActive ? "Desactivar" : "Activar"),
-        ]),
-    },
-  ];
-});
+const handleToggleServiceStatus = async ({ id, nextState }: { id: string; nextState: boolean }) => {
+  mutationError.value = null;
+  try {
+    await updateServiceStatus(id, nextState);
+    await refreshServices();
+  } catch (error) {
+    mutationError.value = resolveErrorMessage(error, "No se pudo actualizar el estado del servicio.");
+    console.error("[CATALOGO] Service status failed:", error);
+  }
+};
 
-const serviceColumns = computed(() => {
-  const UBadge = resolveComponent("UBadge");
-  const UButton = resolveComponent("UButton");
+const handleToggleCategoryStatus = async ({ id, nextState }: { id: string; nextState: boolean }) => {
+  mutationError.value = null;
+  try {
+    await updateCategoryStatus(id, nextState);
+    await refreshCategories();
+  } catch (error) {
+    mutationError.value = resolveErrorMessage(error, "No se pudo actualizar el estado de la categoria.");
+    console.error("[CATALOGO] Category status failed:", error);
+  }
+};
 
-  return [
-    {
-      accessorKey: "name",
-      header: "Servicio",
-      cell: ({ row }: { row: { original: CatalogServiceItem } }) =>
-        h("div", { class: "flex items-center gap-3" }, [
-          row.original.imageUrl
-            ? h("img", { src: resolveCatalogImage(row.original.imageUrl, "service"), alt: row.original.name, class: "h-10 w-10 rounded-lg object-cover" })
-            : h("img", { src: resolveCatalogImage(null, "service"), alt: "Placeholder de servicio", class: "h-10 w-10 rounded-lg object-cover" }),
-          h("div", { class: "space-y-1 min-w-0" }, [
-            h("p", { class: "truncate font-medium text-slate-950 dark:text-white" }, row.original.name),
-            h("p", { class: "text-xs text-slate-500 dark:text-slate-400" }, `${row.original.durationMinutes} min`),
-          ]),
-        ]),
-    },
-    {
-      accessorKey: "categoryName",
-      header: "Categoria",
-      cell: ({ row }: { row: { original: CatalogServiceItem } }) =>
-        h("span", { class: "text-sm text-slate-600 dark:text-slate-300" }, row.original.categoryName ?? "Sin categoria"),
-    },
-    {
-      accessorKey: "price",
-      header: "Precio",
-      cell: ({ row }: { row: { original: CatalogServiceItem } }) =>
-        h("span", { class: "text-sm font-medium text-slate-950 dark:text-white" }, `Bs ${row.original.price.toFixed(2)}`),
-    },
-    {
-      accessorKey: "isActive",
-      header: "Estado",
-      cell: ({ row }: { row: { original: CatalogServiceItem } }) =>
-        h(UBadge, { color: row.original.isActive ? "success" : "neutral", variant: "soft" }, () => row.original.isActive ? "Activo" : "Inactivo"),
-    },
-    {
-      id: "actions",
-      header: "Acciones",
-      cell: ({ row }: { row: { original: CatalogServiceItem } }) =>
-        h("div", { class: "flex flex-col gap-2 sm:flex-row" }, [
-          h(UButton, { size: "sm", color: "neutral", variant: "ghost", class: "min-h-10", onClick: () => openServiceModal(row.original) }, () => "Editar"),
-          h(UButton, { size: "sm", color: row.original.isActive ? "error" : "success", variant: "ghost", class: "min-h-10", onClick: async () => { await updateServiceStatus(row.original.id, !row.original.isActive); await refresh(); } }, () => row.original.isActive ? "Desactivar" : "Activar"),
-        ]),
-    },
-  ];
-});
+watch(
+  () => productModalOpen.value,
+  (open) => {
+    if (!open) {
+      editingProduct.value = null;
+    }
+  },
+);
 
-const categoryColumns = computed(() => {
-  const UBadge = resolveComponent("UBadge");
-  const UButton = resolveComponent("UButton");
+watch(
+  () => serviceModalOpen.value,
+  (open) => {
+    if (!open) {
+      editingService.value = null;
+    }
+  },
+);
 
-  return [
-    {
-      accessorKey: "name",
-      header: "Categoria",
-      cell: ({ row }: { row: { original: CatalogCategoryItem } }) =>
-        h("div", { class: "space-y-1" }, [
-          h("p", { class: "font-medium text-slate-950 dark:text-white" }, row.original.name),
-          h("p", { class: "text-xs text-slate-500 dark:text-slate-400" }, row.original.parentName ?? "Sin categoria padre"),
-        ]),
-    },
-    {
-      accessorKey: "type",
-      header: "Tipo",
-      cell: ({ row }: { row: { original: CatalogCategoryItem } }) =>
-        h(UBadge, { color: row.original.type === "product" ? "primary" : "warning", variant: "soft" }, () => row.original.type === "product" ? "Producto" : "Servicio"),
-    },
-    {
-      accessorKey: "linkedCount",
-      header: "Elementos",
-      cell: ({ row }: { row: { original: CatalogCategoryItem } }) =>
-        h("span", { class: "text-sm text-slate-600 dark:text-slate-300" }, `${row.original.linkedCount}`),
-    },
-    {
-      accessorKey: "isActive",
-      header: "Estado",
-      cell: ({ row }: { row: { original: CatalogCategoryItem } }) =>
-        h(UBadge, { color: row.original.isActive ? "success" : "neutral", variant: "soft" }, () => row.original.isActive ? "Activa" : "Inactiva"),
-    },
-    {
-      id: "actions",
-      header: "Acciones",
-      cell: ({ row }: { row: { original: CatalogCategoryItem } }) =>
-        h("div", { class: "flex flex-col gap-2 sm:flex-row" }, [
-          h(UButton, { size: "sm", color: "neutral", variant: "ghost", class: "min-h-10", onClick: () => openCategoryModal(row.original) }, () => "Editar"),
-          h(UButton, { size: "sm", color: row.original.isActive ? "error" : "success", variant: "ghost", class: "min-h-10", onClick: async () => { await updateCategoryStatus(row.original.id, !row.original.isActive); await refresh(); } }, () => row.original.isActive ? "Desactivar" : "Activar"),
-        ]),
-    },
-  ];
-});
+watch(
+  () => categoryModalOpen.value,
+  (open) => {
+    if (!open) {
+      editingCategory.value = null;
+    }
+  },
+);
 
 onMounted(async () => {
   await ensureTenantContext();
@@ -351,128 +361,89 @@ onMounted(async () => {
 
 <template>
   <div class="space-y-6 md:space-y-8">
-    <UiModuleHero
-      eyebrow="Catalogo"
-      title="Oferta comercial"
-      description="Administra productos, servicios y categorias desde un modulo separado del control operativo de inventario."
-      icon="i-lucide-box"
-    >
-      <template #actions>
-        <UButton v-if="activeTab === 'products'" color="primary" icon="i-lucide-plus" @click="openProductModal()">
-          Nuevo producto
-        </UButton>
-        <UButton v-else-if="activeTab === 'services'" color="primary" icon="i-lucide-plus" @click="openServiceModal()">
-          Nuevo servicio
-        </UButton>
-        <UButton v-else color="primary" icon="i-lucide-plus" @click="openCategoryModal()">
-          Nueva categoria
-        </UButton>
-      </template>
-    </UiModuleHero>
+    <CatalogTabs v-model="activeTab" />
 
-    <div class="flex flex-wrap gap-2">
-      <UButton :variant="activeTab === 'products' ? 'solid' : 'soft'" :color="activeTab === 'products' ? 'primary' : 'neutral'" @click="activeTab = 'products'">
-        Productos
-      </UButton>
-      <UButton :variant="activeTab === 'services' ? 'solid' : 'soft'" :color="activeTab === 'services' ? 'primary' : 'neutral'" @click="activeTab = 'services'">
-        Servicios
-      </UButton>
-      <UButton :variant="activeTab === 'categories' ? 'solid' : 'soft'" :color="activeTab === 'categories' ? 'primary' : 'neutral'" @click="activeTab = 'categories'">
-        Categorias
-      </UButton>
-    </div>
-
-    <UiSearchFilters title="Buscar en catalogo" description="Filtra por nombre, SKU, categoria o descripcion." surface>
-      <template #controls>
-        <UInput v-model="searchQuery" icon="i-lucide-search" placeholder="Buscar..." :ui="{ base: 'min-h-11 text-base' }" />
-      </template>
-      <template #summary>
-        <template v-if="activeTab === 'products'">{{ filteredProducts.length }} producto(s)</template>
-        <template v-else-if="activeTab === 'services'">{{ filteredServices.length }} servicio(s)</template>
-        <template v-else>{{ filteredCategories.length }} categoria(s)</template>
-      </template>
-    </UiSearchFilters>
-
-    <UiDataTable
-      v-if="activeTab === 'products'"
-      :data="filteredProducts"
-      :columns="productColumns"
-      :loading="false"
-      empty="No hay productos en el catalogo."
-      min-width-class="min-w-[66rem] rounded-[1.5rem]"
+    <UAlert
+      v-if="mutationError"
+      color="error"
+      variant="soft"
+      icon="i-lucide-triangle-alert"
+      :title="mutationError"
     />
 
-    <UiDataTable
-      v-else-if="activeTab === 'services'"
-      :data="filteredServices"
-      :columns="serviceColumns"
-      :loading="false"
-      empty="No hay servicios en el catalogo."
-      min-width-class="min-w-[60rem] rounded-[1.5rem]"
+    <CatalogSummaryPanel
+      v-if="activeTab === 'summary'"
+      :products-count="catalog.products.length"
+      :services-count="catalog.services.length"
+      :categories-count="catalog.categories.length"
+      @navigate="activeTab = $event"
     />
 
-    <UiDataTable
-      v-else
-      :data="filteredCategories"
-      :columns="categoryColumns"
-      :loading="false"
-      empty="No hay categorias en el catalogo."
-      min-width-class="min-w-[54rem] rounded-[1.5rem]"
-    />
+    <template v-else>
+      <CatalogToolbar
+        :active-tab="activeTab"
+        :search-query="searchQuery"
+        :products-count="filteredProducts.length"
+        :services-count="filteredServices.length"
+        :categories-count="filteredCategories.length"
+        @update:search-query="searchQuery = $event"
+        @create="handleCreateForTab"
+      />
 
-    <UModal
+      <CatalogProductsTable
+        v-if="activeTab === 'products'"
+        :rows="filteredProducts"
+        :loading="pending || mutationLoading"
+        @edit="openProductModal"
+        @toggle-status="handleToggleProductStatus"
+      />
+
+      <CatalogServicesTable
+        v-else-if="activeTab === 'services'"
+        :rows="filteredServices"
+        :loading="pending || mutationLoading"
+        @edit="openServiceModal"
+        @toggle-status="handleToggleServiceStatus"
+      />
+
+      <CatalogCategoriesTable
+        v-else-if="activeTab === 'categories'"
+        :rows="filteredCategories"
+        :loading="pending || mutationLoading"
+        @edit="openCategoryModal"
+        @toggle-status="handleToggleCategoryStatus"
+      />
+    </template>
+
+    <CatalogProductModal
       :open="productModalOpen"
-      :title="editingProduct ? 'Editar producto' : 'Nuevo producto'"
-      :description="editingProduct ? 'Actualiza informacion comercial y de control de inventario.' : 'Crea un producto para el catalogo. Su stock inicial sera 0.'"
+      :loading="mutationLoading"
+      :categories="productCategories"
+      :initial-value="editingProduct"
       @update:open="productModalOpen = $event"
-    >
-      <template #body>
-        <ProductForm
-          :loading="mutationLoading"
-          :categories="productCategories"
-          :initial-value="editingProductInitial"
-          :submit-label="editingProduct ? 'Guardar cambios' : 'Crear producto'"
-          @submit="handleProductSubmit"
-          @cancel="productModalOpen = false"
-        />
-      </template>
-    </UModal>
+      @submit="handleProductSubmit"
+      @cancel="closeProductModal"
+    />
 
-    <UModal
+    <CatalogServiceModal
       :open="serviceModalOpen"
-      :title="editingService ? 'Editar servicio' : 'Nuevo servicio'"
-      :description="editingService ? 'Actualiza informacion comercial del servicio.' : 'Crea un servicio sin mezclar aun su cobertura operativa.'"
+      :loading="mutationLoading"
+      :categories="serviceCategories"
+      :initial-value="editingService"
       @update:open="serviceModalOpen = $event"
-    >
-      <template #body>
-        <ServiceForm
-          :loading="mutationLoading"
-          :categories="serviceCategories"
-          :initial-value="editingServiceInitial"
-          :submit-label="editingService ? 'Guardar cambios' : 'Crear servicio'"
-          @submit="handleServiceSubmit"
-          @cancel="serviceModalOpen = false"
-        />
-      </template>
-    </UModal>
+      @submit="handleServiceSubmit"
+      @cancel="closeServiceModal"
+    />
 
-    <UModal
+    <CatalogCategoryModal
       :open="categoryModalOpen"
-      :title="editingCategory ? 'Editar categoria' : 'Nueva categoria'"
-      :description="editingCategory ? 'Actualiza la estructura del catalogo.' : 'Crea una categoria para productos o servicios.'"
+      :loading="mutationLoading"
+      :type="editingCategory?.type ?? (activeTab === 'services' ? 'service' : 'product')"
+      :categories="catalog.categories"
+      :initial-value="editingCategory"
       @update:open="categoryModalOpen = $event"
-    >
-      <template #body>
-        <CategoryForm
-          :loading="mutationLoading"
-          :type="editingCategory?.type ?? (activeTab === 'services' ? 'service' : 'product')"
-          :categories="catalog.categories"
-          :initial-value="editingCategory ?? undefined"
-          :submit-label="editingCategory ? 'Guardar cambios' : 'Crear categoria'"
-          @submit="handleCategorySubmit"
-          @cancel="categoryModalOpen = false"
-        />
-      </template>
-    </UModal>
+      @submit="handleCategorySubmit"
+      @cancel="closeCategoryModal"
+    />
   </div>
 </template>

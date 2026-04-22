@@ -1,7 +1,8 @@
 import { createClient } from "@supabase/supabase-js";
-import { createError } from "h3";
+import { createError, getHeader } from "h3";
 import type { H3Event } from "h3";
 import type { Database } from "@/types/database.types";
+import { assertValidDevAdminKey } from "../../utils/dev-security";
 
 export default defineEventHandler(async (event: H3Event) => {
   if (process.env.NODE_ENV === "production") {
@@ -12,6 +13,10 @@ export default defineEventHandler(async (event: H3Event) => {
   }
 
   const config = useRuntimeConfig(event);
+  const devAdminKey = config.devAdminKey;
+  const requestKey = getHeader(event, "x-dev-admin-key");
+  assertValidDevAdminKey(requestKey ?? undefined, devAdminKey);
+
   const url = process.env.NUXT_PUBLIC_SUPABASE_URL;
   const serviceRoleKey = config.supabaseServiceRoleKey;
 
