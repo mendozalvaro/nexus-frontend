@@ -196,3 +196,22 @@ pm run typecheck => exit code 0.
 - Estado:
   - Modulo `users (staff)` confirmado como completo con criterio multi-sucursal.
   - Pending global se mantiene: `[Fase 2] harden_server_side_module_enforcement_for_inventory_and_sensitive_modules`.
+
+## 2026-04-25 14:21:13 - codex
+- Step completado: inventory_transfer_reject_flow_and_type_badges
+- Acciones:
+  - Historial de inventario: se normalizo visualizacion de tipo con etiquetas y colores diferenciados (`Ingreso`, `Salida`, `Ajuste`, `Transferencia enviada`, `Transferencia recibida`).
+  - Stock: se agrego accion `Rechazar` en banner de transferencias pendientes junto con `Recepcionar`.
+  - Backend: se implementaron endpoints de cancelacion para transferencia individual y lote:
+    - `POST /api/inventory/stock/transfer/[id]/cancel`
+    - `POST /api/inventory/stock/transfer-batch/[id]/cancel`
+  - Logica de rechazo: valida estado `pending`, permisos por rol/sucursal, revierte stock al origen, registra movimiento compensatorio y auditoria, con respuesta idempotente si ya estaba cancelada.
+- Validacion:
+  - `npm run typecheck` => exit code 0.
+  - Smoke DevTools en `http://localhost:3000/inventory`:
+    - visualizacion de botones `Recepcionar`/`Rechazar` en banner,
+    - ejecucion de rechazo de lote con `POST /api/inventory/stock/transfer-batch/{id}/cancel` => 200,
+    - banner de pendientes se actualiza y desaparece tras rechazo.
+- Estado:
+  - Modulo `inventory` permanece completo en ledger con mejoras de flujo operativo.
+  - Pending global se mantiene: `[Fase 2] harden_server_side_module_enforcement_for_inventory_and_sensitive_modules`.

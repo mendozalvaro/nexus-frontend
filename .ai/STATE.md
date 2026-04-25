@@ -1,7 +1,7 @@
 ﻿# Multi-Agent Workflow State
 
 ## Current State
-- **last_step**: finalize_users_staff_multibranch_assignment_validation
+- **last_step**: inventory_transfer_reject_flow_and_type_badges
 - **pending**: [Fase 2] harden_server_side_module_enforcement_for_inventory_and_sensitive_modules
 - **agent**: codex
 
@@ -62,6 +62,8 @@
 - app/pages/system/profile.vue
 - supabase/migrations/20260421_fix_onboarding_profile_fk.sql
 - server/api/admin/users/index.get.ts
+- server/api/inventory/stock/transfer/[id]/cancel.post.ts
+- server/api/inventory/stock/transfer-batch/[id]/cancel.post.ts
 
 ## Files Modified
 - app/composables/useAuth.ts
@@ -122,6 +124,10 @@
 - app/components/forms/CheckoutForm.vue
 - .github/copilot-instructions.md
 - .ai/PROJECT_CONTEXT.md
+- app/components/inventory/InventoryStockTab.vue
+- app/components/features/InventoryMovementTable.vue
+- app/composables/useInventoryPage.ts
+- app/pages/inventory.vue
 
 ## Notes
 - Selector de sucursal en layout ahora aplica solo a `manager` y `employee`.
@@ -139,6 +145,13 @@
   - en otros casos muestra sucursal fija,
   - bloqueo de submit si no hay sucursal valida.
 - Validacion tecnica: `npm run typecheck` => OK.
+- Inventario: historial con tipos y colores diferenciados por operacion:
+  - Ingreso (`success`), Salida (`error`), Ajuste (`primary`), Transferencia enviada (`warning`), Transferencia recibida (`neutral`).
+- Stock: banner de transferencias pendientes ahora permite `Recepcionar` y `Rechazar`.
+- Backend inventario: nuevos endpoints para rechazo de transferencias (single y batch) con rollback de stock al origen, control de estado `pending`, permisos por rol/sucursal e idempotencia en canceladas.
+- Validacion ejecutada en esta iteracion:
+  - `npm run typecheck` => OK.
+  - Smoke DevTools en `http://localhost:3000/inventory`: rechazo de lote `POST /api/inventory/stock/transfer-batch/{id}/cancel` => 200 y limpieza del banner de pendientes.
 - Onboarding fix aplicado en BD linked: `supabase db query --linked -f supabase/migrations/20260421_fix_onboarding_profile_fk.sql -o json`.
 - Causa raiz del bloqueo `Empresa -> Pago` corregida: `create_onboarding_organization` ahora asegura `upsert` de `profiles` antes de insertar en `employee_branch_assignments`, evitando FK `employee_branch_assignments_user_id_fkey`.
 - Validacion E2E post-fix (DevTools):
