@@ -16,8 +16,7 @@ export interface AuthContextPayload {
 let pendingAuthContextPromise: Promise<AuthContextPayload> | null = null;
 
 export const useAuthContext = () => {
-  const { resolveUser } = useSessionAccess();
-  const { profile, fetchProfile } = useAuth();
+  const { profile, ensureContext } = useUserContext();
 
   const ensureAuthContext = async (
     options: EnsureAuthContextOptions = {},
@@ -35,7 +34,11 @@ export const useAuthContext = () => {
     }
 
     const loader = (async (): Promise<AuthContextPayload> => {
-      const currentUser = await resolveUser({ force: forceUserValidation });
+      const { user: currentUser, profile: resolvedProfile } = await ensureContext({
+        requireProfile,
+        forceUserValidation,
+        forceProfileRefresh,
+      });
       if (!currentUser) {
         return {
           user: null,
@@ -46,22 +49,10 @@ export const useAuthContext = () => {
       if (!requireProfile) {
         return {
           user: currentUser,
-          profile: profile.value?.id === currentUser.id ? profile.value : null,
+          profile: resolvedProfile ?? (profile.value?.id === currentUser.id ? profile.value : null),
         };
       }
 
-      if (
-        !forceProfileRefresh &&
-        profile.value &&
-        profile.value.id === currentUser.id
-      ) {
-        return {
-          user: currentUser,
-          profile: profile.value,
-        };
-      }
-
-      const resolvedProfile = await fetchProfile({ force: forceProfileRefresh });
       return {
         user: currentUser,
         profile: resolvedProfile,

@@ -1,5 +1,3 @@
-import type { Database } from "@/types/database.types";
-
 import { getDefaultPathForRole } from "../utils/role-access";
 
 export default defineNuxtRouteMiddleware(async () => {
@@ -18,42 +16,16 @@ export default defineNuxtRouteMiddleware(async () => {
     return navigateTo(getDefaultPathForRole(profile.role));
   }
 
-  const supabase = useSupabaseClient<Database>();
-  const [{ data: organization, error: organizationError }, {
-    data: subscription,
-    error: subscriptionError,
-  }, {
-    data: validation,
-    error: validationError,
-  }] = await Promise.all([
-    supabase
-      .from("organizations")
-      .select("status")
-      .eq("id", profile.organization_id)
-      .maybeSingle(),
-    supabase
-      .from("organization_subscriptions")
-      .select("status")
-      .eq("organization_id", profile.organization_id)
-      .maybeSingle(),
-    supabase
-      .from("payment_validations")
-      .select("status")
-      .eq("organization_id", profile.organization_id)
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle(),
-  ]);
+  const { loadAccountStatus } = useAccountStatus();
+  const { accountStatus, snapshot } = await loadAccountStatus({
+    organizationId: profile.organization_id,
+  });
 
-  if (organizationError || subscriptionError || validationError) {
-    return;
-  }
-
-  if (organization?.status === "active" && subscription?.status === "active") {
+  if (accountStatus === "active") {
     return navigateTo(getDefaultPathForRole(profile.role));
   }
 
-  if (profile.role === "admin" && !validation) {
+  if (profile.role === "admin" && !snapshot.latestValidationStatus) {
     return navigateTo("/onboarding/payment");
   }
 

@@ -19,6 +19,7 @@ const activeTab = ref<"summary" | "coverage">("summary");
 const modalOpen = ref(false);
 const mutationLoading = ref(false);
 const selectedService = ref<ServiceAssignmentService | null>(null);
+const { selectedBranchId } = useModuleBranchContext("service-assignment");
 
 const { loadOverview, updateCoverage } = useServiceAssignment();
 
@@ -29,12 +30,33 @@ const { data, pending, refresh } = await useAsyncData(
 );
 
 const overview = computed(() => data.value);
+const selectedBranch = computed(() =>
+  (overview.value?.branches ?? []).find((branch) => branch.id === selectedBranchId.value) ?? null,
+);
+
+const serviceHasCoverageInBranch = (serviceId: string, branchId: string | null) => {
+  if (!branchId) return false;
+  return (overview.value?.assignments ?? []).some((assignment) =>
+    assignment.branchId === branchId && assignment.serviceIds.includes(serviceId),
+  );
+};
+
 const filteredServices = computed(() => {
   const rows = overview.value?.services ?? [];
+  const branchId = selectedBranchId.value;
   const query = searchQuery.value.trim().toLowerCase();
+  const includeService = (service: ServiceAssignmentService) => {
+    if (!incompleteOnly.value) {
+      return true;
+    }
+
+    return branchId
+      ? !serviceHasCoverageInBranch(service.id, branchId)
+      : service.missingCoverage;
+  };
 
   if (!query) {
-    return rows.filter((service) => !incompleteOnly.value || service.missingCoverage);
+    return rows.filter(includeService);
   }
 
   return rows
@@ -43,13 +65,16 @@ const filteredServices = computed(() => {
         value.toLowerCase().includes(query),
       ),
     )
-    .filter((service) => !incompleteOnly.value || service.missingCoverage);
+    .filter(includeService);
 });
 
 const summary = computed(() => {
   const services = overview.value?.services ?? [];
+  const branchId = selectedBranchId.value;
   const totalServices = services.length;
-  const incompleteServices = services.filter((service) => service.missingCoverage).length;
+  const incompleteServices = branchId
+    ? services.filter((service) => !serviceHasCoverageInBranch(service.id, branchId)).length
+    : services.filter((service) => service.missingCoverage).length;
   const coveredServices = totalServices - incompleteServices;
 
   return {
@@ -80,10 +105,24 @@ const handleSaveCoverage = async (coverage: ServiceAssignmentCoverageItem[]) => 
   if (!selectedService.value) {
     return;
   }
+  if (!selectedBranchId.value) {
+    return;
+  }
+
+  const currentCoverage = getCoverageForService(selectedService.value.id);
+  const currentMap = new Map(currentCoverage.map((item) => [item.branchId, item.userIds]));
+  const nextMap = new Map(coverage.map((item) => [item.branchId, item.userIds]));
+
+  currentMap.set(selectedBranchId.value, nextMap.get(selectedBranchId.value) ?? []);
+
+  const mergedCoverage: ServiceAssignmentCoverageItem[] = (overview.value?.branches ?? []).map((branch) => ({
+    branchId: branch.id,
+    userIds: currentMap.get(branch.id) ?? [],
+  }));
 
   mutationLoading.value = true;
   try {
-    await updateCoverage(selectedService.value.id, coverage);
+    await updateCoverage(selectedService.value.id, mergedCoverage);
     modalOpen.value = false;
     await refresh();
   } finally {
@@ -150,6 +189,12 @@ const columns = computed(() => {
 
 <template>
   <div class="space-y-6 md:space-y-8">
+    <GlobalBranchContextSelector
+      module-key="service-assignment"
+      title="Contexto de asignacion"
+      description="Las asignaciones y cambios se aplican a la sucursal seleccionada."
+    />
+
     <div class="flex flex-wrap gap-2">
       <UButton :variant="activeTab === 'summary' ? 'solid' : 'soft'" :color="activeTab === 'summary' ? 'primary' : 'neutral'" @click="activeTab = 'summary'">
         Resumen
@@ -234,7 +279,7 @@ const columns = computed(() => {
       :open="modalOpen"
       :loading="mutationLoading"
       :service="selectedService"
-      :branches="overview?.branches ?? []"
+      :branches="selectedBranch ? [selectedBranch] : []"
       :branch-users="overview?.branchUsers ?? []"
       :coverage="selectedService ? getCoverageForService(selectedService.id) : []"
       @update:open="modalOpen = $event"

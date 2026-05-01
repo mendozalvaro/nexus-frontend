@@ -3,10 +3,7 @@ import type { AccessibleBranch } from "@/types/permissions";
 const BRANCH_STORAGE_KEY = "nexuspos.active-branch";
 
 export const useBranchSelector = () => {
-  const selectedBranchId = useState<string | null>(
-    "branch-selector:selected-branch-id",
-    () => null,
-  );
+  const { selectedBranchId } = useUserContext();
 
   const hasBranchSelection = computed(() => Boolean(selectedBranchId.value));
 

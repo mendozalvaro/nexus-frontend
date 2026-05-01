@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 import {
   assertStockTransferAllowed,
   getAdminBranchOrThrow,
@@ -5,13 +7,18 @@ import {
   requireBranchAdminContext,
   transferStockSchema,
 } from "../../../utils/admin-branches";
+import {
+  generateInventoryDocumentCode,
+  runInventoryTransferBatchCreate,
+  runInventoryTransferBatchReceive,
+} from "../../../utils/inventory";
 
 import type { Database } from "@/types/database.types";
 
-type InventoryStockRow = Database["public"]["Tables"]["inventory_stock"]["Row"];
 type ProductRow = Database["public"]["Tables"]["products"]["Row"];
 
 export default defineEventHandler(async (event) => {
+  // Legacy compatibility endpoint: delegates to inventory batch engine (create + immediate receive).
   const context = await requireBranchAdminContext(event);
   const body = await readValidatedBranchBody(event, transferStockSchema);
 
@@ -48,128 +55,62 @@ export default defineEventHandler(async (event) => {
     });
   }
 
-  const { data: sourceStock, error: sourceStockError } = await context.adminClient
-    .from("inventory_stock")
-    .select("id, branch_id, product_id, quantity, reserved_quantity, min_stock_level, updated_at")
-    .eq("branch_id", body.sourceBranchId)
-    .eq("product_id", body.productId)
-    .maybeSingle<InventoryStockRow>();
+  const idempotencyKey = `branch-transfer:${context.organizationId}:${context.userId}:${randomUUID()}`;
+  const observations = body.note.trim().length >= 3
+    ? body.note.trim()
+    : "Transferencia operativa desde sucursales";
 
-  if (sourceStockError) {
-    throw createError({
-      statusCode: 500,
-      statusMessage: "No se pudo validar el inventario origen.",
-    });
-  }
+  const movementCode = await generateInventoryDocumentCode(
+    {
+      adminClient: context.adminClient,
+      organizationId: context.organizationId,
+    },
+    "TRA",
+  );
 
-  if (!sourceStock) {
-    throw createError({
-      statusCode: 404,
-      statusMessage: "La sucursal origen no tiene inventario registrado para ese producto.",
-    });
-  }
+  const createResult = await runInventoryTransferBatchCreate(
+    {
+      adminClient: context.adminClient,
+      organizationId: context.organizationId,
+      userId: context.userId,
+    },
+    {
+      idempotencyKey,
+      sourceBranchId: body.sourceBranchId,
+      destinationBranchId: body.destinationBranchId,
+      observations,
+      internalNote: movementCode,
+      lines: [{ productId: body.productId, quantity: body.quantity }],
+    },
+  );
 
-  const sourceQuantity = sourceStock.quantity ?? 0;
-  const sourceReserved = sourceStock.reserved_quantity ?? 0;
-  const availableQuantity = sourceQuantity - sourceReserved;
-
-  if (availableQuantity < body.quantity) {
-    throw createError({
-      statusCode: 409,
-      statusMessage: `La sucursal origen solo tiene ${availableQuantity} unidad(es) disponibles para transferir.`,
-    });
-  }
-
-  const { data: destinationStock, error: destinationStockError } = await context.adminClient
-    .from("inventory_stock")
-    .select("id, branch_id, product_id, quantity, reserved_quantity, min_stock_level, updated_at")
-    .eq("branch_id", body.destinationBranchId)
-    .eq("product_id", body.productId)
-    .maybeSingle<InventoryStockRow>();
-
-  if (destinationStockError) {
-    throw createError({
-      statusCode: 500,
-      statusMessage: "No se pudo validar el inventario destino.",
-    });
-  }
-
-  const destinationQuantity = destinationStock?.quantity ?? 0;
-  const nextSourceQuantity = sourceQuantity - body.quantity;
-  const nextDestinationQuantity = destinationQuantity + body.quantity;
-
-  const { error: sourceUpdateError } = await context.adminClient
-    .from("inventory_stock")
-    .update({ quantity: nextSourceQuantity })
-    .eq("id", sourceStock.id);
-
-  if (sourceUpdateError) {
-    throw createError({
-      statusCode: 500,
-      statusMessage: "No se pudo actualizar el inventario de la sucursal origen.",
-    });
-  }
-
-  try {
-    if (destinationStock) {
-      const { error } = await context.adminClient
-        .from("inventory_stock")
-        .update({ quantity: nextDestinationQuantity })
-        .eq("id", destinationStock.id);
-
-      if (error) {
-        throw error;
-      }
-    } else {
-      const { error } = await context.adminClient
-        .from("inventory_stock")
-        .insert({
-          branch_id: body.destinationBranchId,
-          product_id: body.productId,
-          quantity: body.quantity,
-          reserved_quantity: 0,
-          min_stock_level: sourceStock.min_stock_level ?? 5,
-        });
-
-      if (error) {
-        throw error;
-      }
-    }
-  } catch (destinationMutationError) {
-    await context.adminClient
-      .from("inventory_stock")
-      .update({ quantity: sourceQuantity })
-      .eq("id", sourceStock.id);
-
-    throw createError({
-      statusCode: 500,
-      statusMessage: destinationMutationError instanceof Error
-        ? destinationMutationError.message
-        : "No se pudo completar la transferencia de stock.",
-    });
-  }
+  await runInventoryTransferBatchReceive(
+    {
+      adminClient: context.adminClient,
+      organizationId: context.organizationId,
+      userId: context.userId,
+    },
+    createResult.batchId,
+  );
 
   await context.adminClient.from("audit_logs").insert({
     user_id: context.userId,
     action: "UPDATE",
     table_name: "inventory_stock",
-    record_id: sourceStock.id,
+    record_id: createResult.batchId,
     old_data: {
       sourceBranchId: body.sourceBranchId,
       destinationBranchId: body.destinationBranchId,
       productId: body.productId,
-      sourceQuantity,
-      destinationQuantity,
     },
     new_data: {
       sourceBranchId: body.sourceBranchId,
       destinationBranchId: body.destinationBranchId,
       productId: body.productId,
-      sourceQuantity: nextSourceQuantity,
-      destinationQuantity: nextDestinationQuantity,
+      processedCount: createResult.processedCount,
     },
     context: {
-      event: "BRANCH_STOCK_TRANSFER",
+      event: "BRANCH_STOCK_TRANSFER_VIA_BATCH",
       organization_id: context.organizationId,
       source_branch_id: body.sourceBranchId,
       destination_branch_id: body.destinationBranchId,
@@ -177,6 +118,8 @@ export default defineEventHandler(async (event) => {
       product_name: product.name,
       quantity: body.quantity,
       note: body.note.trim() || null,
+      movement_code: movementCode,
+      transfer_batch_id: createResult.batchId,
     },
   });
 
@@ -186,5 +129,6 @@ export default defineEventHandler(async (event) => {
     destinationBranchId: body.destinationBranchId,
     productId: body.productId,
     transferredQuantity: body.quantity,
+    movementCode,
   };
 });

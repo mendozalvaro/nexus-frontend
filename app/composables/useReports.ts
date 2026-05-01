@@ -3,12 +3,10 @@ import type { OrganizationCapabilities } from "@/types/subscription";
 
 type AppointmentRow = Database["public"]["Tables"]["appointments"]["Row"];
 type AssignmentRow = Database["public"]["Tables"]["employee_branch_assignments"]["Row"];
-type BranchRow = Database["public"]["Tables"]["branches"]["Row"];
 type CategoryRow = Database["public"]["Tables"]["categories"]["Row"];
 type InventoryMovementRow = Database["public"]["Tables"]["inventory_movements"]["Row"];
 type InventoryStockRow = Database["public"]["Tables"]["inventory_stock"]["Row"];
 type ProductRow = Database["public"]["Tables"]["products"]["Row"];
-type ProfileRow = Database["public"]["Tables"]["profiles"]["Row"];
 type ServiceRow = Database["public"]["Tables"]["services"]["Row"];
 type TransactionItemRow = Database["public"]["Tables"]["transaction_items"]["Row"];
 type TransactionRow = Database["public"]["Tables"]["transactions"]["Row"];
@@ -154,6 +152,8 @@ interface TransactionScope {
 
 const DEFAULT_RANGE_DAYS = 30;
 const DEFAULT_WORKDAY_MINUTES = 8 * 60;
+const REPORT_CONTEXT_CACHE_TTL_MS = 30_000;
+const reportsContextInFlight = new Map<string, Promise<ReportsResolvedContext>>();
 
 const PAYMENT_METHOD_LABELS: Record<PaymentMethod | "all", string> = {
   all: "Todos los métodos",
@@ -231,8 +231,18 @@ const titleCase = (value: string | null | undefined, fallback: string) => {
 
 export const useReports = () => {
   const supabase = useSupabaseClient<Database>();
-  const { resolveUser } = useSessionAccess();
+  const { ensureContext, profile, user } = useUserContext();
+  const { getAccessibleBranches } = usePermissions();
   const { capabilities, loadCapabilities } = useSubscription();
+  const contextCache = useState<{
+    key: string | null;
+    value: ReportsResolvedContext | null;
+    fetchedAt: number;
+  }>("reports:context-cache", () => ({
+    key: null,
+    value: null,
+    fetchedAt: 0,
+  }));
 
   const localTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
@@ -257,92 +267,100 @@ export const useReports = () => {
       timeStyle: "short",
       timeZone: localTimeZone,
     }).format(new Date(value));
-
-  const resolveManagerBranchId = async (profile: Pick<ProfileRow, "id">) => {
-    const { data, error } = await supabase
-      .from("employee_branch_assignments")
-      .select("branch_id, is_primary")
-      .eq("user_id", profile.id)
-      .returns<Array<Pick<AssignmentRow, "branch_id" | "is_primary">>>();
-
-    if (error) {
-      throw createError({
-        statusCode: 500,
-        statusMessage: "No se pudo resolver la sucursal asignada del manager.",
-      });
-    }
-
-    const primaryAssignment = (data ?? []).find((assignment) => assignment.is_primary);
-    return primaryAssignment?.branch_id ?? data?.[0]?.branch_id ?? null;
-  };
-
   const loadContext = async (): Promise<ReportsResolvedContext> => {
-    const currentUser = await resolveUser();
-    const userId = currentUser?.id ?? null;
-    if (!userId) {
+    const resolved = await ensureContext({ requireProfile: true });
+    const currentUser = resolved.user;
+    const currentProfile = resolved.profile;
+
+    if (!currentUser || !currentProfile) {
       throw createError({
         statusCode: 401,
         statusMessage: "La sesión no está disponible para consultar reportes.",
       });
     }
 
-    const { data: profile, error } = await supabase
-      .from("profiles")
-      .select("id, organization_id, role")
-      .eq("id", userId)
-      .maybeSingle<Pick<ProfileRow, "id" | "organization_id" | "role">>();
-
-    if (error || !profile?.organization_id || (profile.role !== "admin" && profile.role !== "manager")) {
+    if (
+      !currentProfile.organization_id
+      || (currentProfile.role !== "admin" && currentProfile.role !== "manager")
+    ) {
       throw createError({
         statusCode: 403,
         statusMessage: "Solo admin y manager pueden acceder a reportes.",
       });
     }
 
-    await loadCapabilities(profile.organization_id);
+    const organizationId = currentProfile.organization_id;
+    const role = currentProfile.role;
+    const cacheKey = `${currentUser.id}:${organizationId}:${role}`;
+    if (
+      contextCache.value.key === cacheKey
+      && contextCache.value.value
+      && Date.now() - contextCache.value.fetchedAt < REPORT_CONTEXT_CACHE_TTL_MS
+    ) {
+      return contextCache.value.value;
+    }
 
-    if (profile.role === "admin") {
-      const { data: branches, error: branchesError } = await supabase
-        .from("branches")
-        .select("id")
-        .eq("organization_id", profile.organization_id)
-        .eq("is_active", true)
-        .returns<Array<Pick<BranchRow, "id">>>();
+    const inFlight = reportsContextInFlight.get(cacheKey);
+    if (inFlight) {
+      return inFlight;
+    }
 
-      if (branchesError) {
+    const contextPromise = (async () => {
+      await loadCapabilities(organizationId);
+      const accessibleBranches = await getAccessibleBranches();
+      const branchIds = accessibleBranches.map((branch) => branch.id);
+
+      if (branchIds.length === 0) {
         throw createError({
-          statusCode: 500,
-          statusMessage: "No se pudieron cargar las sucursales activas para reportes.",
+          statusCode: 403,
+          statusMessage: "No hay sucursales disponibles para generar reportes.",
         });
       }
 
-      return {
-        organizationId: profile.organization_id,
-        role: "admin",
+      const context: ReportsResolvedContext = {
+        organizationId,
+        role,
         timezone: localTimeZone,
-        branchIds: (branches ?? []).map((branch) => branch.id),
-        assignedBranchId: null,
+        branchIds: role === "manager" ? [branchIds[0] ?? ""] : branchIds,
+        assignedBranchId: role === "manager" ? branchIds[0] ?? null : null,
         capabilities: capabilities.value,
       };
-    }
 
-    const managerBranchId = await resolveManagerBranchId(profile);
-    if (!managerBranchId) {
-      throw createError({
-        statusCode: 403,
-        statusMessage: "El manager no tiene una sucursal asignada para reportes locales.",
-      });
-    }
+      contextCache.value = {
+        key: cacheKey,
+        value: context,
+        fetchedAt: Date.now(),
+      };
 
-    return {
-      organizationId: profile.organization_id,
-      role: "manager",
-      timezone: localTimeZone,
-      branchIds: [managerBranchId],
-      assignedBranchId: managerBranchId,
-      capabilities: capabilities.value,
-    };
+      return context;
+    })();
+    reportsContextInFlight.set(cacheKey, contextPromise);
+
+    try {
+      return await contextPromise;
+    } finally {
+      if (reportsContextInFlight.get(cacheKey) === contextPromise) {
+        reportsContextInFlight.delete(cacheKey);
+      }
+    }
   };
+
+  watch(
+    () => [
+      user.value?.id ?? null,
+      profile.value?.id ?? null,
+      profile.value?.organization_id ?? null,
+      profile.value?.role ?? null,
+    ] as const,
+    () => {
+      contextCache.value = {
+        key: null,
+        value: null,
+        fetchedAt: 0,
+      };
+      reportsContextInFlight.clear();
+    },
+  );
 
   const loadFilterSupport = async (context: ReportsResolvedContext): Promise<LoadedFiltersSupport> => {
     const [branchesResult, employeesResult, assignmentsResult, categoriesResult] = await Promise.all([
@@ -818,7 +836,7 @@ export const useReports = () => {
         Fecha: transaction.created_at ? formatDateTime(transaction.created_at) : "Sin fecha",
         Sucursal: support.branchLabelMap.get(transaction.branch_id) ?? "Sucursal",
         Responsable: support.employeeLabelMap.get(transaction.employee_id) ?? "Equipo",
-        Método: PAYMENT_METHOD_LABELS[transaction.payment_method ?? "cash"] ?? "Sin método",
+        Metodo: PAYMENT_METHOD_LABELS[transaction.payment_method ?? "cash"] ?? "Sin método",
         Total: formatCurrency(transaction.final_amount),
         Estado: titleCase(transaction.status, "Pendiente"),
       })),

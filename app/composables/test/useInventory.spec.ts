@@ -33,15 +33,14 @@ describe('useInventory', () => {
     globalStateMap.clear()
   })
 
-  it('crea filtros de movimiento por defecto', async () => {
+  it('crea filtros de transferencias por defecto', async () => {
     const { useInventory } = await import('../useInventory')
     const inventory = useInventory()
 
-    const filters = inventory.createDefaultMovementFilters()
-    expect(filters.movementType).toBe('all')
+    const filters = inventory.createDefaultTransferFilters()
+    expect(filters.status).toBe('all')
     expect(filters.branchId).toBe(null)
-    expect(filters.dateFrom).toMatch(/^\d{4}-\d{2}-\d{2}$/)
-    expect(filters.dateTo).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+    expect(filters.productId).toBe(null)
   })
 
   it('expone labels y colores para movimientos', async () => {
@@ -98,5 +97,159 @@ describe('useInventory', () => {
     })
     expect(result.success).toBe(true)
     expect(result.movementId).toBe('mov-1')
+  })
+
+  it('prevalida y registra ajuste batch con token', async () => {
+    const { useInventory } = await import('../useInventory')
+    const inventory = useInventory()
+
+    const payload = {
+      idempotencyKey: 'batch-adjust-1',
+      branchId: 'branch-1',
+      mode: 'add' as const,
+      reason: 'Carga inicial',
+      note: 'lote',
+      lines: [{ productId: 'prod-1', quantity: 10 }]
+    }
+
+    mockFetch
+      .mockResolvedValueOnce({ success: true, isValid: true, errors: [] })
+      .mockResolvedValueOnce({ success: true, batchId: 'batch-1', processedCount: 1, idempotent: false })
+
+    const precheck = await inventory.precheckAdjustStockBatch(payload)
+    const result = await inventory.adjustStockBatch(payload)
+
+    expect(mockFetch).toHaveBeenNthCalledWith(1, '/api/inventory/stock/adjust/batch/precheck', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer token-123' },
+      body: {
+        ...payload,
+        lines: [{ productId: 'prod-1', quantity: 10, minStockLevel: null }]
+      }
+    })
+    expect(mockFetch).toHaveBeenNthCalledWith(2, '/api/inventory/stock/adjust/batch', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer token-123' },
+      body: {
+        ...payload,
+        lines: [{ productId: 'prod-1', quantity: 10, minStockLevel: null }]
+      }
+    })
+    expect(precheck.isValid).toBe(true)
+    expect(result.batchId).toBe('batch-1')
+  })
+
+  it('envia payload batch normalizado al precheck de ajustes', async () => {
+    const { useInventory } = await import('../useInventory')
+    const inventory = useInventory()
+
+    const payload = {
+      idempotencyKey: 'batch-adjust-norm',
+      branchId: 'branch-1',
+      mode: 'add' as const,
+      reason: 'Carga inicial',
+      note: 'lote',
+      lines: [
+        { productId: 'prod-1', quantity: 2, minStockLevel: null },
+        { productId: 'prod-1', quantity: 3, minStockLevel: 5 }
+      ]
+    }
+
+    mockFetch.mockResolvedValueOnce({ success: true, isValid: true, errors: [] })
+
+    await inventory.precheckAdjustStockBatch(payload)
+
+    expect(mockFetch).toHaveBeenCalledWith('/api/inventory/stock/adjust/batch/precheck', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer token-123' },
+      body: {
+        ...payload,
+        lines: [{ productId: 'prod-1', quantity: 5, minStockLevel: 5 }]
+      }
+    })
+  })
+
+  it('prevalida y registra transferencia batch con token', async () => {
+    const { useInventory } = await import('../useInventory')
+    const inventory = useInventory()
+
+    const payload = {
+      idempotencyKey: 'batch-transfer-1',
+      sourceBranchId: 'branch-1',
+      destinationBranchId: 'branch-2',
+      observations: 'rebalanceo',
+      internalNote: 'lote semanal',
+      lines: [{ productId: 'prod-1', quantity: 3 }]
+    }
+
+    mockFetch
+      .mockResolvedValueOnce({ success: true, isValid: true, errors: [] })
+      .mockResolvedValueOnce({ success: true, batchId: 'tb-1', processedCount: 1, status: 'pending' })
+
+    const precheck = await inventory.precheckTransferStockBatch(payload)
+    const result = await inventory.transferStockBatch(payload)
+
+    expect(mockFetch).toHaveBeenNthCalledWith(1, '/api/inventory/stock/transfer/batch/precheck', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer token-123' },
+      body: payload
+    })
+    expect(mockFetch).toHaveBeenNthCalledWith(2, '/api/inventory/stock/transfer/batch', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer token-123' },
+      body: payload
+    })
+    expect(precheck.isValid).toBe(true)
+    expect(result.batchId).toBe('tb-1')
+  })
+
+  it('normaliza lineas repetidas en ajuste add/remove sumando cantidades', async () => {
+    const { normalizeInventoryAdjustmentBatchLines } = await import('../useInventory')
+
+    const result = normalizeInventoryAdjustmentBatchLines('add', [
+      { productId: 'prod-1', quantity: 3, minStockLevel: null },
+      { productId: 'prod-2', quantity: 2, minStockLevel: null },
+      { productId: 'prod-1', quantity: 4, minStockLevel: 6 }
+    ])
+
+    expect(result.originalLines).toBe(3)
+    expect(result.normalizedLines).toBe(2)
+    expect(result.mergedProducts).toBe(1)
+    expect(result.lines).toEqual([
+      { productId: 'prod-1', quantity: 7, minStockLevel: 6 },
+      { productId: 'prod-2', quantity: 2, minStockLevel: null }
+    ])
+  })
+
+  it('normaliza lineas repetidas en ajuste set usando ultimo valor y ultimo min no nulo', async () => {
+    const { normalizeInventoryAdjustmentBatchLines } = await import('../useInventory')
+
+    const result = normalizeInventoryAdjustmentBatchLines('set', [
+      { productId: 'prod-1', quantity: 3, minStockLevel: 4 },
+      { productId: 'prod-1', quantity: 9, minStockLevel: null },
+      { productId: 'prod-1', quantity: 5, minStockLevel: 7 }
+    ])
+
+    expect(result.lines).toEqual([
+      { productId: 'prod-1', quantity: 5, minStockLevel: 7 }
+    ])
+  })
+
+  it('normaliza lineas repetidas en transferencias sumando por producto', async () => {
+    const { normalizeInventoryTransferBatchLines } = await import('../useInventory')
+
+    const result = normalizeInventoryTransferBatchLines([
+      { productId: 'prod-1', quantity: 1 },
+      { productId: 'prod-2', quantity: 2 },
+      { productId: 'prod-1', quantity: 5 }
+    ])
+
+    expect(result.originalLines).toBe(3)
+    expect(result.normalizedLines).toBe(2)
+    expect(result.mergedProducts).toBe(1)
+    expect(result.lines).toEqual([
+      { productId: 'prod-1', quantity: 6 },
+      { productId: 'prod-2', quantity: 2 }
+    ])
   })
 })

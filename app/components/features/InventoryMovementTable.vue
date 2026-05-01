@@ -13,10 +13,55 @@ const props = withDefaults(defineProps<{
   loading: false,
 });
 
+const emits = defineEmits<{
+  viewDetails: [InventoryMovementRowView];
+}>();
+
+const getHistoryTypeLabel = (movementType: InventoryMovementRowView["movementType"]) => {
+  switch (movementType) {
+    case "entry":
+      return "Ingreso";
+    case "exit":
+      return "Salida";
+    case "transfer_out":
+      return "Transferencia enviada";
+    case "transfer_in":
+      return "Transferencia recibida";
+    case "adjustment":
+    default:
+      return "Ajuste";
+  }
+};
+
+const getHistoryTypeColor = (
+  movementType: InventoryMovementRowView["movementType"],
+): "success" | "warning" | "error" | "primary" | "neutral" => {
+  switch (movementType) {
+    case "entry":
+      return "success";
+    case "exit":
+      return "error";
+    case "transfer_out":
+      return "warning";
+    case "transfer_in":
+      return "neutral";
+    case "adjustment":
+    default:
+      return "primary";
+  }
+};
+
 const columns = computed(() => {
   const UBadge = resolveComponent("UBadge");
+  const UButton = resolveComponent("UButton");
 
   return [
+    {
+      accessorKey: "note",
+      header: "Codigo",
+      cell: ({ row }: { row: { original: InventoryMovementRowView } }) =>
+        h("span", { class: "text-xs text-slate-700 dark:text-slate-300" }, row.original.note ?? "--"),
+    },
     {
       accessorKey: "createdAt",
       header: "Fecha",
@@ -24,13 +69,13 @@ const columns = computed(() => {
         h("span", { class: "text-sm text-slate-600 dark:text-slate-300" }, props.formatDateTime(row.original.createdAt)),
     },
     {
-      accessorKey: "productName",
-      header: "Producto",
+      accessorKey: "movementType",
+      header: "Tipo",
       cell: ({ row }: { row: { original: InventoryMovementRowView } }) =>
-        h("div", { class: "space-y-1" }, [
-          h("p", { class: "font-medium text-slate-950 dark:text-white" }, row.original.productName),
-          h("p", { class: "text-xs text-slate-500 dark:text-slate-400" }, row.original.sku ?? "Sin SKU"),
-        ]),
+        h(UBadge, {
+          color: getHistoryTypeColor(row.original.movementType),
+          variant: "soft",
+        }, () => getHistoryTypeLabel(row.original.movementType)),
     },
     {
       accessorKey: "branchName",
@@ -39,31 +84,16 @@ const columns = computed(() => {
         h("span", { class: "text-sm text-slate-600 dark:text-slate-300" }, `${row.original.branchName} (${row.original.branchCode})`),
     },
     {
-      accessorKey: "movementType",
-      header: "Tipo",
+      id: "actions",
+      header: "Acciones",
       cell: ({ row }: { row: { original: InventoryMovementRowView } }) =>
-        h(UBadge, {
-          color: props.getMovementColor(row.original.movementType),
-          variant: "soft",
-        }, () => props.getMovementLabel(row.original.movementType)),
-    },
-    {
-      accessorKey: "quantity",
-      header: "Cantidad",
-      cell: ({ row }: { row: { original: InventoryMovementRowView } }) =>
-        h("span", { class: "text-sm font-medium text-slate-950 dark:text-white" }, String(row.original.quantity)),
-    },
-    {
-      accessorKey: "newQuantity",
-      header: "Stock final",
-      cell: ({ row }: { row: { original: InventoryMovementRowView } }) =>
-        h("span", { class: "text-sm text-slate-600 dark:text-slate-300" }, `${row.original.previousQuantity} -> ${row.original.newQuantity}`),
-    },
-    {
-      accessorKey: "createdByName",
-      header: "Usuario",
-      cell: ({ row }: { row: { original: InventoryMovementRowView } }) =>
-        h("span", { class: "text-sm text-slate-600 dark:text-slate-300" }, row.original.createdByName ?? "Sistema"),
+        h(UButton, {
+          size: "sm",
+          color: "neutral",
+          variant: "ghost",
+          class: "min-h-9 justify-center",
+          onClick: () => emits("viewDetails", row.original),
+        }, () => "Ver detalles"),
     },
   ];
 });
@@ -75,6 +105,6 @@ const columns = computed(() => {
     :columns="columns"
     :loading="loading"
     empty="No hay movimientos para mostrar."
-    min-width-class="min-w-[72rem] rounded-[1.5rem]"
+    min-width-class="min-w-full rounded-[1.5rem]"
   />
 </template>

@@ -1,4 +1,5 @@
 import {
+  assertInventoryModuleAccess,
   assertUniqueSKU,
   getProductCategoryOrThrow,
   productSchema,
@@ -8,6 +9,7 @@ import {
 
 export default defineEventHandler(async (event) => {
   const context = await requireInventoryContext(event);
+  await assertInventoryModuleAccess(context, "can_create");
   const body = await readValidatedInventoryBody(event, productSchema);
 
   const normalizedSKU = body.sku.trim() || null;

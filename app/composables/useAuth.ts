@@ -43,26 +43,6 @@ const sanitizeRole = (role?: UserRole | null, isPublic = false): UserRole => {
   return role;
 };
 
-const getUserMetadata = (user: User | null): Record<string, unknown> => {
-  return (user?.user_metadata as Record<string, unknown> | undefined) ?? {};
-};
-
-const getMetadataOrganizationId = (user: User | null): string | null => {
-  const metadata = getUserMetadata(user);
-  const organizationId = metadata.organization_id;
-
-  return typeof organizationId === "string" && organizationId.length > 0
-    ? organizationId
-    : null;
-};
-
-const getMetadataRole = (user: User | null): UserRole | null => {
-  const metadata = getUserMetadata(user);
-  const role = metadata.role;
-
-  return typeof role === "string" ? (role as UserRole) : null;
-};
-
 const createPermissionDeniedMessage = (): string => {
   return "No tienes permisos para realizar esta acción.";
 };
@@ -77,41 +57,32 @@ const isStaffRole = (value: UserRole | null | undefined): value is Exclude<UserR
 
 export const useAuth = () => {
   const supabase = useSupabaseClient<Database>();
-  const session = useSupabaseSession();
   const { resolveUser } = useSessionAccess();
+  const {
+    user,
+    profile,
+    role,
+    organizationId,
+    activeOrganizationId,
+    organizationContext,
+    refreshProfile: refreshProfileFromContext,
+    ensureContext,
+    resetContext,
+    setActiveOrganization,
+  } = useUserContext();
 
-  const profile = useState<Profile | null>("auth:profile", () => null);
+  const session = useSupabaseSession();
   const isLoading = useState<boolean>("auth:is-loading", () => false);
   const isSubmitting = useState<boolean>("auth:is-submitting", () => false);
   const error = useState<string | null>("auth:error", () => null);
   const watcherInitialized = useState<boolean>("auth:watcher-initialized", () => false);
-  const profileFetchedForUserId = useState<string | null>(
-    "auth:profile:fetched-user-id",
-    () => null,
-  );
-  const profileFetchedAt = useState<number>("auth:profile:fetched-at", () => 0);
-  const orgContext = useState<{
-    activeOrganizationId: string | null;
-    activeOrganizationSlug: string | null;
-  }>("auth:org-context", () => ({
-    activeOrganizationId: null,
-    activeOrganizationSlug: null,
-  }));
   const clientProfile = useState<ClientProfileState | null>("auth:client-profile", () => null);
   const clientProfileFetchedForUserId = useState<string | null>("auth:client-profile:fetched-user-id", () => null);
   const clientProfileFetchedForOrgId = useState<string | null>("auth:client-profile:fetched-org-id", () => null);
   const clientProfileFetchedAt = useState<number>("auth:client-profile:fetched-at", () => 0);
+  const clientProfileLoading = useState<boolean>("auth:client-profile:is-loading", () => false);
+  const clientProfileLoadingKey = useState<string | null>("auth:client-profile:loading-key", () => null);
 
-  const user = computed<User | null>(() => session.value?.user ?? null);
-  const organizationId = computed<string | null>(() => {
-    return profile.value?.organization_id ?? getMetadataOrganizationId(user.value);
-  });
-  const role = computed<UserRole | null>(() => {
-    return profile.value?.role ?? getMetadataRole(user.value);
-  });
-  const activeOrganizationId = computed<string | null>(() => {
-    return orgContext.value.activeOrganizationId ?? organizationId.value;
-  });
   const resolvedRole = computed<UserRole | "guest">(() => {
     if (isStaffRole(role.value)) {
       return role.value;
@@ -136,19 +107,6 @@ export const useAuth = () => {
     error.value = message;
   };
 
-  const setActiveOrganization = (payload: {
-    organizationId?: string | null;
-    organizationSlug?: string | null;
-  }) => {
-    const nextOrganizationId = sanitizeNullableString(payload.organizationId);
-    const nextOrganizationSlug = sanitizeNullableString(payload.organizationSlug);
-
-    orgContext.value = {
-      activeOrganizationId: nextOrganizationId,
-      activeOrganizationSlug: nextOrganizationSlug,
-    };
-  };
-
   const fetchClientProfile = async (
     options: { force?: boolean; organizationId?: string | null } = {},
   ): Promise<ClientProfileState | null> => {
@@ -160,10 +118,13 @@ export const useAuth = () => {
       clientProfileFetchedForUserId.value = null;
       clientProfileFetchedForOrgId.value = null;
       clientProfileFetchedAt.value = 0;
+      clientProfileLoading.value = false;
+      clientProfileLoadingKey.value = null;
       return null;
     }
 
     const forceRefresh = options.force === true;
+    const requestKey = `${currentUser.id}:${nextOrganizationId}`;
     const cacheIsFresh =
       clientProfileFetchedForUserId.value === currentUser.id
       && clientProfileFetchedForOrgId.value === nextOrganizationId
@@ -172,6 +133,26 @@ export const useAuth = () => {
     if (!forceRefresh && cacheIsFresh) {
       return clientProfile.value;
     }
+
+    if (!forceRefresh && clientProfileLoading.value && clientProfileLoadingKey.value === requestKey) {
+      let attempts = 0;
+      while (clientProfileLoading.value && attempts < 40) {
+        await wait(25);
+        attempts += 1;
+      }
+
+      const cacheAfterWait =
+        clientProfileFetchedForUserId.value === currentUser.id
+        && clientProfileFetchedForOrgId.value === nextOrganizationId
+        && Date.now() - clientProfileFetchedAt.value < PROFILE_CACHE_TTL_MS;
+
+      if (cacheAfterWait) {
+        return clientProfile.value;
+      }
+    }
+
+    clientProfileLoading.value = true;
+    clientProfileLoadingKey.value = requestKey;
 
     try {
       const response = await $fetch<{
@@ -193,11 +174,16 @@ export const useAuth = () => {
       clientProfileFetchedForOrgId.value = null;
       clientProfileFetchedAt.value = 0;
       return null;
+    } finally {
+      if (clientProfileLoadingKey.value === requestKey) {
+        clientProfileLoading.value = false;
+        clientProfileLoadingKey.value = null;
+      }
     }
   };
 
   const useOrgContext = () => ({
-    context: readonly(orgContext),
+    context: readonly(organizationContext),
     activeOrganizationId,
     setActiveOrganization,
   });
@@ -211,6 +197,15 @@ export const useAuth = () => {
     isLoading.value = false;
     isSubmitting.value = false;
     error.value = null;
+  };
+
+  const clearClientProfileState = () => {
+    clientProfile.value = null;
+    clientProfileFetchedForUserId.value = null;
+    clientProfileFetchedForOrgId.value = null;
+    clientProfileFetchedAt.value = 0;
+    clientProfileLoading.value = false;
+    clientProfileLoadingKey.value = null;
   };
 
   const auditCriticalAction = async (
@@ -243,17 +238,6 @@ export const useAuth = () => {
     }
   };
 
-  const getProfileQuery = (userId: string | null) => {
-    if (!userId) {
-      return null;
-    }
-
-    // Fetch the profile strictly by the authenticated user id.
-    // Relying on auth metadata for organization_id breaks seeded/demo users
-    // when that metadata is missing or stale.
-    return supabase.from("profiles").select("*").eq("id", userId).maybeSingle();
-  };
-
   /**
    * Obtiene el perfil extendido del usuario autenticado desde `profiles`.
    *
@@ -267,61 +251,19 @@ export const useAuth = () => {
   const fetchProfile = async (
     options: { force?: boolean } = {},
   ): Promise<Profile | null> => {
-    const currentUser = user.value ?? (await resolveUser());
-    if (!currentUser) {
-      profile.value = null;
-      profileFetchedForUserId.value = null;
-      profileFetchedAt.value = 0;
-      return null;
-    }
-
     const forceRefresh = options.force === true;
-    const cacheIsFresh =
-      profileFetchedForUserId.value === currentUser.id &&
-      Date.now() - profileFetchedAt.value < PROFILE_CACHE_TTL_MS;
-
-    if (
-      !forceRefresh &&
-      cacheIsFresh &&
-      profile.value &&
-      profile.value.id === currentUser.id
-    ) {
-      return profile.value;
-    }
-
-    if (!forceRefresh && isLoading.value) {
-      let attempts = 0;
-      while (isLoading.value && attempts < 40) {
-        await wait(25);
-        attempts += 1;
-      }
-
-      if (profile.value && profile.value.id === currentUser.id) {
-        return profile.value;
-      }
-    }
-
-    isLoading.value = true;
     setError(null);
 
     try {
-      const query = getProfileQuery(currentUser.id);
-      if (!query) {
+      const { user: currentUser } = await ensureContext({
+        requireProfile: false,
+      });
+      if (!currentUser) {
         profile.value = null;
         return null;
       }
 
-      const { data, error: fetchError } = await query;
-      if (fetchError) {
-        throw fetchError;
-      }
-
-      profile.value = data ?? null;
-      profileFetchedForUserId.value = currentUser.id;
-      profileFetchedAt.value = Date.now();
-      if (orgContext.value.activeOrganizationId === null && data?.organization_id) {
-        orgContext.value.activeOrganizationId = data.organization_id;
-      }
+      const data = await refreshProfileFromContext({ force: forceRefresh });
 
       // Only clients need client profile hydration.
       if (data?.role === "client" && data.organization_id) {
@@ -341,11 +283,7 @@ export const useAuth = () => {
         fetchError instanceof Error ? fetchError.message : "No se pudo cargar el perfil.";
       setError(message);
       profile.value = null;
-      profileFetchedForUserId.value = null;
-      profileFetchedAt.value = 0;
       return null;
-    } finally {
-      isLoading.value = false;
     }
   };
 
@@ -446,8 +384,8 @@ export const useAuth = () => {
         throw signOutError;
       }
 
-      profile.value = null;
-      clientProfile.value = null;
+      resetContext();
+      clearClientProfileState();
       resetTransientState();
 
       console.info("[AUTH_SIGN_OUT]", { userId: currentUserId });
@@ -765,19 +703,9 @@ export const useAuth = () => {
 
     watch(
       () => session.value?.user?.id ?? null,
-      async (userId) => {
+      (userId) => {
         if (!userId) {
-          profile.value = null;
-          clientProfile.value = null;
-          profileFetchedForUserId.value = null;
-          profileFetchedAt.value = 0;
-          clientProfileFetchedForUserId.value = null;
-          clientProfileFetchedForOrgId.value = null;
-          clientProfileFetchedAt.value = 0;
-          orgContext.value = {
-            activeOrganizationId: null,
-            activeOrganizationSlug: null,
-          };
+          clearClientProfileState();
           return;
         }
       },
@@ -810,3 +738,4 @@ export const useAuth = () => {
     isInOrganization,
   };
 };
+

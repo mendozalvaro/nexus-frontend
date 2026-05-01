@@ -1,4 +1,3 @@
-import type { Database } from "@/types/database.types";
 import { PENDING_ALLOWED_PATH_PREFIXES } from "@/config/navigation";
 
 export default defineNuxtRouteMiddleware(async (to) => {
@@ -27,35 +26,11 @@ export default defineNuxtRouteMiddleware(async (to) => {
     return;
   }
 
-  const supabase = useSupabaseClient<Database>();
-  const [{ data: organization }, { data: subscription }] = await Promise.all([
-    supabase
-      .from("organizations")
-      .select("status")
-      .eq("id", profile.organization_id)
-      .maybeSingle(),
-    supabase
-      .from("organization_subscriptions")
-      .select("status, is_trial, trial_ends_at")
-      .eq("organization_id", profile.organization_id)
-      .order("updated_at", { ascending: false })
-      .limit(1)
-      .maybeSingle(),
-  ]);
-
-  const now = Date.now();
-  const trialEndsAt =
-    typeof subscription?.trial_ends_at === "string"
-      ? new Date(subscription.trial_ends_at).getTime()
-      : null;
-  const trialExpired =
-    typeof trialEndsAt === "number" && Number.isFinite(trialEndsAt) && trialEndsAt <= now;
-
-  const paymentRequired = Boolean(
-    subscription
-    && subscription.status !== "active"
-    && (subscription.is_trial !== true || trialExpired || trialEndsAt === null),
-  );
+  const supabase = useSupabaseClient();
+  const { loadAccountStatus } = useAccountStatus();
+  const { paymentRequired, snapshot } = await loadAccountStatus({
+    organizationId: profile.organization_id,
+  });
 
   if (paymentRequired && !to.path.startsWith(paymentOnlyPath)) {
     await supabase.from("audit_logs").insert({
@@ -67,8 +42,8 @@ export default defineNuxtRouteMiddleware(async (to) => {
         event: "PAYMENT_REQUIRED_ROUTE_BLOCKED",
         attempted_path: to.fullPath,
         organization_id: profile.organization_id,
-        subscription_status: subscription?.status ?? null,
-        trial_ends_at: subscription?.trial_ends_at ?? null,
+        subscription_status: snapshot.subscriptionStatus,
+        trial_ends_at: snapshot.trialEndsAt,
       },
     });
 
@@ -83,7 +58,7 @@ export default defineNuxtRouteMiddleware(async (to) => {
     return;
   }
 
-  if (organization?.status === "pending") {
+  if (snapshot.organizationStatus === "pending") {
     return navigateTo("/dashboard?status=pending");
   }
 });

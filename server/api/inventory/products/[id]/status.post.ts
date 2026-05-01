@@ -1,4 +1,5 @@
 import {
+  assertInventoryModuleAccess,
   getInventoryProductOrThrow,
   readValidatedInventoryBody,
   requireInventoryContext,
@@ -11,6 +12,7 @@ const schema = z.object({
 
 export default defineEventHandler(async (event) => {
   const context = await requireInventoryContext(event);
+  await assertInventoryModuleAccess(context, "can_edit");
   const productId = getRouterParam(event, "id");
 
   if (!productId) {

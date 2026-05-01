@@ -50,8 +50,15 @@ export default defineNuxtRouteMiddleware(async (to) => {
     && (profile?.role === "manager" || profile?.role === "employee");
 
   if (requiresScopedBranch && import.meta.client) {
-    const accessibleBranches = await getAccessibleBranches();
+    let accessibleBranches = await getAccessibleBranches();
     await restoreSelectedBranch(accessibleBranches);
+
+    // Retry once to avoid false branch denials during profile/session hydration races.
+    if (accessibleBranches.length === 0) {
+      await ensureAuthContext({ requireProfile: true, forceProfileRefresh: true });
+      accessibleBranches = await getAccessibleBranches();
+      await restoreSelectedBranch(accessibleBranches);
+    }
 
     if (accessibleBranches.length === 0) {
       console.warn("[PERMISSIONS] Branch access denied:", {

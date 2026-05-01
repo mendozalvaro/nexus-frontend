@@ -10,14 +10,28 @@ import type {
 import { ROLE_PERMISSIONS } from "@/types/permissions";
 import { resolvePlanPermission } from "@/utils/subscription-plan";
 
+const PERMISSIONS_CACHE_TTL_MS = 30_000;
+const accessibleBranchesInFlight = new Map<string, Promise<AccessibleBranch[]>>();
+
 export const usePermissions = () => {
   const supabase = useSupabaseClient<Database>();
-  const { user, profile } = useAuth();
+  const { user, profile, permissionsRevision, setPermissionGrants } = useUserContext();
+  const { resolveAccessToken } = useSessionAccess();
   const { isFeatureEnabled } = useFeatureFlags();
   const { capabilities } = useSubscription();
   const dbPermissionGrants = useState<PermissionGrant[]>("permissions:db-grants", () => []);
   const dbPermissionRoleId = useState<string | null>("permissions:db-role-id", () => null);
   const dbPermissionLoading = useState<boolean>("permissions:db-loading", () => false);
+  const dbPermissionFetchedAt = useState<number>("permissions:db-fetched-at", () => 0);
+  const accessibleBranchesCache = useState<{
+    key: string | null;
+    branches: AccessibleBranch[];
+    fetchedAt: number;
+  }>("permissions:accessible-branches-cache", () => ({
+    key: null,
+    branches: [],
+    fetchedAt: 0,
+  }));
 
   const removePermission = (
     permissions: PermissionGrant[],
@@ -142,10 +156,23 @@ export const usePermissions = () => {
     return Array.from(grants);
   };
 
-  const loadRoleModulePermissions = async (roleId: string | null | undefined) => {
+  const loadRoleModulePermissions = async (
+    roleId: string | null | undefined,
+    options: { force?: boolean } = {},
+  ) => {
     if (!roleId) {
       dbPermissionGrants.value = [];
       dbPermissionRoleId.value = null;
+      dbPermissionFetchedAt.value = 0;
+      return;
+    }
+
+    const forceRefresh = options.force === true;
+    const hasFreshRolePermissions =
+      dbPermissionRoleId.value === roleId
+      && Date.now() - dbPermissionFetchedAt.value < PERMISSIONS_CACHE_TTL_MS;
+
+    if (!forceRefresh && hasFreshRolePermissions) {
       return;
     }
 
@@ -157,6 +184,14 @@ export const usePermissions = () => {
         });
         attempts += 1;
       }
+
+      if (!forceRefresh && (
+        dbPermissionRoleId.value === roleId
+        && Date.now() - dbPermissionFetchedAt.value < PERMISSIONS_CACHE_TTL_MS
+      )) {
+        return;
+      }
+
       return;
     }
 
@@ -174,9 +209,11 @@ export const usePermissions = () => {
 
       dbPermissionGrants.value = parseDbPermissionGrants(data ?? []);
       dbPermissionRoleId.value = roleId;
+      dbPermissionFetchedAt.value = Date.now();
     } catch {
       dbPermissionGrants.value = [];
       dbPermissionRoleId.value = null;
+      dbPermissionFetchedAt.value = 0;
     } finally {
       dbPermissionLoading.value = false;
     }
@@ -199,9 +236,44 @@ export const usePermissions = () => {
   watch(
     () => profile.value?.role_id ?? null,
     async (roleId) => {
+      if (!roleId) {
+        dbPermissionGrants.value = [];
+        dbPermissionRoleId.value = null;
+        dbPermissionFetchedAt.value = 0;
+        return;
+      }
+
       await loadRoleModulePermissions(roleId);
     },
     { immediate: true },
+  );
+
+  watch(
+    () => permissionsRevision.value,
+    async () => {
+      const roleId = profile.value?.role_id ?? null;
+      if (!roleId) {
+        dbPermissionGrants.value = [];
+        dbPermissionRoleId.value = null;
+        dbPermissionFetchedAt.value = 0;
+        setPermissionGrants([]);
+        return;
+      }
+
+      await loadRoleModulePermissions(roleId, { force: true });
+    },
+  );
+
+  watch(
+    () => [user.value?.id ?? null, profile.value?.id ?? null, profile.value?.organization_id ?? null, profile.value?.role ?? null] as const,
+    () => {
+      accessibleBranchesCache.value = {
+        key: null,
+        branches: [],
+        fetchedAt: 0,
+      };
+      accessibleBranchesInFlight.clear();
+    },
   );
 
   const getUserPermissions = (): PermissionGrant[] => {
@@ -239,6 +311,7 @@ export const usePermissions = () => {
       return resolvePlanPermission(planPermissions, moduleKey, true);
     });
 
+    setPermissionGrants(permissions);
     return permissions;
   };
 
@@ -265,23 +338,8 @@ export const usePermissions = () => {
     }
 
     if (profile.value.role === "manager" || profile.value.role === "employee") {
-      const assignmentUserId = profile.value.id ?? user.value?.id;
-      if (!assignmentUserId) {
-        return false;
-      }
-
-      const { data, error } = await supabase
-        .from("employee_branch_assignments")
-        .select("branch_id")
-        .eq("user_id", assignmentUserId)
-        .eq("branch_id", branchId)
-        .maybeSingle();
-
-      if (error) {
-        return false;
-      }
-
-      return Boolean(data);
+      const branches = await getAccessibleBranches();
+      return branches.some((branch) => branch.id === branchId);
     }
 
     return false;
@@ -292,72 +350,81 @@ export const usePermissions = () => {
       return [];
     }
 
-    if (profile.value.role === "admin") {
-      if (!profile.value.organization_id) {
-        return [];
-      }
-
-      const { data, error } = await supabase
-        .from("branches")
-        .select("id, name, code, address")
-        .eq("organization_id", profile.value.organization_id)
-        .eq("is_active", true)
-        .order("name", { ascending: true });
-
-      if (error) {
-        return [];
-      }
-
-      return (data ?? []).map((branch) => ({
-        id: branch.id,
-        name: branch.name,
-        code: branch.code ?? null,
-        address: branch.address ?? null,
-      }));
+    const cacheKey = `${profile.value.id}:${profile.value.role}:${profile.value.organization_id ?? "none"}`;
+    if (
+      accessibleBranchesCache.value.key === cacheKey
+      && Date.now() - accessibleBranchesCache.value.fetchedAt < PERMISSIONS_CACHE_TTL_MS
+    ) {
+      return accessibleBranchesCache.value.branches;
     }
 
-    if (profile.value.role === "manager" || profile.value.role === "employee") {
-      const branchIds = new Set<string>();
+    const inFlight = accessibleBranchesInFlight.get(cacheKey);
+    if (inFlight) {
+      return inFlight;
+    }
 
-      const assignmentUserId = profile.value.id ?? user.value?.id;
-      if (assignmentUserId) {
-        const { data: assignments, error: assignmentError } = await supabase
-          .from("employee_branch_assignments")
-          .select("branch_id")
-          .eq("user_id", assignmentUserId);
-
-        if (!assignmentError) {
-          for (const assignment of assignments ?? []) {
-            branchIds.add(assignment.branch_id);
-          }
+    const branchPromise = (async (): Promise<AccessibleBranch[]> => {
+      if (profile.value?.role === "admin") {
+        if (!profile.value.organization_id) {
+          return [];
         }
+
+        const { data, error } = await supabase
+          .from("branches")
+          .select("id, name, code, address")
+          .eq("organization_id", profile.value.organization_id)
+          .eq("is_active", true)
+          .order("name", { ascending: true });
+
+        if (error) {
+          return [];
+        }
+
+        return (data ?? []).map((branch) => ({
+          id: branch.id,
+          name: branch.name,
+          code: branch.code ?? null,
+          address: branch.address ?? null,
+        }));
       }
 
-      const scopedBranchIds = Array.from(branchIds);
-      if (scopedBranchIds.length === 0) {
-        return [];
+      if (profile.value?.role === "manager" || profile.value?.role === "employee") {
+        const token = await resolveAccessToken();
+        if (!token) {
+          return [];
+        }
+
+        const response = await $fetch<{ branches: AccessibleBranch[] }>("/api/auth/accessible-branches", {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+        const branches = response.branches ?? [];
+        if (branches.length === 0) {
+          return [];
+        }
+
+        return branches;
       }
 
-      const { data: branches, error: branchError } = await supabase
-        .from("branches")
-        .select("id, name, code, address")
-        .in("id", scopedBranchIds)
-        .eq("is_active", true)
-        .order("name", { ascending: true });
+      return [];
+    })();
 
-      if (branchError) {
-        return [];
+    accessibleBranchesInFlight.set(cacheKey, branchPromise);
+
+    try {
+      const branches = await branchPromise;
+      accessibleBranchesCache.value = {
+        key: cacheKey,
+        branches,
+        fetchedAt: Date.now(),
+      };
+      return branches;
+    } finally {
+      if (accessibleBranchesInFlight.get(cacheKey) === branchPromise) {
+        accessibleBranchesInFlight.delete(cacheKey);
       }
-
-      return (branches ?? []).map((branch) => ({
-        id: branch.id,
-        name: branch.name,
-        code: branch.code ?? null,
-        address: branch.address ?? null,
-      }));
     }
-
-    return [];
   };
 
   const resolveRouteAccess = async (

@@ -5,10 +5,19 @@ type BranchRow = Database["public"]["Tables"]["branches"]["Row"];
 type InventoryMovementRow = Database["public"]["Tables"]["inventory_movements"]["Row"];
 type InventoryStockRow = Database["public"]["Tables"]["inventory_stock"]["Row"];
 type ProductRow = Database["public"]["Tables"]["products"]["Row"];
-type AssignmentRow = Database["public"]["Tables"]["employee_branch_assignments"]["Row"];
 
-type InventoryRole = Extract<Database["public"]["Enums"]["user_role"], "admin" | "manager">;
+const INVENTORY_CONTEXT_CACHE_TTL_MS = 30_000;
+
+export type InventoryRole = Extract<Database["public"]["Enums"]["user_role"], "admin" | "manager">;
 type MovementType = "entry" | "exit" | "adjustment" | "transfer_in" | "transfer_out";
+
+interface InventoryMovementFiltersInternal {
+  branchId: string | null;
+  productId: string | null;
+  movementType: MovementType | "all";
+  dateFrom: string | null;
+  dateTo: string | null;
+}
 
 export interface InventoryBranchOption {
   id: string;
@@ -138,9 +147,20 @@ export interface InventoryAdjustmentsData {
   role: InventoryRole;
   capabilities: OrganizationCapabilities | null;
   branches: InventoryBranchOption[];
+  destinationBranches: InventoryBranchOption[];
+  products: InventoryProductRowView[];
+  transfers: InventoryTransferRowView[];
+  pendingInboundCount: number;
+  transferEnabled: boolean;
+}
+
+export interface InventoryHistoryData {
+  organizationId: string;
+  role: InventoryRole;
+  capabilities: OrganizationCapabilities | null;
+  branches: InventoryBranchOption[];
   products: InventoryProductRowView[];
   movements: InventoryMovementRowView[];
-  transferEnabled: boolean;
 }
 
 export interface InventoryCategoryPayload {
@@ -173,8 +193,66 @@ export interface InventoryTransferPayload {
   destinationBranchId: string;
   productId: string;
   quantity: number;
+  observations: string;
+  internalNote?: string;
+}
+
+export interface InventoryAdjustmentBatchLine {
+  productId: string;
+  quantity: number;
+  minStockLevel?: number | null;
+}
+
+export interface InventoryAdjustmentBatchPayload {
+  idempotencyKey: string;
+  branchId: string;
+  mode: "set" | "add" | "remove";
   reason: string;
   note?: string;
+  lines: InventoryAdjustmentBatchLine[];
+}
+
+export interface InventoryTransferBatchLine {
+  productId: string;
+  quantity: number;
+}
+
+export interface InventoryTransferBatchPayload {
+  idempotencyKey: string;
+  sourceBranchId: string;
+  destinationBranchId: string;
+  observations: string;
+  internalNote?: string;
+  lines: InventoryTransferBatchLine[];
+}
+
+export interface InventoryBatchNormalization<TLine> {
+  originalLines: number;
+  normalizedLines: number;
+  mergedProducts: number;
+  lines: TLine[];
+}
+
+export interface InventoryBatchApiMeta<TLine> {
+  normalization?: InventoryBatchNormalization<TLine>;
+  warnings?: string[];
+}
+
+export interface InventoryBatchValidationError {
+  lineIndex: number;
+  productId: string | null;
+  quantity: number;
+  isValid: boolean;
+  errorCode: string | null;
+  errorMessage: string | null;
+  currentQuantity: number | null;
+  nextQuantity: number | null;
+}
+
+export interface InventoryTransferFilters {
+  branchId: string | null;
+  productId: string | null;
+  status: "all" | "pending" | "received" | "cancelled";
 }
 
 export interface InventoryMovementFilters {
@@ -183,6 +261,66 @@ export interface InventoryMovementFilters {
   movementType: MovementType | "all";
   dateFrom: string | null;
   dateTo: string | null;
+}
+
+export interface InventoryTransferRowView {
+  id: string;
+  isBatch?: boolean;
+  totalLines?: number;
+  isBatchReceived?: boolean;
+  organizationId: string;
+  productId: string;
+  productName: string;
+  sku: string | null;
+  sourceBranchId: string;
+  sourceBranchName: string;
+  sourceBranchCode: string;
+  destinationBranchId: string;
+  destinationBranchName: string;
+  destinationBranchCode: string;
+  quantity: number;
+  status: "pending" | "received" | "cancelled";
+  observations: string | null;
+  internalNote: string | null;
+  requestedAt: string | null;
+  requestedBy: string | null;
+  requestedByName: string | null;
+  receivedAt: string | null;
+  receivedBy: string | null;
+  receivedByName: string | null;
+}
+
+export interface InventoryTransferDetailLine {
+  productId: string;
+  productName: string;
+  sku: string | null;
+  quantity: number;
+}
+
+export interface InventoryTransferDetailData {
+  id: string;
+  isBatch: boolean;
+  status: "pending" | "received" | "cancelled";
+  internalNote: string | null;
+  observations: string | null;
+  origin: {
+    branchId: string;
+    branchName: string;
+    branchCode: string;
+    userId: string | null;
+    userName: string | null;
+    date: string | null;
+  };
+  destination: {
+    branchId: string;
+    branchName: string;
+    branchCode: string;
+    userId: string | null;
+    userName: string | null;
+    date: string | null;
+    pendingReception: boolean;
+  };
+  lines: InventoryTransferDetailLine[];
 }
 
 interface InventoryContext {
@@ -198,8 +336,145 @@ const movementLabels: Record<MovementType, string> = {
   adjustment: "Ajuste",
   entry: "Entrada",
   exit: "Salida",
-  transfer_in: "Transferencia entrada",
-  transfer_out: "Transferencia salida",
+  transfer_in: "Transferencia recibida",
+  transfer_out: "Transferencia enviada",
+};
+
+const hasDefinedMinStock = (value: number | null | undefined): value is number =>
+  value !== null && value !== undefined;
+
+const buildBatchNormalizationWarnings = (
+  originalLines: number,
+  normalizedLines: number,
+  mergedProducts: number,
+): string[] => {
+  if (mergedProducts <= 0 || normalizedLines >= originalLines) {
+    return [];
+  }
+
+  return [
+    `Se consolidaron ${originalLines - normalizedLines} línea(s) repetidas en ${mergedProducts} producto(s).`,
+  ];
+};
+
+export const normalizeInventoryAdjustmentBatchLines = (
+  mode: InventoryAdjustmentBatchPayload["mode"],
+  lines: InventoryAdjustmentBatchLine[],
+): InventoryBatchNormalization<InventoryAdjustmentBatchLine> => {
+  const normalizedMap = new Map<string, InventoryAdjustmentBatchLine>();
+  const occurrences = new Map<string, number>();
+
+  for (const line of lines) {
+    occurrences.set(line.productId, (occurrences.get(line.productId) ?? 0) + 1);
+    const existing = normalizedMap.get(line.productId);
+
+    if (!existing) {
+      normalizedMap.set(line.productId, {
+        productId: line.productId,
+        quantity: line.quantity,
+        minStockLevel: line.minStockLevel ?? null,
+      });
+      continue;
+    }
+
+    if (mode === "set") {
+      existing.quantity = line.quantity;
+    } else {
+      existing.quantity += line.quantity;
+    }
+
+    if (hasDefinedMinStock(line.minStockLevel)) {
+      existing.minStockLevel = line.minStockLevel;
+    }
+  }
+
+  const normalizedLines = Array.from(normalizedMap.values());
+  const mergedProducts = Array.from(occurrences.values()).filter((count) => count > 1).length;
+
+  return {
+    originalLines: lines.length,
+    normalizedLines: normalizedLines.length,
+    mergedProducts,
+    lines: normalizedLines,
+  };
+};
+
+export const normalizeInventoryTransferBatchLines = (
+  lines: InventoryTransferBatchLine[],
+): InventoryBatchNormalization<InventoryTransferBatchLine> => {
+  const normalizedMap = new Map<string, InventoryTransferBatchLine>();
+  const occurrences = new Map<string, number>();
+
+  for (const line of lines) {
+    occurrences.set(line.productId, (occurrences.get(line.productId) ?? 0) + 1);
+    const existing = normalizedMap.get(line.productId);
+
+    if (!existing) {
+      normalizedMap.set(line.productId, {
+        productId: line.productId,
+        quantity: line.quantity,
+      });
+      continue;
+    }
+
+    existing.quantity += line.quantity;
+  }
+
+  const normalizedLines = Array.from(normalizedMap.values());
+  const mergedProducts = Array.from(occurrences.values()).filter((count) => count > 1).length;
+
+  return {
+    originalLines: lines.length,
+    normalizedLines: normalizedLines.length,
+    mergedProducts,
+    lines: normalizedLines,
+  };
+};
+
+export const normalizeInventoryAdjustmentBatchPayload = (
+  payload: InventoryAdjustmentBatchPayload,
+): {
+  payload: InventoryAdjustmentBatchPayload;
+  normalization: InventoryBatchNormalization<InventoryAdjustmentBatchLine>;
+  warnings: string[];
+} => {
+  const normalization = normalizeInventoryAdjustmentBatchLines(payload.mode, payload.lines);
+
+  return {
+    payload: {
+      ...payload,
+      lines: normalization.lines,
+    },
+    normalization,
+    warnings: buildBatchNormalizationWarnings(
+      normalization.originalLines,
+      normalization.normalizedLines,
+      normalization.mergedProducts,
+    ),
+  };
+};
+
+export const normalizeInventoryTransferBatchPayload = (
+  payload: InventoryTransferBatchPayload,
+): {
+  payload: InventoryTransferBatchPayload;
+  normalization: InventoryBatchNormalization<InventoryTransferBatchLine>;
+  warnings: string[];
+} => {
+  const normalization = normalizeInventoryTransferBatchLines(payload.lines);
+
+  return {
+    payload: {
+      ...payload,
+      lines: normalization.lines,
+    },
+    normalization,
+    warnings: buildBatchNormalizationWarnings(
+      normalization.originalLines,
+      normalization.normalizedLines,
+      normalization.mergedProducts,
+    ),
+  };
 };
 
 const getTodayLocalDate = (): string => {
@@ -250,9 +525,15 @@ export const useInventory = () => {
   const supabase = useSupabaseClient<Database>();
   const { resolveAccessToken } = useSessionAccess();
   const { profile, fetchProfile } = useAuth();
+  const { getAccessibleBranches } = usePermissions();
   const { loadCapabilities, getUpgradeMessage } = useSubscription();
 
   const localTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const cachedInventoryContext = useState<{
+    key: string;
+    expiresAt: number;
+    context: InventoryContext;
+  } | null>("inventory:context-cache", () => null);
 
   const ensureProfile = async () => {
     return profile.value ?? await fetchProfile();
@@ -332,84 +613,56 @@ export const useInventory = () => {
 
     const organizationId = currentProfile.organization_id;
     const role: InventoryRole = currentProfile.role;
+    const contextCacheKey = `${currentProfile.id}:${organizationId}:${role}`;
+
+    if (
+      cachedInventoryContext.value
+      && cachedInventoryContext.value.key === contextCacheKey
+      && cachedInventoryContext.value.expiresAt > Date.now()
+    ) {
+      return cachedInventoryContext.value.context;
+    }
+
     const capabilities = await loadCapabilities(organizationId);
 
-    if (role === "admin") {
-      const { data: branches, error } = await supabase
-        .from("branches")
-        .select("id, name, code, address, is_active")
-        .eq("organization_id", organizationId)
-        .order("name", { ascending: true });
-
-      if (error) {
-        throw createError({
-          statusCode: 500,
-          statusMessage: error.message,
-        });
-      }
-
-      const mappedBranches = (branches ?? []).map(mapBranch);
-
-      return {
-        organizationId,
-        role,
-        capabilities,
-        branches: mappedBranches,
-        branchMap: new Map(mappedBranches.map((branch) => [branch.id, branch])),
-        allowedBranchIds: mappedBranches.map((branch) => branch.id),
+    const rememberContext = (context: InventoryContext): InventoryContext => {
+      cachedInventoryContext.value = {
+        key: contextCacheKey,
+        expiresAt: Date.now() + INVENTORY_CONTEXT_CACHE_TTL_MS,
+        context,
       };
-    }
 
-    const { data: assignments, error: assignmentsError } = await supabase
-      .from("employee_branch_assignments")
-      .select("branch_id")
-      .eq("user_id", currentProfile.id)
-      .returns<Array<Pick<AssignmentRow, "branch_id">>>();
+      return context;
+    };
 
-    if (assignmentsError) {
-      throw createError({
-        statusCode: 500,
-        statusMessage: assignmentsError.message,
-      });
-    }
-
-    const allowedBranchIds = Array.from(new Set((assignments ?? []).map((assignment) => assignment.branch_id)));
-
-    if (allowedBranchIds.length === 0) {
-      return {
+    const accessibleBranches = await getAccessibleBranches();
+    if (accessibleBranches.length === 0) {
+      return rememberContext({
         organizationId,
         role,
         capabilities,
         branches: [],
         branchMap: new Map(),
         allowedBranchIds: [],
-      };
-    }
-
-    const { data: branches, error: branchesError } = await supabase
-      .from("branches")
-      .select("id, name, code, address, is_active")
-      .eq("organization_id", organizationId)
-      .in("id", allowedBranchIds)
-      .order("name", { ascending: true });
-
-    if (branchesError) {
-      throw createError({
-        statusCode: 500,
-        statusMessage: branchesError.message,
       });
     }
 
-    const mappedBranches = (branches ?? []).map(mapBranch);
+    const mappedBranches: InventoryBranchOption[] = accessibleBranches.map((branch) => ({
+      id: branch.id,
+      name: branch.name,
+      code: branch.code ?? "--",
+      address: branch.address,
+      isActive: true,
+    }));
 
-    return {
+    return rememberContext({
       organizationId,
       role,
       capabilities,
       branches: mappedBranches,
       branchMap: new Map(mappedBranches.map((branch) => [branch.id, branch])),
       allowedBranchIds: mappedBranches.map((branch) => branch.id),
-    };
+    });
   };
 
   const loadCategoriesInternal = async (
@@ -571,7 +824,7 @@ export const useInventory = () => {
 
   const loadMovementsInternal = async (
     context: InventoryContext,
-    filters?: Partial<InventoryMovementFilters>,
+    filters?: Partial<InventoryMovementFiltersInternal>,
   ): Promise<InventoryMovementRowView[]> => {
     let query = supabase
       .from("inventory_movements")
@@ -734,11 +987,58 @@ export const useInventory = () => {
     };
   };
 
-  const loadAdjustmentsPage = async (filters?: Partial<InventoryMovementFilters>): Promise<InventoryAdjustmentsData> => {
+  const loadTransfersPage = async (
+    filters?: Partial<InventoryTransferFilters>,
+    options: { includeProducts?: boolean } = {},
+  ): Promise<InventoryAdjustmentsData> => {
+    const context = await loadInventoryContext();
+    const accessToken = await getAccessToken();
+    const includeProducts = options.includeProducts !== false;
+
+    const [{ products }, transferResponse] = await Promise.all([
+      includeProducts
+        ? loadProductsInternal(context)
+        : Promise.resolve({ products: [] as InventoryProductRowView[], lowStock: [], categories: [] }),
+      $fetch<{
+        success: boolean;
+        rows: InventoryTransferRowView[];
+        destinationBranches: Array<Pick<BranchRow, "id" | "name" | "code" | "address" | "is_active">>;
+        pendingInboundCount: number;
+      }>("/api/inventory/stock/transfers", {
+        method: "GET",
+        headers: toAuthHeaders(accessToken),
+        query: {
+          branchId: filters?.branchId ?? undefined,
+          productId: filters?.productId ?? undefined,
+          status: filters?.status ?? "all",
+        },
+      }),
+    ]);
+
+    return {
+      organizationId: context.organizationId,
+      role: context.role,
+      capabilities: context.capabilities,
+      branches: context.branches,
+      destinationBranches: (transferResponse.destinationBranches ?? []).map(mapBranch),
+      products,
+      transfers: transferResponse.rows ?? [],
+      pendingInboundCount: transferResponse.pendingInboundCount ?? 0,
+      transferEnabled: context.capabilities?.canTransferStock ?? false,
+    };
+  };
+
+  const loadHistoryPage = async (filters?: Partial<InventoryMovementFilters>): Promise<InventoryHistoryData> => {
     const context = await loadInventoryContext();
     const [{ products }, movements] = await Promise.all([
       loadProductsInternal(context),
-      loadMovementsInternal(context, filters),
+      loadMovementsInternal(context, {
+        branchId: filters?.branchId ?? null,
+        productId: filters?.productId ?? null,
+        movementType: filters?.movementType ?? "all",
+        dateFrom: filters?.dateFrom ?? null,
+        dateTo: filters?.dateTo ?? null,
+      }),
     ]);
 
     return {
@@ -748,7 +1048,6 @@ export const useInventory = () => {
       branches: context.branches,
       products,
       movements,
-      transferEnabled: context.capabilities?.canTransferStock ?? false,
     };
   };
 
@@ -809,19 +1108,148 @@ export const useInventory = () => {
   };
 
   const transferStock = async (payload: InventoryTransferPayload) => {
-    return await $fetch<{ success: boolean }>("/api/inventory/stock/transfer", {
+    return await $fetch<{ success: boolean; transferId: string; status: string }>("/api/inventory/stock/transfer", {
       method: "POST",
       headers: toAuthHeaders(await getAccessToken()),
       body: payload,
     });
   };
 
+  const receiveTransfer = async (transferId: string) => {
+    return await $fetch<{ success: boolean; transferId: string; status: string; idempotent?: boolean }>(
+      `/api/inventory/stock/transfer/${transferId}/receive`,
+      {
+        method: "POST",
+        headers: toAuthHeaders(await getAccessToken()),
+      },
+    );
+  };
+
+  const rejectTransfer = async (transferId: string) => {
+    return await $fetch<{ success: boolean; transferId: string; status: string; idempotent?: boolean }>(
+      `/api/inventory/stock/transfer/${transferId}/cancel`,
+      {
+        method: "POST",
+        headers: toAuthHeaders(await getAccessToken()),
+      },
+    );
+  };
+
+  const precheckAdjustStockBatch = async (payload: InventoryAdjustmentBatchPayload) => {
+    const normalized = normalizeInventoryAdjustmentBatchPayload(payload);
+
+    return await $fetch<{
+      success: boolean;
+      isValid: boolean;
+      errors: InventoryBatchValidationError[];
+      rows?: InventoryBatchValidationError[];
+    } & InventoryBatchApiMeta<InventoryAdjustmentBatchLine>>(
+      "/api/inventory/stock/adjust/batch/precheck",
+      {
+        method: "POST",
+        headers: toAuthHeaders(await getAccessToken()),
+        body: normalized.payload,
+      },
+    );
+  };
+
+  const adjustStockBatch = async (payload: InventoryAdjustmentBatchPayload) => {
+    const normalized = normalizeInventoryAdjustmentBatchPayload(payload);
+
+    return await $fetch<{
+      success: boolean;
+      batchId: string;
+      processedCount: number;
+      idempotent: boolean;
+    } & InventoryBatchApiMeta<InventoryAdjustmentBatchLine>>(
+      "/api/inventory/stock/adjust/batch",
+      {
+        method: "POST",
+        headers: toAuthHeaders(await getAccessToken()),
+        body: normalized.payload,
+      },
+    );
+  };
+
+  const precheckTransferStockBatch = async (payload: InventoryTransferBatchPayload) => {
+    const normalized = normalizeInventoryTransferBatchPayload(payload);
+
+    return await $fetch<{
+      success: boolean;
+      isValid: boolean;
+      errors: InventoryBatchValidationError[];
+      rows?: InventoryBatchValidationError[];
+    } & InventoryBatchApiMeta<InventoryTransferBatchLine>>(
+      "/api/inventory/stock/transfer/batch/precheck",
+      {
+        method: "POST",
+        headers: toAuthHeaders(await getAccessToken()),
+        body: normalized.payload,
+      },
+    );
+  };
+
+  const transferStockBatch = async (payload: InventoryTransferBatchPayload) => {
+    const normalized = normalizeInventoryTransferBatchPayload(payload);
+
+    return await $fetch<{
+      success: boolean;
+      batchId: string;
+      processedCount: number;
+      idempotent: boolean;
+      status: string;
+    } & InventoryBatchApiMeta<InventoryTransferBatchLine>>(
+      "/api/inventory/stock/transfer/batch",
+      {
+        method: "POST",
+        headers: toAuthHeaders(await getAccessToken()),
+        body: normalized.payload,
+      },
+    );
+  };
+
+  const receiveTransferBatch = async (batchId: string) => {
+    return await $fetch<{ success: boolean; batchId: string; processedCount: number; idempotent?: boolean; status: string }>(
+      `/api/inventory/stock/transfer-batch/${batchId}/receive`,
+      {
+        method: "POST",
+        headers: toAuthHeaders(await getAccessToken()),
+      },
+    );
+  };
+
+  const rejectTransferBatch = async (batchId: string) => {
+    return await $fetch<{ success: boolean; batchId: string; processedCount: number; idempotent?: boolean; status: string }>(
+      `/api/inventory/stock/transfer-batch/${batchId}/cancel`,
+      {
+        method: "POST",
+        headers: toAuthHeaders(await getAccessToken()),
+      },
+    );
+  };
+
+  const loadTransferDetails = async (transferId: string) => {
+    return await $fetch<{
+      success: boolean;
+      details: InventoryTransferDetailData;
+    }>(`/api/inventory/stock/transfer-details/${transferId}`, {
+      method: "GET",
+      headers: toAuthHeaders(await getAccessToken()),
+    });
+  };
+
+  const createDefaultTransferFilters = (): InventoryTransferFilters => ({
+    branchId: null,
+    productId: null,
+    status: "all",
+  });
+
   const createDefaultMovementFilters = (): InventoryMovementFilters => ({
     branchId: null,
     productId: null,
     movementType: "all",
-    dateFrom: getTodayLocalDate(),
-    dateTo: getTodayLocalDate(),
+    dateFrom: null,
+    dateTo: null,
   });
 
   const getTransferUpgradeMessage = (capabilities: OrganizationCapabilities | null) => {
@@ -835,10 +1263,12 @@ export const useInventory = () => {
 
   return {
     localTimeZone,
+    createDefaultTransferFilters,
     createDefaultMovementFilters,
     loadOverview,
     loadProductsPage,
-    loadAdjustmentsPage,
+    loadTransfersPage,
+    loadHistoryPage,
     createCategory,
     updateCategory,
     updateCategoryStatus,
@@ -846,7 +1276,16 @@ export const useInventory = () => {
     updateProduct,
     updateProductStatus,
     adjustStock,
+    precheckAdjustStockBatch,
+    adjustStockBatch,
     transferStock,
+    precheckTransferStockBatch,
+    transferStockBatch,
+    receiveTransfer,
+    receiveTransferBatch,
+    rejectTransfer,
+    rejectTransferBatch,
+    loadTransferDetails,
     formatCurrency,
     formatDateTime,
     getMovementLabel,

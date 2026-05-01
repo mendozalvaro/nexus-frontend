@@ -226,6 +226,27 @@ create table inventory_movements (
     created_at timestamptz default now()
 );
 
+create table inventory_transfers (
+    id uuid default uuid_generate_v4() primary key,
+    organization_id uuid references organizations(id) on delete cascade not null,
+    product_id uuid references products(id) on delete cascade not null,
+    source_branch_id uuid references branches(id) on delete cascade not null,
+    destination_branch_id uuid references branches(id) on delete cascade not null,
+    quantity int not null check (quantity > 0),
+    status text not null default 'pending' check (status in ('pending', 'received', 'cancelled')),
+    observations text,
+    internal_note text,
+    requested_by uuid references profiles(id) on delete set null not null,
+    requested_at timestamptz default now(),
+    received_by uuid references profiles(id) on delete set null,
+    received_at timestamptz,
+    cancelled_by uuid references profiles(id) on delete set null,
+    cancelled_at timestamptz,
+    created_at timestamptz default now(),
+    updated_at timestamptz default now(),
+    constraint inventory_transfers_distinct_branches check (source_branch_id <> destination_branch_id)
+);
+
 -- ============================================================================
 -- 6. AGENDA Y CITAS
 -- ============================================================================
@@ -643,6 +664,7 @@ create trigger update_profile_updated_at before update on profiles for each row 
 create trigger update_service_updated_at before update on services for each row execute procedure public.update_updated_at_column();
 create trigger update_product_updated_at before update on products for each row execute procedure public.update_updated_at_column();
 create trigger update_stock_updated_at before update on inventory_stock for each row execute procedure public.update_updated_at_column();
+create trigger update_inventory_transfer_updated_at before update on inventory_transfers for each row execute procedure public.update_updated_at_column();
 create trigger update_appt_updated_at before update on appointments for each row execute procedure public.update_updated_at_column();
 create trigger update_sub_updated_at before update on organization_subscriptions for each row execute procedure public.update_updated_at_column();
 
@@ -677,6 +699,7 @@ alter table services enable row level security;
 alter table products enable row level security;
 alter table inventory_stock enable row level security;
 alter table inventory_movements enable row level security;
+alter table inventory_transfers enable row level security;
 alter table appointments enable row level security;
 alter table transactions enable row level security;
 alter table transaction_items enable row level security;
@@ -744,6 +767,18 @@ using (
         or is_user_assigned_to_branch(branch_id)
         or (source_branch_id is not null and is_user_assigned_to_branch(source_branch_id))
         or (destination_branch_id is not null and is_user_assigned_to_branch(destination_branch_id))
+    )
+);
+
+create policy "Inventory transfers select" on inventory_transfers for select
+using (
+    organization_id = get_user_organization_id()
+    and (
+        get_user_role() = 'admin'
+        or source_branch_id = get_user_branch_id()
+        or destination_branch_id = get_user_branch_id()
+        or is_user_assigned_to_branch(source_branch_id)
+        or is_user_assigned_to_branch(destination_branch_id)
     )
 );
 
@@ -835,6 +870,9 @@ create index idx_stock_product on inventory_stock(product_id);
 create index idx_inventory_movements_branch_time on inventory_movements(branch_id, created_at desc);
 create index idx_inventory_movements_product_time on inventory_movements(product_id, created_at desc);
 create index idx_inventory_movements_org_time on inventory_movements(organization_id, created_at desc);
+create index idx_inventory_transfers_org_requested_at on inventory_transfers(organization_id, requested_at desc);
+create index idx_inventory_transfers_status on inventory_transfers(status);
+create index idx_inventory_transfers_destination_status on inventory_transfers(destination_branch_id, status);
 create index idx_transactions_branch_date on transactions(branch_id, created_at);
 create index idx_transactions_org on transactions(organization_id);
 create index idx_transaction_items_transaction on transaction_items(transaction_id);

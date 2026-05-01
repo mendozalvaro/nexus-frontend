@@ -1,6 +1,8 @@
 import {
   applyInventoryStockMutation,
   assertInventoryBranchAccess,
+  assertInventoryModuleAccess,
+  generateInventoryDocumentCode,
   getInventoryBranchOrThrow,
   getInventoryProductOrThrow,
   insertInventoryAudit,
@@ -12,6 +14,7 @@ import {
 
 export default defineEventHandler(async (event) => {
   const context = await requireInventoryContext(event);
+  await assertInventoryModuleAccess(context, "can_edit");
   const body = await readValidatedInventoryBody(event, stockAdjustmentSchema);
 
   assertInventoryBranchAccess(context, body.branchId);
@@ -27,6 +30,10 @@ export default defineEventHandler(async (event) => {
   });
 
   const movementType = body.mode === "set" ? "adjustment" : body.mode === "add" ? "entry" : "exit";
+  const movementCode = await generateInventoryDocumentCode(
+    context,
+    body.mode === "add" ? "ING" : body.mode === "remove" ? "SAL" : "AJU",
+  );
 
   await insertInventoryMovement(context, {
     organization_id: context.organizationId,
@@ -37,7 +44,7 @@ export default defineEventHandler(async (event) => {
     previous_quantity: stockMutation.previousQuantity,
     new_quantity: stockMutation.newQuantity,
     reason: body.reason.trim(),
-    note: body.note.trim() || null,
+    note: movementCode,
     reference_type: "manual_adjustment",
     reference_id: stockMutation.stockId,
     source_branch_id: body.mode === "remove" ? body.branchId : null,
@@ -64,7 +71,8 @@ export default defineEventHandler(async (event) => {
       mode: body.mode,
       quantity: body.quantity,
       reason: body.reason.trim(),
-      note: body.note.trim() || null,
+      note: movementCode,
+      movement_code: movementCode,
     },
   });
 
@@ -72,5 +80,6 @@ export default defineEventHandler(async (event) => {
     success: true,
     stockId: stockMutation.stockId,
     nextQuantity: stockMutation.newQuantity,
+    movementCode,
   };
 });

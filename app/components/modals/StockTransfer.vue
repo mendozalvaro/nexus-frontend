@@ -12,8 +12,8 @@ interface TransferFormState {
   destinationBranchId: string;
   productId: string;
   quantity: number;
-  reason: string;
-  note: string;
+  observations: string;
+  internalNote: string;
 }
 
 const props = withDefaults(defineProps<{
@@ -41,8 +41,8 @@ const state = reactive<TransferFormState>({
   destinationBranchId: "",
   productId: "",
   quantity: 1,
-  reason: "",
-  note: "",
+  observations: "",
+  internalNote: "",
 });
 
 const availableDestinations = computed(() => {
@@ -60,8 +60,8 @@ watch(
     state.destinationBranchId = availableDestinations.value[0]?.id ?? "";
     state.productId = props.selectedProductId ?? props.products.find((product) => product.totalAvailableQuantity > 0)?.id ?? "";
     state.quantity = 1;
-    state.reason = "";
-    state.note = "";
+    state.observations = "";
+    state.internalNote = "";
   },
   { immediate: true },
 );
@@ -88,8 +88,8 @@ const schema = computed(() => z.object({
   destinationBranchId: z.string().uuid("Selecciona la sucursal destino."),
   productId: z.string().uuid("Selecciona un producto valido."),
   quantity: z.coerce.number().int("La cantidad debe ser entera.").positive("La cantidad debe ser mayor a cero."),
-  reason: z.string().trim().min(3, "Debes indicar el motivo de la transferencia."),
-  note: z.string().trim().max(240, "La nota no puede superar 240 caracteres."),
+  observations: z.string().trim().min(3, "Debes indicar observaciones de la transferencia."),
+  internalNote: z.string().trim().max(240, "La nota interna no puede superar 240 caracteres."),
 }).superRefine((value, context) => {
   if (value.sourceBranchId === value.destinationBranchId) {
     context.addIssue({
@@ -123,8 +123,8 @@ const submit = () => {
     destinationBranchId: state.destinationBranchId,
     productId: state.productId,
     quantity: state.quantity,
-    reason: state.reason.trim(),
-    note: state.note.trim(),
+    observations: state.observations.trim(),
+    internalNote: state.internalNote.trim(),
   });
 };
 </script>
@@ -190,12 +190,12 @@ const submit = () => {
           </div>
 
           <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
-            <UFormField label="Motivo" name="reason">
-              <UInput v-model="state.reason" placeholder="Ej. rebalanceo semanal" :disabled="loading || Boolean(upgradeMessage)" :ui="{ base: 'min-h-11 text-base' }" />
+            <UFormField label="Observaciones" name="observations">
+              <UInput v-model="state.observations" placeholder="Ej. rebalanceo semanal" :disabled="loading || Boolean(upgradeMessage)" :ui="{ base: 'min-h-11 text-base' }" />
             </UFormField>
 
-            <UFormField label="Nota interna" name="note">
-              <UInput v-model="state.note" placeholder="Opcional" :disabled="loading || Boolean(upgradeMessage)" :ui="{ base: 'min-h-11 text-base' }" />
+            <UFormField label="Nota interna" name="internalNote">
+              <UInput v-model="state.internalNote" placeholder="Opcional" :disabled="loading || Boolean(upgradeMessage)" :ui="{ base: 'min-h-11 text-base' }" />
             </UFormField>
           </div>
 

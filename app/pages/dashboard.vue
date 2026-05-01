@@ -1,6 +1,4 @@
 <script setup lang="ts">
-import type { DashboardAccountStatus } from "@/composables/useDashboard";
-import type { Database } from "@/types/database.types";
 
 definePageMeta({
   layout: "default",
@@ -10,9 +8,18 @@ definePageMeta({
 });
 
 const route = useRoute();
-const supabase = useSupabaseClient<Database>();
-const { profile } = useAuth();
+const { profile: authProfile } = useAuth();
+const { accountStatus, setAccountStatusState } = useUserContext();
 const { getUserPermissions, hasPermission } = usePermissions();
+const { loadAccountStatus: loadSharedAccountStatus } = useAccountStatus();
+const { profile: globalProfile } = useGlobalUserProfile();
+const { organization } = useGlobalOrganization();
+const { stats: dashboardStats, period, refreshStats, loading: loadingStats } = useDashboardStats();
+type DashboardProfile = {
+  full_name?: string | null;
+  role?: string | null;
+  organization_id?: string | null;
+};
 
 const ROLE_LABELS: Record<string, string> = {
   admin: "Administrador",
@@ -26,6 +33,9 @@ const stats = ref({
   totalOrders: 0,
   totalProducts: 0,
   totalUsers: 0,
+});
+const profile = computed<DashboardProfile | null>(() => {
+  return (globalProfile.value as DashboardProfile | null) ?? (authProfile.value as DashboardProfile | null);
 });
 
 const activityItems = [
@@ -127,12 +137,11 @@ const quickActions = computed(() => {
   return items.slice(0, 4);
 });
 
-const accountStatus = ref<DashboardAccountStatus | "active">("active");
 const checkingStatus = ref(false);
 
 const normalizeAccountStatus = (
   status: string | null | undefined,
-): DashboardAccountStatus | "active" => {
+): AccountStatusValue => {
   if (
     status === "pending" ||
     status === "active" ||
@@ -149,64 +158,26 @@ const loadDashboardStats = async () => {
   const permissions = getUserPermissions();
 
   if (hasPermission(permissions, "reports.view")) {
-    // Placeholder for phase 2 dashboard stats.
+    await refreshStats();
+    stats.value.totalSales = Number(dashboardStats.value?.sales ?? 0);
+    stats.value.totalOrders = Number(dashboardStats.value?.appointments ?? 0);
+    stats.value.totalProducts = Number(dashboardStats.value?.products ?? 0);
+    stats.value.totalUsers = Number(dashboardStats.value?.customers ?? 0);
   }
 };
 
-const loadAccountStatus = async () => {
-  if (!profile.value?.organization_id) {
-    accountStatus.value = "active";
-    return;
-  }
-
-  const forcedStatus = normalizeAccountStatus(
-    typeof route.query.status === "string" ? route.query.status : null,
-  );
-
+const loadAccountStatus = async (force = false) => {
   checkingStatus.value = true;
-
   try {
-    const [{ data: organization }, { data: subscription }, { data: validation }] = await Promise.all([
-      supabase
-        .from("organizations")
-        .select("status")
-        .eq("id", profile.value.organization_id)
-        .maybeSingle(),
-      supabase
-        .from("organization_subscriptions")
-        .select("status")
-        .eq("organization_id", profile.value.organization_id)
-        .maybeSingle(),
-      supabase
-        .from("payment_validations")
-        .select("status, created_at")
-        .eq("organization_id", profile.value.organization_id)
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle(),
-    ]);
-
-    if (organization?.status === "suspended") {
-      accountStatus.value = "suspended";
-      return;
-    }
-
-    if (organization?.status === "active" && subscription?.status === "active") {
-      accountStatus.value = "active";
-      return;
-    }
-
-    if (forcedStatus !== "active") {
-      accountStatus.value = forcedStatus;
-      return;
-    }
-
-    if (validation?.status === "rejected") {
-      accountStatus.value = "rejected";
-      return;
-    }
-
-    accountStatus.value = normalizeAccountStatus(organization?.status ?? "pending");
+    const result = await loadSharedAccountStatus({
+      organizationId: profile.value?.organization_id ?? null,
+      forcedStatus: typeof route.query.status === "string" ? route.query.status : null,
+      force,
+    });
+    setAccountStatusState({
+      accountStatus: result.accountStatus,
+      paymentRequired: result.paymentRequired,
+    });
   } finally {
     checkingStatus.value = false;
   }
@@ -218,12 +189,22 @@ onMounted(async () => {
   );
 
   if (routeStatus !== "active") {
-    accountStatus.value = routeStatus;
+    setAccountStatusState({
+      accountStatus: routeStatus,
+      paymentRequired: false,
+    });
   }
 
   await loadDashboardStats();
   await loadAccountStatus();
 });
+
+watch(
+  () => [period.value, (organization.value as { id?: string } | null)?.id ?? null] as const,
+  async () => {
+    await loadDashboardStats();
+  },
+);
 </script>
 
 <template>
@@ -232,7 +213,7 @@ onMounted(async () => {
       v-if="accountStatus !== 'active'"
       :account-status="accountStatus"
       :checking-status="checkingStatus"
-      @check="loadAccountStatus"
+      @check="() => loadAccountStatus(true)"
     />
 
     <UiPageHeader
@@ -243,6 +224,14 @@ onMounted(async () => {
     >
       <template #meta>
         <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:flex lg:flex-wrap">
+          <div class="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-800 dark:bg-slate-950/60">
+            <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
+              Periodo KPI
+            </p>
+            <p class="mt-1 text-sm font-semibold text-slate-900 dark:text-white">
+              {{ period }}
+            </p>
+          </div>
           <div class="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-800 dark:bg-slate-950/60">
             <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
               Estado
@@ -262,6 +251,8 @@ onMounted(async () => {
         </div>
       </template>
     </UiPageHeader>
+
+    <USkeleton v-if="loadingStats" class="h-4 w-40 rounded-full" />
 
     <UiKpiStrip :items="kpiItems" />
 

@@ -17,6 +17,7 @@
 				"approve": true,
 				"matchCommandLine": true
 			}
-		}
+		},
+		"remote.tunnels.tunnelCredentialCommand": null
 	}
 }

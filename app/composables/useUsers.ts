@@ -51,7 +51,7 @@ export interface UsersFilters {
 
 export const useUsers = () => {
   const { resolveAccessToken } = useSessionAccess();
-  const { profile, fetchProfile } = useAuth();
+  const { profile, ensureContext } = useUserContext();
   const {
     capabilities,
     loadCapabilities,
@@ -95,7 +95,8 @@ export const useUsers = () => {
   };
 
   const loadUsers = async (): Promise<UsersData> => {
-    const currentProfile = profile.value ?? (await fetchProfile());
+    const context = await ensureContext({ requireProfile: true });
+    const currentProfile = context.profile ?? profile.value;
     const canManageUsers = currentProfile?.role === "admin" || currentProfile?.role === "manager";
     if (!currentProfile?.organization_id || !canManageUsers) {
       throw createError({

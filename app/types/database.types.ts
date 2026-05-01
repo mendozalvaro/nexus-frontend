@@ -432,6 +432,73 @@ export type Database = {
           },
         ]
       }
+      inventory_adjust_batches: {
+        Row: {
+          branch_id: string
+          created_at: string
+          id: string
+          idempotency_key: string
+          mode: string
+          note: string | null
+          organization_id: string
+          processed_by: string | null
+          processed_count: number
+          reason: string
+          total_lines: number
+          updated_at: string
+        }
+        Insert: {
+          branch_id: string
+          created_at?: string
+          id?: string
+          idempotency_key: string
+          mode: string
+          note?: string | null
+          organization_id: string
+          processed_by?: string | null
+          processed_count?: number
+          reason: string
+          total_lines: number
+          updated_at?: string
+        }
+        Update: {
+          branch_id?: string
+          created_at?: string
+          id?: string
+          idempotency_key?: string
+          mode?: string
+          note?: string | null
+          organization_id?: string
+          processed_by?: string | null
+          processed_count?: number
+          reason?: string
+          total_lines?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "inventory_adjust_batches_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inventory_adjust_batches_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inventory_adjust_batches_processed_by_fkey"
+            columns: ["processed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       inventory_movements: {
         Row: {
           branch_id: string
@@ -573,6 +640,289 @@ export type Database = {
             columns: ["product_id"]
             isOneToOne: false
             referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      inventory_transfer_batch_lines: {
+        Row: {
+          batch_id: string
+          created_at: string
+          destination_new_quantity: number | null
+          destination_previous_quantity: number | null
+          id: string
+          organization_id: string
+          product_id: string
+          quantity: number
+          received_at: string | null
+          received_by: string | null
+          source_new_quantity: number | null
+          source_previous_quantity: number | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          batch_id: string
+          created_at?: string
+          destination_new_quantity?: number | null
+          destination_previous_quantity?: number | null
+          id?: string
+          organization_id: string
+          product_id: string
+          quantity: number
+          received_at?: string | null
+          received_by?: string | null
+          source_new_quantity?: number | null
+          source_previous_quantity?: number | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          batch_id?: string
+          created_at?: string
+          destination_new_quantity?: number | null
+          destination_previous_quantity?: number | null
+          id?: string
+          organization_id?: string
+          product_id?: string
+          quantity?: number
+          received_at?: string | null
+          received_by?: string | null
+          source_new_quantity?: number | null
+          source_previous_quantity?: number | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "inventory_transfer_batch_lines_batch_id_fkey"
+            columns: ["batch_id"]
+            isOneToOne: false
+            referencedRelation: "inventory_transfer_batches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inventory_transfer_batch_lines_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inventory_transfer_batch_lines_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inventory_transfer_batch_lines_received_by_fkey"
+            columns: ["received_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      inventory_transfer_batches: {
+        Row: {
+          created_at: string
+          destination_branch_id: string
+          id: string
+          idempotency_key: string
+          internal_note: string | null
+          observations: string | null
+          organization_id: string
+          received_at: string | null
+          received_by: string | null
+          requested_at: string
+          requested_by: string | null
+          source_branch_id: string
+          status: string
+          total_lines: number
+          total_quantity: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          destination_branch_id: string
+          id?: string
+          idempotency_key: string
+          internal_note?: string | null
+          observations?: string | null
+          organization_id: string
+          received_at?: string | null
+          received_by?: string | null
+          requested_at?: string
+          requested_by?: string | null
+          source_branch_id: string
+          status?: string
+          total_lines: number
+          total_quantity: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          destination_branch_id?: string
+          id?: string
+          idempotency_key?: string
+          internal_note?: string | null
+          observations?: string | null
+          organization_id?: string
+          received_at?: string | null
+          received_by?: string | null
+          requested_at?: string
+          requested_by?: string | null
+          source_branch_id?: string
+          status?: string
+          total_lines?: number
+          total_quantity?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "inventory_transfer_batches_destination_branch_id_fkey"
+            columns: ["destination_branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inventory_transfer_batches_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inventory_transfer_batches_received_by_fkey"
+            columns: ["received_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inventory_transfer_batches_requested_by_fkey"
+            columns: ["requested_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inventory_transfer_batches_source_branch_id_fkey"
+            columns: ["source_branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      inventory_transfers: {
+        Row: {
+          cancelled_at: string | null
+          cancelled_by: string | null
+          created_at: string
+          destination_branch_id: string
+          id: string
+          internal_note: string | null
+          observations: string | null
+          organization_id: string
+          product_id: string
+          quantity: number
+          received_at: string | null
+          received_by: string | null
+          requested_at: string
+          requested_by: string
+          source_branch_id: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          cancelled_at?: string | null
+          cancelled_by?: string | null
+          created_at?: string
+          destination_branch_id: string
+          id?: string
+          internal_note?: string | null
+          observations?: string | null
+          organization_id: string
+          product_id: string
+          quantity: number
+          received_at?: string | null
+          received_by?: string | null
+          requested_at?: string
+          requested_by: string
+          source_branch_id: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          cancelled_at?: string | null
+          cancelled_by?: string | null
+          created_at?: string
+          destination_branch_id?: string
+          id?: string
+          internal_note?: string | null
+          observations?: string | null
+          organization_id?: string
+          product_id?: string
+          quantity?: number
+          received_at?: string | null
+          received_by?: string | null
+          requested_at?: string
+          requested_by?: string
+          source_branch_id?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "inventory_transfers_cancelled_by_fkey"
+            columns: ["cancelled_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inventory_transfers_destination_branch_id_fkey"
+            columns: ["destination_branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inventory_transfers_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inventory_transfers_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inventory_transfers_received_by_fkey"
+            columns: ["received_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inventory_transfers_requested_by_fkey"
+            columns: ["requested_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inventory_transfers_source_branch_id_fkey"
+            columns: ["source_branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
             referencedColumns: ["id"]
           },
         ]
@@ -1572,11 +1922,103 @@ export type Database = {
         Args: { input_org_id: string }
         Returns: Json
       }
+      get_account_status_snapshot: {
+        Args: { p_organization_id: string }
+        Returns: {
+          is_trial: boolean | null
+          latest_validation_status: string | null
+          organization_status: string | null
+          subscription_status: Database["public"]["Enums"]["sub_status"] | null
+          trial_ends_at: string | null
+        }[]
+      }
       get_user_branch_id: { Args: never; Returns: string }
       get_user_organization_id: { Args: never; Returns: string }
       get_user_role: {
         Args: never
         Returns: Database["public"]["Enums"]["user_role"]
+      }
+      inventory_adjust_batch_execute: {
+        Args: {
+          p_branch_id: string
+          p_idempotency_key: string
+          p_lines: Json
+          p_mode: string
+          p_note: string
+          p_organization_id: string
+          p_reason: string
+          p_user_id: string
+        }
+        Returns: {
+          batch_id: string
+          idempotent: boolean
+          processed_count: number
+        }[]
+      }
+      inventory_adjust_batch_precheck: {
+        Args: {
+          p_branch_id: string
+          p_lines: Json
+          p_mode: string
+          p_organization_id: string
+        }
+        Returns: {
+          current_quantity: number
+          error_code: string
+          error_message: string
+          is_valid: boolean
+          line_index: number
+          next_quantity: number
+          product_id: string
+          quantity: number
+        }[]
+      }
+      inventory_transfer_batch_create: {
+        Args: {
+          p_destination_branch_id: string
+          p_idempotency_key: string
+          p_internal_note: string
+          p_lines: Json
+          p_observations: string
+          p_organization_id: string
+          p_source_branch_id: string
+          p_user_id: string
+        }
+        Returns: {
+          batch_id: string
+          idempotent: boolean
+          processed_count: number
+        }[]
+      }
+      inventory_transfer_batch_precheck: {
+        Args: {
+          p_destination_branch_id: string
+          p_lines: Json
+          p_organization_id: string
+          p_source_branch_id: string
+        }
+        Returns: {
+          current_quantity: number
+          error_code: string
+          error_message: string
+          is_valid: boolean
+          line_index: number
+          next_quantity: number
+          product_id: string
+          quantity: number
+        }[]
+      }
+      inventory_transfer_batch_receive: {
+        Args: {
+          p_batch_id: string
+          p_organization_id: string
+          p_user_id: string
+        }
+        Returns: {
+          batch_id: string
+          idempotent: boolean
+          processed_count: number
+        }[]
       }
       is_branch_in_user_organization: {
         Args: { target_branch_id: string }

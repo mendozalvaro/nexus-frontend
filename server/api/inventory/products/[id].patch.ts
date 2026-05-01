@@ -1,4 +1,5 @@
 import {
+  assertInventoryModuleAccess,
   assertUniqueSKU,
   getInventoryProductOrThrow,
   getProductCategoryOrThrow,
@@ -9,6 +10,7 @@ import {
 
 export default defineEventHandler(async (event) => {
   const context = await requireInventoryContext(event);
+  await assertInventoryModuleAccess(context, "can_edit");
   const productId = getRouterParam(event, "id");
 
   if (!productId) {

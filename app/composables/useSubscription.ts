@@ -1,7 +1,5 @@
 import type { Ref } from "vue";
 
-import type { User } from "@supabase/supabase-js";
-
 import type { Database, Json } from "@/types/database.types";
 import type {
   CapabilityFeatureKey,
@@ -18,12 +16,13 @@ import {
 } from "@/utils/subscription-plan";
 
 type CapabilityRpcResponse = Database["public"]["Functions"]["get_organization_capabilities"]["Returns"];
-type ProfileRow = Database["public"]["Tables"]["profiles"]["Row"];
 
 const FALLBACK_PLAN_NAME = "Emprende";
 const FALLBACK_PLAN_SLUG: SubscriptionPlanSlug = "emprende";
 const FALLBACK_MAX_BRANCHES = 1;
 const FALLBACK_MAX_USERS = 1;
+const CAPABILITIES_CACHE_MAX_AGE_MS = 20000;
+const pendingCapabilityLoads = new Map<string, Promise<OrganizationCapabilities | null>>();
 
 const FEATURE_KEYS: ReadonlySet<CapabilityFeatureKey> = new Set([
   "canCreateBranch",
@@ -177,22 +176,9 @@ const normalizeCapabilities = (payload: CapabilityRpcResponse): OrganizationCapa
   };
 };
 
-const getUserMetadata = (user: User | null): Record<string, unknown> => {
-  if (!user || !isRecord(user.user_metadata)) {
-    return {};
-  }
-
-  return user.user_metadata;
-};
-
-const getMetadataOrganizationId = (user: User | null): string | null => {
-  return readNullableString(getUserMetadata(user).organization_id);
-};
-
 export const useSubscription = () => {
   const supabase = useSupabaseClient<Database>();
-  const session = useSupabaseSession();
-  const { resolveUser } = useSessionAccess();
+  const { user, organizationId, ensureContext } = useUserContext();
 
   const capabilities = useState<OrganizationCapabilities | null>(
     "subscription:capabilities",
@@ -201,9 +187,9 @@ export const useSubscription = () => {
   const isLoading = useState<boolean>("subscription:is-loading", () => false);
   const error = useState<string | null>("subscription:error", () => null);
   const resolvedOrganizationId = useState<string | null>("subscription:organization-id", () => null);
+  const lastLoadedOrganizationId = useState<string | null>("subscription:last-loaded-org-id", () => null);
+  const lastLoadedAt = useState<number>("subscription:last-loaded-at", () => 0);
   const watcherInitialized = useState<boolean>("subscription:watcher-initialized", () => false);
-
-  const user = computed<User | null>(() => session.value?.user ?? null);
 
   const setFallbackCapabilities = (overrides: Partial<OrganizationCapabilities> = {}) => {
     capabilities.value = createFallbackCapabilities(overrides);
@@ -218,31 +204,14 @@ export const useSubscription = () => {
   };
 
   const resolveOrganizationId = async (): Promise<string | null> => {
-    const currentUser = user.value ?? await resolveUser();
-    const metadataOrganizationId = getMetadataOrganizationId(currentUser);
-    if (metadataOrganizationId) {
-      resolvedOrganizationId.value = metadataOrganizationId;
-      return metadataOrganizationId;
-    }
-
+    const { user: currentUser, profile } = await ensureContext({ requireProfile: true });
     if (!currentUser) {
       resolvedOrganizationId.value = null;
       return null;
     }
-
-    const { data, error: profileError } = await supabase
-      .from("profiles")
-      .select("organization_id")
-      .eq("id", currentUser.id)
-      .maybeSingle<Pick<ProfileRow, "organization_id">>();
-
-    if (profileError) {
-      throw profileError;
-    }
-
-    const organizationId = data?.organization_id ?? null;
-    resolvedOrganizationId.value = organizationId;
-    return organizationId;
+    const resolved = profile?.organization_id ?? organizationId.value ?? null;
+    resolvedOrganizationId.value = resolved;
+    return resolved;
   };
 
   /**
@@ -255,15 +224,20 @@ export const useSubscription = () => {
    * await loadCapabilities()
    * ```
    */
-  const loadCapabilities = async (orgId?: string): Promise<OrganizationCapabilities | null> => {
+  const loadCapabilities = async (
+    orgId?: string,
+    options: { force?: boolean; maxAgeMs?: number } = {},
+  ): Promise<OrganizationCapabilities | null> => {
     isLoading.value = true;
     error.value = null;
 
     try {
-      const currentUser = user.value ?? await resolveUser();
+      const { user: currentUser } = await ensureContext({ requireProfile: false });
       if (!currentUser) {
         setFallbackCapabilities();
         resolvedOrganizationId.value = null;
+        lastLoadedOrganizationId.value = null;
+        lastLoadedAt.value = 0;
         return capabilities.value;
       }
 
@@ -276,18 +250,50 @@ export const useSubscription = () => {
       }
 
       resolvedOrganizationId.value = organizationId;
+      const force = options.force === true;
+      const maxAgeMs = options.maxAgeMs ?? CAPABILITIES_CACHE_MAX_AGE_MS;
+      const hasFreshCachedCapabilities =
+        !force &&
+        capabilities.value !== null &&
+        lastLoadedOrganizationId.value === organizationId &&
+        Date.now() - lastLoadedAt.value <= Math.max(0, maxAgeMs);
 
-      const { data, error: rpcError } = await supabase.rpc(
-        "get_organization_capabilities",
-        { input_org_id: organizationId },
-      );
-
-      if (rpcError) {
-        throw rpcError;
+      if (hasFreshCachedCapabilities) {
+        return capabilities.value;
       }
 
-      capabilities.value = normalizeCapabilities(data as Json);
-      return capabilities.value;
+      if (!force && import.meta.client) {
+        const pending = pendingCapabilityLoads.get(organizationId);
+        if (pending) {
+          return await pending;
+        }
+      }
+
+      const loader = (async () => {
+        const { data, error: rpcError } = await supabase.rpc(
+          "get_organization_capabilities",
+          { input_org_id: organizationId },
+        );
+
+        if (rpcError) {
+          throw rpcError;
+        }
+
+        capabilities.value = normalizeCapabilities(data as Json);
+        lastLoadedOrganizationId.value = organizationId;
+        lastLoadedAt.value = Date.now();
+        return capabilities.value;
+      })();
+      if (import.meta.client) {
+        pendingCapabilityLoads.set(organizationId, loader);
+      }
+      try {
+        return await loader;
+      } finally {
+        if (import.meta.client && pendingCapabilityLoads.get(organizationId) === loader) {
+          pendingCapabilityLoads.delete(organizationId);
+        }
+      }
     } catch (loadError) {
       const message =
         loadError instanceof Error
@@ -296,6 +302,8 @@ export const useSubscription = () => {
 
       error.value = message;
       setFallbackCapabilities();
+      lastLoadedOrganizationId.value = null;
+      lastLoadedAt.value = 0;
       return capabilities.value;
     } finally {
       isLoading.value = false;
@@ -407,9 +415,7 @@ export const useSubscription = () => {
     return periodEndTime >= now && periodEndTime - now <= thresholdInMs;
   };
 
-  const watchedOrganizationId = computed(() => {
-    return getMetadataOrganizationId(user.value) ?? resolvedOrganizationId.value;
-  });
+  const watchedOrganizationId = computed(() => organizationId.value ?? resolvedOrganizationId.value);
 
   if (!watcherInitialized.value) {
     watcherInitialized.value = true;

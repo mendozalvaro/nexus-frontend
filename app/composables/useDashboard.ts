@@ -245,9 +245,8 @@ const createEmptyData = (
 
 export const useDashboard = () => {
   const supabase = useSupabaseClient<Database>();
-  const session = useSupabaseSession();
-  const { resolveUser } = useSessionAccess();
-  const { fetchProfile } = useAuth();
+  const { user, profile, ensureContext } = useUserContext();
+  const { getAccessibleBranches } = usePermissions();
   const { loadCapabilities } = useSubscription();
 
   const pendingDashboard = useState<LimitedDashboardData | null>(
@@ -274,25 +273,12 @@ export const useDashboard = () => {
   let pendingPollingTimer: number | null = null;
 
   const resolveAdminContext = async (): Promise<AdminContext> => {
-    const userId = (await resolveUser())?.id ?? null;
-    if (!userId) {
+    const resolved = await ensureContext({ requireProfile: true });
+    if (!resolved.user || !resolved.profile) {
       throw createError({ statusCode: 401, statusMessage: "Sesión no disponible." });
     }
 
-    const { data, error } = await supabase
-      .from("profiles")
-      .select("id, organization_id, role")
-      .eq("id", userId)
-      .maybeSingle<Pick<ProfileRow, "id" | "organization_id" | "role">>();
-
-    if (error) {
-      throw createError({
-        statusCode: 500,
-        statusMessage: "No se pudo validar el perfil del administrador.",
-      });
-    }
-
-    if (!data?.organization_id || data.role !== "admin") {
+    if (!resolved.profile.organization_id || resolved.profile.role !== "admin") {
       throw createError({
         statusCode: 403,
         statusMessage: "No tienes permisos para acceder al dashboard administrativo.",
@@ -300,26 +286,16 @@ export const useDashboard = () => {
     }
 
     return {
-      id: data.id,
-      organization_id: data.organization_id,
+      id: resolved.profile.id,
+      organization_id: resolved.profile.organization_id,
       role: "admin",
     };
   };
 
-  const getBranchOptions = async (organizationId: string): Promise<DashboardBranchOption[]> => {
-    const { data, error } = await supabase
-      .from("branches")
-      .select("id, name, code, organization_id, is_active")
-      .eq("organization_id", organizationId)
-      .eq("is_active", true)
-      .order("name", { ascending: true });
-
-    if (error || !data) {
-      return [];
-    }
-
-    return data.map((branch) => ({
-      label: `${branch.name} (${branch.code})`,
+  const getBranchOptions = async (): Promise<DashboardBranchOption[]> => {
+    const branches = await getAccessibleBranches();
+    return branches.map((branch) => ({
+      label: `${branch.name} (${branch.code ?? "--"})`,
       value: branch.id,
     }));
   };
@@ -327,7 +303,7 @@ export const useDashboard = () => {
   const loadDashboardData = async (filters?: Partial<DashboardFilters>): Promise<DashboardData> => {
     const adminContext = await resolveAdminContext();
     const normalizedFilters = normalizeFilters(filters);
-    const branches = await getBranchOptions(adminContext.organization_id);
+    const branches = await getBranchOptions();
     const branchLookup = new Map<string, string>(branches.map((branch) => [branch.value, branch.label]));
     const selectedBranchId = normalizedFilters.branchId;
     const scopedBranchIds = selectedBranchId
@@ -659,7 +635,7 @@ export const useDashboard = () => {
     targetRoute: string;
     accountStatus: DashboardAccountStatus;
   }) => {
-    if (!session.value?.user?.id) {
+    if (!user.value?.id) {
       return;
     }
 
@@ -667,7 +643,7 @@ export const useDashboard = () => {
       action: "INSERT",
       table_name: "dashboard_blocked_features",
       record_id: pendingDashboard.value?.organization.id ?? null,
-      user_id: session.value.user.id,
+      user_id: user.value.id,
       context: {
         event: "BLOCKED_FEATURE_ATTEMPT",
         feature_key: payload.featureKey,
@@ -690,16 +666,16 @@ export const useDashboard = () => {
     pendingError.value = null;
 
     try {
-      const currentUser = await resolveUser();
-      if (!currentUser) {
+      const context = await ensureContext({ requireProfile: true });
+      const resolvedProfile = context.profile ?? profile.value;
+      if (!context.user) {
         throw createError({
           statusCode: 401,
           statusMessage: "Sesion no disponible.",
         });
       }
 
-      const profile = await fetchProfile();
-      if (!profile?.organization_id) {
+      if (!resolvedProfile?.organization_id) {
         throw createError({
           statusCode: 403,
           statusMessage: "Tu usuario aun no tiene una organizacion asignada.",
@@ -716,37 +692,37 @@ export const useDashboard = () => {
         supabase
           .from("organizations")
           .select("id, name, country, status")
-          .eq("id", profile.organization_id)
+          .eq("id", resolvedProfile.organization_id)
           .single(),
         supabase
           .from("organization_subscriptions")
           .select("status, current_period_end")
-          .eq("organization_id", profile.organization_id)
+          .eq("organization_id", resolvedProfile.organization_id)
           .maybeSingle(),
         supabase
           .from("payment_validations")
           .select("id, status, rejection_reason, created_at")
-          .eq("organization_id", profile.organization_id)
+          .eq("organization_id", resolvedProfile.organization_id)
           .order("created_at", { ascending: false })
           .limit(1)
           .maybeSingle(),
         supabase
           .from("products")
           .select("id", { count: "exact", head: true })
-          .eq("organization_id", profile.organization_id),
+          .eq("organization_id", resolvedProfile.organization_id),
         supabase
           .from("profiles")
           .select("id", { count: "exact", head: true })
-          .eq("organization_id", profile.organization_id)
+          .eq("organization_id", resolvedProfile.organization_id)
           .in("role", ["admin", "manager", "employee"]),
         supabase
           .from("branches")
           .select("id", { count: "exact", head: true })
-          .eq("organization_id", profile.organization_id),
+          .eq("organization_id", resolvedProfile.organization_id),
         supabase
           .from("services")
           .select("id", { count: "exact", head: true })
-          .eq("organization_id", profile.organization_id),
+          .eq("organization_id", resolvedProfile.organization_id),
       ]);
 
       if (organizationError) {
@@ -777,7 +753,7 @@ export const useDashboard = () => {
         throw servicesResponse.error;
       }
 
-      const capabilities = await loadCapabilities(profile.organization_id);
+      const capabilities = await loadCapabilities(resolvedProfile.organization_id);
       const accountStatus = resolveAccountStatus(
         organization.status,
         subscription?.status ?? null,
@@ -786,11 +762,11 @@ export const useDashboard = () => {
 
       const nextData: LimitedDashboardData = {
         profile: {
-          id: profile.id,
-          full_name: profile.full_name,
-          role: profile.role,
-          organization_id: profile.organization_id,
-          email: profile.email,
+          id: resolvedProfile.id,
+          full_name: resolvedProfile.full_name,
+          role: resolvedProfile.role,
+          organization_id: resolvedProfile.organization_id,
+          email: resolvedProfile.email,
         },
         organization,
         subscription,

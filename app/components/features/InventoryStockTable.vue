@@ -1,95 +1,153 @@
 <script setup lang="ts">
-import { h, resolveComponent } from "vue";
-
 import type { InventoryProductRowView } from "@/composables/useInventory";
 
 const props = withDefaults(defineProps<{
   rows: InventoryProductRowView[];
   loading?: boolean;
+  showBranches?: boolean;
+  activeBranchIds?: string[];
 }>(), {
   loading: false,
+  showBranches: false,
+  activeBranchIds: () => [],
 });
 
-const emits = defineEmits<{
-  move: [InventoryProductRowView];
-}>();
+const effectiveBranchIds = computed(() => new Set(props.activeBranchIds));
 
-const columns = computed(() => {
-  const UBadge = resolveComponent("UBadge");
-  const UButton = resolveComponent("UButton");
+const groupedRows = computed(() => {
+  const groups = new Map<string, { categoryName: string; rows: InventoryProductRowView[] }>();
 
-  return [
-    {
-      accessorKey: "name",
-      header: "Producto",
-      cell: ({ row }: { row: { original: InventoryProductRowView } }) =>
-        h("div", { class: "min-w-0 space-y-1" }, [
-          h("p", { class: "truncate font-medium text-slate-950 dark:text-white" }, row.original.name),
-          h("p", { class: "truncate text-xs text-slate-500 dark:text-slate-400" }, row.original.sku ?? "Sin SKU"),
-        ]),
-    },
-    {
-      accessorKey: "categoryName",
-      header: "Categoria",
-      cell: ({ row }: { row: { original: InventoryProductRowView } }) =>
-        h("span", { class: "text-sm text-slate-600 dark:text-slate-300" }, row.original.categoryName ?? "Sin categoria"),
-    },
-    {
-      accessorKey: "totalAvailableQuantity",
-      header: "Disponible",
-      cell: ({ row }: { row: { original: InventoryProductRowView } }) =>
-        h("div", { class: "space-y-1" }, [
-          h("p", { class: "font-medium text-slate-950 dark:text-white" }, `${row.original.totalAvailableQuantity} unid.`),
-          h("p", { class: "text-xs text-slate-500 dark:text-slate-400" }, `Total fisico: ${row.original.totalQuantity}`),
-        ]),
-    },
-    {
-      accessorKey: "stockByBranch",
-      header: "Sucursales",
-      cell: ({ row }: { row: { original: InventoryProductRowView } }) =>
-        h("div", { class: "flex min-w-[12rem] flex-wrap gap-1.5" }, row.original.stockByBranch.slice(0, 4).map((stock) =>
-          h(
-            UBadge,
-            {
-              color: stock.isLowStock ? "warning" : "neutral",
-              variant: "soft",
-              class: "rounded-full",
-            },
-            () => `${stock.branchCode}: ${stock.availableQuantity}`,
-          ),
-        )),
-    },
-    {
-      accessorKey: "lowStockBranchesCount",
-      header: "Alertas",
-      cell: ({ row }: { row: { original: InventoryProductRowView } }) =>
-        h(UBadge, {
-          color: row.original.lowStockBranchesCount > 0 ? "warning" : "success",
-          variant: "soft",
-        }, () => row.original.lowStockBranchesCount > 0 ? `${row.original.lowStockBranchesCount} alerta(s)` : "Sin alertas"),
-    },
-    {
-      id: "actions",
-      header: "Acciones",
-      cell: ({ row }: { row: { original: InventoryProductRowView } }) =>
-        h(UButton, {
-          color: "primary",
-          variant: "soft",
-          size: "sm",
-          class: "min-h-10 justify-center",
-          onClick: () => emits("move", row.original),
-        }, () => "Registrar movimiento"),
-    },
-  ];
+  for (const row of props.rows) {
+    const categoryName = row.categoryName?.trim() || "Sin categoria";
+    const bucket = groups.get(categoryName);
+    if (bucket) {
+      bucket.rows.push(row);
+      continue;
+    }
+
+    groups.set(categoryName, {
+      categoryName,
+      rows: [row],
+    });
+  }
+
+  return Array.from(groups.values())
+    .sort((left, right) => left.categoryName.localeCompare(right.categoryName, "es"))
+    .map((group) => ({
+      ...group,
+      rows: [...group.rows].sort((left, right) => left.name.localeCompare(right.name, "es")),
+    }));
 });
+
+const getVisibleBranchStock = (row: InventoryProductRowView) => {
+  if (effectiveBranchIds.value.size === 0) {
+    return row.stockByBranch;
+  }
+
+  return row.stockByBranch.filter((item) => effectiveBranchIds.value.has(item.branchId));
+};
+
+const openState = ref<Record<string, boolean>>({});
+
+watch(
+  groupedRows,
+  (groups) => {
+    const nextState: Record<string, boolean> = {};
+    for (const group of groups) {
+      nextState[group.categoryName] = openState.value[group.categoryName] ?? true;
+    }
+    openState.value = nextState;
+  },
+  { immediate: true },
+);
+
+const toggleCategory = (categoryName: string) => {
+  openState.value[categoryName] = !openState.value[categoryName];
+};
 </script>
 
 <template>
-  <UiDataTable
-    :data="rows"
-    :columns="columns"
-    :loading="loading"
-    empty="No hay productos para operar en inventario."
-    min-width-class="min-w-[64rem] rounded-[1.5rem]"
-  />
+  <div class="space-y-4">
+    <USkeleton v-if="loading" class="h-24 w-full rounded-2xl" />
+
+    <UCard
+      v-for="group in groupedRows"
+      :key="group.categoryName"
+      class="rounded-[1.25rem] border-slate-200/80 shadow-sm shadow-slate-200/40 dark:border-slate-800 dark:shadow-black/20"
+    >
+      <template #header>
+        <button
+          type="button"
+          class="flex w-full items-center justify-between gap-3 text-left"
+          @click="toggleCategory(group.categoryName)"
+        >
+          <div>
+            <p class="text-sm uppercase tracking-wide text-slate-500 dark:text-slate-400">
+              Categoria
+            </p>
+            <h3 class="text-base font-semibold text-slate-950 dark:text-white">
+              {{ group.categoryName }}
+            </h3>
+          </div>
+          <div class="flex items-center gap-2">
+            <UBadge color="neutral" variant="soft">
+              {{ group.rows.length }} producto(s)
+            </UBadge>
+            <UIcon :name="openState[group.categoryName] ? 'i-lucide-chevron-up' : 'i-lucide-chevron-down'" class="text-slate-500" />
+          </div>
+        </button>
+      </template>
+
+      <div v-if="openState[group.categoryName]" class="overflow-x-auto">
+        <table class="min-w-full text-sm">
+          <thead class="border-b border-slate-200 text-left text-xs uppercase tracking-wide text-slate-500 dark:border-slate-800 dark:text-slate-400">
+            <tr>
+              <th class="px-2 py-2">Producto y SKU</th>
+              <th class="px-2 py-2">Disponible</th>
+              <th v-if="showBranches" class="px-2 py-2">Sucursales</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="row in group.rows" :key="row.id" class="border-b border-slate-100 last:border-b-0 dark:border-slate-800/70">
+              <td class="px-2 py-2 align-top">
+                <p class="font-medium text-slate-950 dark:text-white">
+                  {{ row.name }}
+                </p>
+                <p class="text-xs text-slate-500 dark:text-slate-400">
+                  {{ row.sku || "Sin SKU" }}
+                </p>
+              </td>
+              <td class="px-2 py-2 align-top">
+                <p class="font-medium text-slate-900 dark:text-slate-100">
+                  {{ row.totalAvailableQuantity }}
+                </p>
+              </td>
+              <td v-if="showBranches" class="px-2 py-2 align-top">
+                <div class="flex flex-wrap gap-1.5">
+                  <UBadge
+                    v-for="stock in getVisibleBranchStock(row)"
+                    :key="`${row.id}:${stock.branchId}`"
+                    :color="stock.isLowStock ? 'warning' : 'neutral'"
+                    variant="soft"
+                    class="rounded-full"
+                  >
+                    {{ stock.branchCode }}: {{ stock.availableQuantity }}
+                  </UBadge>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </UCard>
+
+    <UAlert
+      v-if="!loading && groupedRows.length === 0"
+      color="neutral"
+      variant="soft"
+      icon="i-lucide-package-search"
+      title="Sin productos"
+      description="No hay productos para mostrar en este filtro."
+    />
+  </div>
 </template>

@@ -1,5 +1,6 @@
 import type { Database, Json } from "@/types/database.types";
 import type { OrganizationCapabilities } from "@/types/subscription";
+import { resolvePlanNumericLimit } from "@/utils/subscription-plan";
 
 type BranchRow = Database["public"]["Tables"]["branches"]["Row"];
 type InventoryRow = Database["public"]["Tables"]["inventory_stock"]["Row"];
@@ -9,10 +10,6 @@ type AssignmentRow =
   Database["public"]["Tables"]["employee_branch_assignments"]["Row"];
 type TransactionRow = Database["public"]["Tables"]["transactions"]["Row"];
 type AppointmentRow = Database["public"]["Tables"]["appointments"]["Row"];
-type SubscriptionRow =
-  Database["public"]["Tables"]["organization_subscriptions"]["Row"];
-type SubscriptionPlanRow =
-  Database["public"]["Tables"]["subscription_plans"]["Row"];
 
 export type BranchWeekday =
   | "monday"
@@ -262,7 +259,7 @@ const buildStatsMaps = (
 export const useBranches = () => {
   const supabase = useSupabaseClient<Database>();
   const { resolveAccessToken } = useSessionAccess();
-  const { profile, fetchProfile } = useAuth();
+  const { profile, ensureContext } = useUserContext();
   const { loadCapabilities, getUpgradeMessage, canCreateResource } =
     useSubscription();
 
@@ -282,7 +279,8 @@ export const useBranches = () => {
   };
 
   const getAdminOrganizationId = async (): Promise<string> => {
-    const currentProfile = profile.value ?? (await fetchProfile());
+    const context = await ensureContext({ requireProfile: true });
+    const currentProfile = context.profile ?? profile.value;
     if (!currentProfile?.organization_id || currentProfile.role !== "admin") {
       throw createError({
         statusCode: 403,
@@ -293,61 +291,24 @@ export const useBranches = () => {
     return currentProfile.organization_id;
   };
 
-  const loadPlanFeatures = async (
-    organizationId: string,
-  ): Promise<BranchPlanFeatures> => {
-    const { data: subscription, error: subscriptionError } = await supabase
-      .from("organization_subscriptions")
-      .select("plan_id")
-      .eq("organization_id", organizationId)
-      .in("status", ["active", "trial"])
-      .gt("current_period_end", new Date().toISOString())
-      .order("current_period_end", { ascending: false })
-      .limit(1)
-      .maybeSingle<Pick<SubscriptionRow, "plan_id">>();
-
-    if (subscriptionError) {
-      throw createError({
-        statusCode: 500,
-        statusMessage: subscriptionError.message,
-      });
-    }
-
-    if (!subscription?.plan_id) {
-      return {
-        featureInventoryTransfer: false,
-        featureMultiBranch: false,
-      };
-    }
-
-    const { data: plan, error: planError } = await supabase
-      .from("subscription_plans")
-      .select("feature_multi_branch, feature_inventory_transfer")
-      .eq("id", subscription.plan_id)
-      .maybeSingle<
-        Pick<
-          SubscriptionPlanRow,
-          "feature_multi_branch" | "feature_inventory_transfer"
-        >
-      >();
-
-    if (planError) {
-      throw createError({
-        statusCode: 500,
-        statusMessage: planError.message,
-      });
-    }
+  const resolvePlanFeatures = (
+    loadedCapabilities: OrganizationCapabilities | null,
+  ): BranchPlanFeatures => {
+    const maxBranches = resolvePlanNumericLimit(
+      loadedCapabilities?.planLimits,
+      ["branches", "branches.max"],
+    ) ?? loadedCapabilities?.maxBranches ?? 1;
 
     return {
-      featureInventoryTransfer: plan?.feature_inventory_transfer ?? false,
-      featureMultiBranch: plan?.feature_multi_branch ?? false,
+      featureInventoryTransfer: loadedCapabilities?.canTransferStock ?? false,
+      featureMultiBranch: maxBranches > 1,
     };
   };
 
   const loadBranches = async (): Promise<BranchesData> => {
     const organizationId = await getAdminOrganizationId();
     const loadedCapabilities = await loadCapabilities(organizationId);
-    const planFeatures = await loadPlanFeatures(organizationId);
+    const planFeatures = resolvePlanFeatures(loadedCapabilities);
 
     const { data: branches, error: branchesError } = await supabase
       .from("branches")
@@ -468,7 +429,7 @@ export const useBranches = () => {
   ): Promise<BranchDetailsData> => {
     const organizationId = await getAdminOrganizationId();
     const loadedCapabilities = await loadCapabilities(organizationId);
-    const planFeatures = await loadPlanFeatures(organizationId);
+    const planFeatures = resolvePlanFeatures(loadedCapabilities);
 
     const { data: branch, error: branchError } = await supabase
       .from("branches")

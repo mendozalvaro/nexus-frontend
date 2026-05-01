@@ -1,25 +1,25 @@
 <script setup lang="ts">
-import type { AccessibleBranch, NavigationItem } from "@/types/permissions";
-import type { DashboardAccountStatus } from "@/composables/useDashboard";
+import type { NavigationItem } from "@/types/permissions";
 
 import { NAVIGATION_ITEMS, PENDING_ACTIVATION_PATH, SYSTEM_NAVIGATION_ITEMS } from "@/config/navigation";
-import type { Database } from "@/types/database.types";
 import { roleDefinitions } from "@/utils/roles";
 
 const colorMode = useColorMode();
-const supabase = useSupabaseClient<Database>();
 const route = useRoute();
 const mobileMenuOpen = ref(false);
 const sidebarCollapsed = ref(false);
-const branchLoading = ref(false);
-const accessibleBranches = ref<AccessibleBranch[]>([]);
 const SIDEBAR_COLLAPSED_STORAGE_KEY = "nexuspos:layout:sidebar-collapsed";
 
 const { user, profile, signOut } = useAuth();
-const { ensureAuthContext } = useAuthContext();
-const { getUserPermissions, hasPermission, getAccessibleBranches } = usePermissions();
+const { profile: globalProfile } = useGlobalUserProfile();
+const {
+  accountStatus,
+  paymentRequired,
+  setAccountStatusState,
+} = useUserContext();
+const { getUserPermissions, hasPermission } = usePermissions();
+const { loadAccountStatus: loadSharedAccountStatus } = useAccountStatus();
 const { isFeatureEnabled } = useFeatureFlags();
-const { selectedBranchId, setSelectedBranch, restoreSelectedBranch } = useBranchSelector();
 
 type UserMenuItem = {
   label: string;
@@ -46,11 +46,12 @@ const currentUserRoleLabel = computed(() => {
     return "System";
   }
 
-  return ROLE_LABELS[profile.value?.role ?? ""] ?? "Usuario del sistema";
+  const role = ((globalProfile.value as { role?: string | null } | null)?.role ?? profile.value?.role ?? "");
+  return ROLE_LABELS[role] ?? "Usuario del sistema";
 });
 
 const currentRoleDefinition = computed(() => {
-  const role = profile.value?.role;
+  const role = ((globalProfile.value as { role?: keyof typeof roleDefinitions | null } | null)?.role ?? profile.value?.role) as keyof typeof roleDefinitions | undefined;
   return role ? roleDefinitions[role] : null;
 });
 
@@ -63,7 +64,8 @@ const dashboardHomePath = computed(() => {
 });
 
 const userInitials = computed(() => {
-  const source = profile.value?.full_name?.trim() || user.value?.email?.trim() || "NexusPOS";
+  const fullName = (globalProfile.value as { full_name?: string | null } | null)?.full_name ?? profile.value?.full_name;
+  const source = fullName?.trim() || user.value?.email?.trim() || "NexusPOS";
   const parts = source.split(/\s+/).filter(Boolean);
 
   if (parts.length === 1) {
@@ -73,50 +75,8 @@ const userInitials = computed(() => {
   return `${parts[0]?.[0] ?? ""}${parts[1]?.[0] ?? ""}`.toUpperCase() || "NP";
 });
 
-const isBranchScopedRole = computed(() =>
-  profile.value?.role === "manager" || profile.value?.role === "employee",
-);
-
-const selectedBranch = computed(() =>
-  accessibleBranches.value.find((branch) => branch.id === selectedBranchId.value)
-  ?? accessibleBranches.value[0]
-  ?? null,
-);
-
-const hasBranches = computed(() => accessibleBranches.value.length > 0);
-
-const showBranchContext = computed(() =>
-  !isSystemArea.value && isBranchScopedRole.value,
-);
-
-const canSwitchBranch = computed(() =>
-  showBranchContext.value && accessibleBranches.value.length > 1,
-);
-
-const branchEmptyState = computed(() => {
-  if (hasBranches.value) {
-    return null;
-  }
-
-  return {
-    title: "Sin sucursal asignada",
-    description:
-      "Tu cuenta aun no tiene una sucursal operativa. Solicita acceso a un administrador.",
-    actionLabel: "Ver perfil",
-    actionTo: "/profile",
-    icon: "i-heroicons-user-circle",
-  };
-});
-
-const normalizeAccountStatus = (
-  status: string | null | undefined,
-): DashboardAccountStatus | "active" => {
-  if (
-    status === "pending" ||
-    status === "active" ||
-    status === "rejected" ||
-    status === "suspended"
-  ) {
+const normalizeAccountStatus = (status: string | null | undefined): AccountStatusValue => {
+  if (status === "pending" || status === "active" || status === "rejected" || status === "suspended") {
     return status;
   }
 
@@ -125,9 +85,6 @@ const normalizeAccountStatus = (
 
 const getRouteAccountStatus = () =>
   normalizeAccountStatus(typeof route.query.status === "string" ? route.query.status : null);
-
-const accountStatus = ref<DashboardAccountStatus | "active">(getRouteAccountStatus());
-const paymentRequired = ref(false);
 
 const isPendingActivationRequired = computed(() =>
   accountStatus.value === "pending" ||
@@ -177,10 +134,6 @@ const navigationItems = computed<NavigationItem[]>(() => {
     }
 
     if (item.permission && !hasPermission(permissions, item.permission)) {
-      return false;
-    }
-
-    if (item.requiresBranch && accessibleBranches.value.length === 0) {
       return false;
     }
 
@@ -268,101 +221,15 @@ const restoreSidebarPreference = () => {
   }
 };
 
-const loadBranchContext = async () => {
-  branchLoading.value = true;
-
-  try {
-    accessibleBranches.value = await getAccessibleBranches();
-
-    if (isBranchScopedRole.value) {
-      const restoredBranchId = await restoreSelectedBranch(accessibleBranches.value);
-      if (!selectedBranchId.value && restoredBranchId) {
-        setSelectedBranch(restoredBranchId);
-      }
-    }
-  } finally {
-    branchLoading.value = false;
-  }
-};
-
-const loadAccountStatus = async () => {
-  if (!profile.value?.organization_id) {
-    accountStatus.value = "active";
-    return;
-  }
-
-  const forcedStatus = getRouteAccountStatus();
-
-  const [{ data: organization }, { data: subscription }, { data: validation }] = await Promise.all([
-    supabase
-      .from("organizations")
-      .select("status")
-      .eq("id", profile.value.organization_id)
-      .maybeSingle(),
-    supabase
-      .from("organization_subscriptions")
-      .select("status, is_trial, trial_ends_at")
-      .eq("organization_id", profile.value.organization_id)
-      .maybeSingle(),
-    supabase
-      .from("payment_validations")
-      .select("status, created_at")
-      .eq("organization_id", profile.value.organization_id)
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle(),
-  ]);
-
-  const now = Date.now();
-  const trialEndsAt =
-    typeof subscription?.trial_ends_at === "string"
-      ? new Date(subscription.trial_ends_at).getTime()
-      : null;
-  const trialExpired =
-    typeof trialEndsAt === "number" && Number.isFinite(trialEndsAt) && trialEndsAt <= now;
-  paymentRequired.value = Boolean(
-    subscription
-    && subscription.status !== "active"
-    && (subscription.is_trial !== true || trialExpired || trialEndsAt === null),
-  );
-
-  if (paymentRequired.value) {
-    accountStatus.value = "pending";
-    return;
-  }
-
-  if (organization?.status === "suspended") {
-    accountStatus.value = "suspended";
-    return;
-  }
-
-  if (organization?.status === "active" && subscription?.status === "active") {
-    accountStatus.value = "active";
-    return;
-  }
-
-  if (forcedStatus !== "active") {
-    accountStatus.value = forcedStatus;
-    return;
-  }
-
-  if (validation?.status === "rejected") {
-    accountStatus.value = "rejected";
-    return;
-  }
-
-  accountStatus.value = "pending";
-};
-
-const handleBranchChange = async (branchId: string | null) => {
-  if (!canSwitchBranch.value) {
-    return;
-  }
-
-  setSelectedBranch(branchId);
-  await reloadNuxtApp({
-    path: route.fullPath,
-    persistState: true,
+const loadAccountStatus = async (force = false) => {
+  const result = await loadSharedAccountStatus({
+    organizationId: profile.value?.organization_id ?? null,
+    forcedStatus: getRouteAccountStatus(),
+    force,
+  });
+  setAccountStatusState({
+    accountStatus: result.accountStatus,
+    paymentRequired: result.paymentRequired,
   });
 };
 
@@ -370,41 +237,14 @@ const closeMobileMenu = () => {
   mobileMenuOpen.value = false;
 };
 
-watch(
-  () => user.value?.id ?? null,
-  async (userId) => {
-    if (!userId) {
-      accessibleBranches.value = [];
-      setSelectedBranch(null);
-      return;
-    }
-
-    await ensureAuthContext({ requireProfile: true });
-    await loadAccountStatus();
-    await loadBranchContext();
-  },
-  { immediate: true },
-);
-
-watch(
-  () => accessibleBranches.value,
-  async (branches) => {
-    if (!isBranchScopedRole.value || branches.length === 0 || selectedBranchId.value) {
-      return;
-    }
-
-    const restoredBranchId = await restoreSelectedBranch(branches);
-    if (restoredBranchId) {
-      setSelectedBranch(restoredBranchId);
-    }
-  },
-  { deep: true },
-);
 
 watch(
   () => route.query.status,
   async () => {
-    accountStatus.value = getRouteAccountStatus();
+    setAccountStatusState({
+      accountStatus: getRouteAccountStatus(),
+      paymentRequired: paymentRequired.value,
+    });
 
     if (!user.value?.id) {
       return;
@@ -412,6 +252,18 @@ watch(
 
     await loadAccountStatus();
   },
+);
+
+watch(
+  () => (globalProfile.value as { organization_id?: string | null } | null)?.organization_id ?? profile.value?.organization_id ?? null,
+  async (organizationId) => {
+    if (!organizationId || !user.value?.id) {
+      return;
+    }
+
+    await loadAccountStatus();
+  },
+  { immediate: true },
 );
 
 if (import.meta.client) {
@@ -489,64 +341,11 @@ if (import.meta.client) {
     <div class="mx-auto flex max-w-[1600px] lg:gap-6 lg:px-8">
       <aside class="hidden shrink-0 bg-transparent py-6 transition-[width,padding] duration-200 lg:block"
         :class="sidebarCollapsed ? 'w-24 px-3' : 'w-72 px-4'">
-        <div class="mb-4 flex items-center" :class="sidebarCollapsed ? 'justify-center' : 'justify-between'">
-          <div v-if="!sidebarCollapsed && showBranchContext">
-            <p class="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500 dark:text-slate-400">
-              Centro operativo
-            </p>
-            <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">
-              Contexto actual de sucursal y acceso
-            </p>
-          </div>
+        <div class="mb-4 flex items-center justify-between">
+          <div v-if="!sidebarCollapsed" />
           <UButton variant="ghost" color="neutral"
             :icon="sidebarCollapsed ? 'i-heroicons-chevron-right' : 'i-heroicons-chevron-left'"
             aria-label="Colapsar menu lateral" @click="toggleSidebar" />
-        </div>
-
-        <div v-if="!sidebarCollapsed && showBranchContext"
-          class="mb-4 space-y-3 rounded-3xl border border-slate-200/80 bg-gradient-to-br from-white to-slate-50 p-4 shadow-sm shadow-slate-200/60 transition-all duration-200 dark:border-slate-800 dark:from-slate-900 dark:to-slate-950 dark:shadow-black/20">
-          <div v-if="selectedBranch" class="flex items-start gap-3">
-            <div
-              class="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-sky-100 text-sky-700 dark:bg-sky-950/50 dark:text-sky-300">
-              <UIcon name="i-heroicons-building-storefront" class="h-5 w-5" />
-            </div>
-            <div class="min-w-0">
-              <p class="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500 dark:text-slate-400">
-                Sucursal activa
-              </p>
-              <p class="mt-1.5 text-sm font-semibold text-slate-900 dark:text-white">
-                {{ selectedBranch.name }}
-              </p>
-              <p class="mt-1 line-clamp-2 text-xs leading-5 text-slate-500 dark:text-slate-400">
-                {{ selectedBranch.address || "Selecciona una sucursal para operar." }}
-              </p>
-            </div>
-          </div>
-
-          <LayoutBranchSelector v-if="canSwitchBranch && selectedBranch" :branches="accessibleBranches" :model-value="selectedBranchId"
-            :disabled="branchLoading" @update:model-value="handleBranchChange" />
-
-          <div v-else-if="branchEmptyState"
-            class="space-y-3 rounded-2xl border border-dashed border-slate-300/80 bg-white/70 p-4 dark:border-slate-700 dark:bg-slate-950/50">
-            <div class="flex items-start gap-3">
-              <div
-                class="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-slate-100 text-slate-600 dark:bg-slate-900 dark:text-slate-300">
-                <UIcon :name="branchEmptyState.icon" class="h-5 w-5" />
-              </div>
-              <div class="min-w-0">
-                <p class="text-sm font-semibold text-slate-900 dark:text-white">
-                  {{ branchEmptyState.title }}
-                </p>
-                <p class="mt-1 text-sm leading-6 text-slate-500 dark:text-slate-400">
-                  {{ branchEmptyState.description }}
-                </p>
-              </div>
-            </div>
-
-            <UButton :to="branchEmptyState.actionTo" color="primary" variant="soft" block class="min-h-11">
-              {{ branchEmptyState.actionLabel }}
-            </UButton>
-          </div>
         </div>
 
         <div v-if="!sidebarCollapsed" class="mb-3">
@@ -614,48 +413,6 @@ if (import.meta.client) {
             </div>
           </div>
 
-          <LayoutBranchSelector v-if="canSwitchBranch" :branches="accessibleBranches"
-            :model-value="selectedBranchId" :disabled="branchLoading" @update:model-value="handleBranchChange" />
-
-          <div v-else-if="showBranchContext && selectedBranch"
-            class="rounded-2xl border border-slate-200/80 bg-slate-50/80 p-4 dark:border-slate-800 dark:bg-slate-950/40">
-            <div class="flex items-start gap-3">
-              <div
-                class="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-sky-100 text-sky-700 dark:bg-sky-950/50 dark:text-sky-300">
-                <UIcon name="i-heroicons-building-storefront" class="h-5 w-5" />
-              </div>
-              <div class="min-w-0">
-                <p class="text-sm font-semibold text-slate-900 dark:text-white">
-                  {{ selectedBranch.name }}
-                </p>
-                <p class="mt-1 text-sm leading-6 text-slate-500 dark:text-slate-400">
-                  {{ selectedBranch.address || "Sucursal fija para tu sesion." }}
-                </p>
-              </div>
-            </div>
-          </div>
-
-          <div v-else-if="showBranchContext && branchEmptyState"
-            class="rounded-2xl border border-dashed border-slate-300/80 bg-slate-50/80 p-4 dark:border-slate-700 dark:bg-slate-950/40">
-            <div class="flex items-start gap-3">
-              <div
-                class="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-slate-100 text-slate-600 dark:bg-slate-900 dark:text-slate-300">
-                <UIcon :name="branchEmptyState.icon" class="h-5 w-5" />
-              </div>
-              <div class="min-w-0">
-                <p class="text-sm font-semibold text-slate-900 dark:text-white">
-                  {{ branchEmptyState.title }}
-                </p>
-                <p class="mt-1 text-sm leading-6 text-slate-500 dark:text-slate-400">
-                  {{ branchEmptyState.description }}
-                </p>
-              </div>
-            </div>
-            <UButton :to="branchEmptyState.actionTo" color="primary" variant="soft" block class="mt-3 min-h-11"
-              @click="closeMobileMenu">
-              {{ branchEmptyState.actionLabel }}
-            </UButton>
-          </div>
         </div>
       </template>
 
