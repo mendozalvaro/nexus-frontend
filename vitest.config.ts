@@ -5,6 +5,7 @@ export default defineVitestConfig({
     environment: 'nuxt',
     globals: true,
     setupFiles: ['test/setup.ts'],
+    hookTimeout: 60000,
     env: {
       NUXT_PUBLIC_SUPABASE_URL: 'https://test.supabase.co',
       NUXT_PUBLIC_SUPABASE_KEY: 'test-key'

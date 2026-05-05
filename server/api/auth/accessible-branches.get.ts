@@ -1,5 +1,6 @@
 import type { Database } from "@/types/database.types";
 import { requirePOSContext } from "../../utils/pos";
+import { throwApiError } from "../../utils/http-error";
 
 type BranchRow = Database["public"]["Tables"]["branches"]["Row"];
 
@@ -20,10 +21,12 @@ export default defineEventHandler(async (event) => {
       .returns<Array<Pick<BranchRow, "id" | "name" | "code" | "address">>>();
 
   if (error) {
-    throw createError({
-      statusCode: 500,
-      statusMessage: error.message,
-    });
+    throwApiError(
+      500,
+      "AUTH_ACCESSIBLE_BRANCHES_FETCH_ERROR",
+      error.message,
+      { organizationId: context.organizationId, role: context.role },
+    );
   }
 
   return {
@@ -35,4 +38,3 @@ export default defineEventHandler(async (event) => {
     })),
   };
 });
-

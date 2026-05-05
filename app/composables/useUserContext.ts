@@ -2,7 +2,6 @@ import type { User } from "@supabase/supabase-js";
 
 import type { Profile, UserRole } from "@/types/auth";
 import type { PermissionGrant } from "@/types/permissions";
-import type { Database } from "@/types/database.types";
 
 const PROFILE_CACHE_TTL_MS = 30_000;
 const DEFAULT_ACCOUNT_STATUS = "active";
@@ -39,7 +38,6 @@ export interface EnsureUserContextOptions {
 }
 
 export const useUserContext = () => {
-  const supabase = useSupabaseClient<Database>();
   const session = useSupabaseSession();
   const { resolveUser } = useSessionAccess();
 
@@ -192,15 +190,7 @@ export const useUserContext = () => {
 
     profileLoading.value = true;
     try {
-      const { data, error } = await supabase
-        .from("profiles")
-        .select("*")
-        .eq("id", currentUser.id)
-        .maybeSingle();
-
-      if (error) {
-        throw error;
-      }
+      const data = await $fetch<Profile>("/api/profile");
 
       profile.value = data ?? null;
       profileFetchedForUserId.value = currentUser.id;

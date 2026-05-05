@@ -1,8 +1,7 @@
-import type { Session, User } from "@supabase/supabase-js";
+﻿import type { Session, User } from "@supabase/supabase-js";
 
 import type {
-  AuditLogInsert,
-  AuthAuditContext,
+  AuthErrorPayload,
   AuthOperationResult,
   AuthState,
   Profile,
@@ -11,48 +10,80 @@ import type {
   UserRole,
 } from "../types/auth";
 import type { Database } from "../types/database.types";
-import type { ClientProfileState } from "@/types/client";
+
+import { useAuthAudit } from "@/composables/auth/useAuthAudit";
+import { useClientProfileState } from "@/composables/auth/useClientProfileState";
+import {
+  createPermissionDeniedMessage,
+  isStaffRole,
+  isValidEmail,
+  MIN_PASSWORD_LENGTH,
+  sanitizeAuthEmail,
+  sanitizeNullableString,
+  sanitizeRole,
+  sanitizeString,
+} from "@/utils/auth";
 
 const AUTH_CALLBACK_ROUTE = "/auth/callback";
 const AUTH_LOGIN_ROUTE = "/auth/login";
-const MIN_PASSWORD_LENGTH = 8;
-const PROFILE_CACHE_TTL_MS = 30_000;
+const AUTH_ERROR_CODE_DEFAULT = "AUTH_UNKNOWN_ERROR";
 
-const sanitizeString = (value: string | null | undefined): string => {
-  return value?.trim() ?? "";
-};
+const normalizeAuthError = (
+  rawError: unknown,
+  fallbackMessage: string,
+  fallbackCode = AUTH_ERROR_CODE_DEFAULT,
+): AuthErrorPayload => {
+  if (rawError && typeof rawError === "object") {
+    const maybeError = rawError as {
+      message?: unknown;
+      code?: unknown;
+      status?: unknown;
+      name?: unknown;
+    };
 
-const sanitizeNullableString = (value: string | null | undefined): string | null => {
-  const sanitized = sanitizeString(value);
-  return sanitized.length > 0 ? sanitized : null;
-};
+    const message =
+      typeof maybeError.message === "string" && maybeError.message.trim().length > 0
+        ? maybeError.message
+        : fallbackMessage;
 
-const sanitizeEmail = (email: string): string => {
-  return sanitizeString(email).toLowerCase();
-};
+    if (typeof maybeError.code === "string" && maybeError.code.trim().length > 0) {
+      return {
+        code: maybeError.code,
+        message,
+        details: rawError,
+      };
+    }
 
-const isValidEmail = (email: string): boolean => {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-};
+    if (typeof maybeError.status === "number") {
+      return {
+        code: `AUTH_HTTP_${maybeError.status}`,
+        message,
+        details: rawError,
+      };
+    }
 
-const sanitizeRole = (role?: UserRole | null, isPublic = false): UserRole => {
-  if (isPublic || !role) {
-    return "client";
+    if (typeof maybeError.name === "string" && maybeError.name.trim().length > 0) {
+      return {
+        code: `AUTH_${maybeError.name.toUpperCase()}`,
+        message,
+        details: rawError,
+      };
+    }
   }
 
-  return role;
-};
+  if (rawError instanceof Error) {
+    return {
+      code: fallbackCode,
+      message: rawError.message || fallbackMessage,
+      details: rawError,
+    };
+  }
 
-const createPermissionDeniedMessage = (): string => {
-  return "No tienes permisos para realizar esta acción.";
-};
-
-const wait = (ms: number) => new Promise<void>((resolve) => {
-  setTimeout(resolve, ms);
-});
-
-const isStaffRole = (value: UserRole | null | undefined): value is Exclude<UserRole, "client"> => {
-  return value === "admin" || value === "manager" || value === "employee";
+  return {
+    code: fallbackCode,
+    message: fallbackMessage,
+    details: rawError,
+  };
 };
 
 export const useAuth = () => {
@@ -75,13 +106,17 @@ export const useAuth = () => {
   const isLoading = useState<boolean>("auth:is-loading", () => false);
   const isSubmitting = useState<boolean>("auth:is-submitting", () => false);
   const error = useState<string | null>("auth:error", () => null);
+  const errorPayload = useState<AuthErrorPayload | null>("auth:error-payload", () => null);
   const watcherInitialized = useState<boolean>("auth:watcher-initialized", () => false);
-  const clientProfile = useState<ClientProfileState | null>("auth:client-profile", () => null);
-  const clientProfileFetchedForUserId = useState<string | null>("auth:client-profile:fetched-user-id", () => null);
-  const clientProfileFetchedForOrgId = useState<string | null>("auth:client-profile:fetched-org-id", () => null);
-  const clientProfileFetchedAt = useState<number>("auth:client-profile:fetched-at", () => 0);
-  const clientProfileLoading = useState<boolean>("auth:client-profile:is-loading", () => false);
-  const clientProfileLoadingKey = useState<string | null>("auth:client-profile:loading-key", () => null);
+
+  const {
+    clientProfile,
+    clientProfileFetchedForOrgId,
+    fetchClientProfile,
+    clearClientProfileState,
+  } = useClientProfileState(user, activeOrganizationId, resolveUser);
+
+  const { auditCriticalAction } = useAuthAudit(user);
 
   const resolvedRole = computed<UserRole | "guest">(() => {
     if (isStaffRole(role.value)) {
@@ -105,81 +140,14 @@ export const useAuth = () => {
 
   const setError = (message: string | null) => {
     error.value = message;
+    if (!message) {
+      errorPayload.value = null;
+    }
   };
 
-  const fetchClientProfile = async (
-    options: { force?: boolean; organizationId?: string | null } = {},
-  ): Promise<ClientProfileState | null> => {
-    const currentUser = user.value ?? await resolveUser();
-    const nextOrganizationId = sanitizeNullableString(options.organizationId) ?? activeOrganizationId.value;
-
-    if (!currentUser || !nextOrganizationId) {
-      clientProfile.value = null;
-      clientProfileFetchedForUserId.value = null;
-      clientProfileFetchedForOrgId.value = null;
-      clientProfileFetchedAt.value = 0;
-      clientProfileLoading.value = false;
-      clientProfileLoadingKey.value = null;
-      return null;
-    }
-
-    const forceRefresh = options.force === true;
-    const requestKey = `${currentUser.id}:${nextOrganizationId}`;
-    const cacheIsFresh =
-      clientProfileFetchedForUserId.value === currentUser.id
-      && clientProfileFetchedForOrgId.value === nextOrganizationId
-      && Date.now() - clientProfileFetchedAt.value < PROFILE_CACHE_TTL_MS;
-
-    if (!forceRefresh && cacheIsFresh) {
-      return clientProfile.value;
-    }
-
-    if (!forceRefresh && clientProfileLoading.value && clientProfileLoadingKey.value === requestKey) {
-      let attempts = 0;
-      while (clientProfileLoading.value && attempts < 40) {
-        await wait(25);
-        attempts += 1;
-      }
-
-      const cacheAfterWait =
-        clientProfileFetchedForUserId.value === currentUser.id
-        && clientProfileFetchedForOrgId.value === nextOrganizationId
-        && Date.now() - clientProfileFetchedAt.value < PROFILE_CACHE_TTL_MS;
-
-      if (cacheAfterWait) {
-        return clientProfile.value;
-      }
-    }
-
-    clientProfileLoading.value = true;
-    clientProfileLoadingKey.value = requestKey;
-
-    try {
-      const response = await $fetch<{
-        profile: ClientProfileState | null;
-      }>("/api/clients/profile", {
-        query: {
-          organizationId: nextOrganizationId,
-        },
-      });
-
-      clientProfile.value = response.profile ?? null;
-      clientProfileFetchedForUserId.value = currentUser.id;
-      clientProfileFetchedForOrgId.value = nextOrganizationId;
-      clientProfileFetchedAt.value = Date.now();
-      return clientProfile.value;
-    } catch {
-      clientProfile.value = null;
-      clientProfileFetchedForUserId.value = null;
-      clientProfileFetchedForOrgId.value = null;
-      clientProfileFetchedAt.value = 0;
-      return null;
-    } finally {
-      if (clientProfileLoadingKey.value === requestKey) {
-        clientProfileLoading.value = false;
-        clientProfileLoadingKey.value = null;
-      }
-    }
+  const setErrorPayload = (payload: AuthErrorPayload | null) => {
+    errorPayload.value = payload;
+    error.value = payload?.message ?? null;
   };
 
   const useOrgContext = () => ({
@@ -197,57 +165,35 @@ export const useAuth = () => {
     isLoading.value = false;
     isSubmitting.value = false;
     error.value = null;
+    errorPayload.value = null;
   };
 
-  const clearClientProfileState = () => {
-    clientProfile.value = null;
-    clientProfileFetchedForUserId.value = null;
-    clientProfileFetchedForOrgId.value = null;
-    clientProfileFetchedAt.value = 0;
-    clientProfileLoading.value = false;
-    clientProfileLoadingKey.value = null;
-  };
+  const executeAuthAction = async <T>(
+    action: () => Promise<T>,
+    fallbackMessage: string,
+    fallbackCode: string,
+  ): Promise<AuthOperationResult<T>> => {
+    isSubmitting.value = true;
+    setError(null);
 
-  const auditCriticalAction = async (
-    action: Database["public"]["Enums"]["audit_action"],
-    tableName: string,
-    context: AuthAuditContext,
-    options: {
-      recordId?: string | null;
-      oldData?: Record<string, unknown> | null;
-      newData?: Record<string, unknown> | null;
-    } = {},
-  ) => {
     try {
-      const userId = user.value?.id ?? null;
-      const payload: AuditLogInsert = {
-        action,
-        table_name: tableName,
-        record_id: options.recordId ?? userId,
-        user_id: userId,
-        old_data: (options.oldData ?? null) as AuditLogInsert["old_data"],
-        new_data: (options.newData ?? null) as AuditLogInsert["new_data"],
-        context,
+      const data = await action();
+      return {
+        data,
+        error: null,
       };
-
-      await supabase.from("audit_logs").insert(payload);
-    } catch (auditError) {
-      const auditMessage =
-        auditError instanceof Error ? auditError.message : "Unknown audit error";
-      console.error("[AUTH_AUDIT_ERROR]", auditMessage);
+    } catch (actionError) {
+      const normalizedError = normalizeAuthError(actionError, fallbackMessage, fallbackCode);
+      setErrorPayload(normalizedError);
+      return {
+        data: null,
+        error: normalizedError.message,
+      };
+    } finally {
+      isSubmitting.value = false;
     }
   };
 
-  /**
-   * Obtiene el perfil extendido del usuario autenticado desde `profiles`.
-   *
-   * @example
-   * ```ts
-   * const { fetchProfile, profile } = useAuth()
-   * await fetchProfile()
-   * console.log(profile.value?.full_name)
-   * ```
-   */
   const fetchProfile = async (
     options: { force?: boolean } = {},
   ): Promise<Profile | null> => {
@@ -263,45 +209,36 @@ export const useAuth = () => {
         return null;
       }
 
-      const data = await refreshProfileFromContext({ force: forceRefresh });
+      const data = await $fetch<Profile>("/api/profile");
+      profile.value = data;
 
-      // Only clients need client profile hydration.
       if (data?.role === "client" && data.organization_id) {
         await fetchClientProfile({
           force: forceRefresh,
           organizationId: data.organization_id,
         });
       } else {
-        clientProfile.value = null;
-        clientProfileFetchedForUserId.value = null;
-        clientProfileFetchedForOrgId.value = null;
-        clientProfileFetchedAt.value = 0;
+        clearClientProfileState();
       }
+
       return data ?? null;
     } catch (fetchError) {
-      const message =
-        fetchError instanceof Error ? fetchError.message : "No se pudo cargar el perfil.";
-      setError(message);
+      const normalizedError = normalizeAuthError(
+        fetchError,
+        "No se pudo cargar el perfil.",
+        "AUTH_PROFILE_FETCH_ERROR",
+      );
+      setErrorPayload(normalizedError);
       profile.value = null;
       return null;
     }
   };
 
-  /**
-   * Inicia sesión del usuario con email y contraseña.
-   *
-   * @example
-   * ```ts
-   * const { signIn, error } = useAuth()
-   * await signIn("admin@nexuspos.com", "password123")
-   * console.log(error.value)
-   * ```
-   */
   const signIn = async (
     email: string,
     password: string,
   ): Promise<AuthOperationResult<Session>> => {
-    const sanitizedEmail = sanitizeEmail(email);
+    const sanitizedEmail = sanitizeAuthEmail(email);
     const sanitizedPassword = sanitizeString(password);
 
     isSubmitting.value = true;
@@ -350,33 +287,20 @@ export const useAuth = () => {
         error: null,
       };
     } catch (signInError) {
-      const message =
-        signInError instanceof Error ? signInError.message : "No se pudo iniciar sesión.";
-      setError(message);
+      const normalizedError = normalizeAuthError(signInError, "No se pudo iniciar sesión.", "AUTH_SIGN_IN_ERROR");
+      setErrorPayload(normalizedError);
 
       return {
         data: null,
-        error: message,
+        error: normalizedError.message,
       };
     } finally {
       isSubmitting.value = false;
     }
   };
 
-  /**
-   * Cierra la sesión actual, limpia el estado local y redirige a la ruta de resolución.
-   *
-   * @example
-   * ```ts
-   * const { signOut } = useAuth()
-   * await signOut()
-   * ```
-   */
   const signOut = async (): Promise<AuthOperationResult> => {
-    isSubmitting.value = true;
-    setError(null);
-
-    try {
+    return executeAuthAction(async () => {
       const currentUserId = user.value?.id ?? null;
 
       const { error: signOutError } = await supabase.auth.signOut();
@@ -391,35 +315,10 @@ export const useAuth = () => {
       console.info("[AUTH_SIGN_OUT]", { userId: currentUserId });
 
       await navigateTo(AUTH_LOGIN_ROUTE);
-
-      return {
-        data: null,
-        error: null,
-      };
-    } catch (signOutError) {
-      const message =
-        signOutError instanceof Error ? signOutError.message : "No se pudo cerrar sesión.";
-      setError(message);
-
-      return {
-        data: null,
-        error: message,
-      };
-    } finally {
-      isSubmitting.value = false;
-    }
+      return null;
+    }, "No se pudo cerrar sesión.", "AUTH_SIGN_OUT_ERROR");
   };
 
-  /**
-   * Registra un usuario nuevo con metadata para nombre, rol y organización.
-   * Si el registro es público, fuerza el rol `client`.
-   *
-   * @example
-   * ```ts
-   * const { signUp } = useAuth()
-   * await signUp("client@nexuspos.com", "password123", "Cliente Demo", "client")
-   * ```
-   */
   const signUp = async (
     email: string,
     password: string,
@@ -427,17 +326,14 @@ export const useAuth = () => {
     roleInput?: UserRole,
     organizationIdInput?: string | null,
   ): Promise<AuthOperationResult<User>> => {
-    const sanitizedEmail = sanitizeEmail(email);
+    const sanitizedEmail = sanitizeAuthEmail(email);
     const sanitizedPassword = sanitizeString(password);
     const sanitizedFullName = sanitizeString(fullName);
     const sanitizedOrganizationId = sanitizeNullableString(organizationIdInput);
     const isPublicRegistration = !sanitizedOrganizationId;
     const sanitizedRole = sanitizeRole(roleInput, isPublicRegistration);
 
-    isSubmitting.value = true;
-    setError(null);
-
-    try {
+    return executeAuthAction(async () => {
       if (!isValidEmail(sanitizedEmail)) {
         throw new Error("Ingresa un email válido.");
       }
@@ -492,40 +388,22 @@ export const useAuth = () => {
         await fetchProfile();
         await fetchClientProfile({ force: true });
       }
-
-      return {
-        data: data.user,
-        error: null,
-      };
-    } catch (signUpError) {
-      const message =
-        signUpError instanceof Error ? signUpError.message : "No se pudo completar el registro.";
-      setError(message);
-
-      return {
-        data: null,
-        error: message,
-      };
-    } finally {
-      isSubmitting.value = false;
-    }
+      if (!data.user) {
+        throw new Error("No se pudo resolver el usuario registrado.");
+      }
+      return data.user;
+    }, "No se pudo completar el registro.", "AUTH_SIGN_UP_ERROR");
   };
 
-  /**
-   * Actualiza el perfil del usuario autenticado respetando filtros de organización y RLS.
-   *
-   * @example
-   * ```ts
-   * const { updateProfile } = useAuth()
-   * await updateProfile({ full_name: "Nuevo Nombre", phone: "77777777" })
-   * ```
-   */
   const updateProfile = async (
     updates: UpdateProfileInput,
   ): Promise<AuthOperationResult<Profile>> => {
     if (!user.value) {
       const message = createPermissionDeniedMessage();
-      setError(message);
+      setErrorPayload({
+        code: "AUTH_PERMISSION_DENIED",
+        message,
+      });
       await auditCriticalAction("PERMISSION_DENIED", "profiles", {
         event: "PERMISSION_DENIED",
         reason: "User tried to update profile without an active session.",
@@ -554,23 +432,13 @@ export const useAuth = () => {
       }
 
       const previousProfile = profile.value;
-      let query = supabase
-        .from("profiles")
-        .update(sanitizedUpdates)
-        .eq("id", user.value.id);
-
-      if (organizationId.value) {
-        query = query.eq("organization_id", organizationId.value);
-      } else {
-        query = query.is("organization_id", null);
-      }
-
-      const { data, error: updateError } = await query.select().single();
-      if (updateError) {
-        throw updateError;
-      }
+      const data = await $fetch<Profile>("/api/profile", {
+        method: "PATCH",
+        body: sanitizedUpdates,
+      });
 
       profile.value = data;
+      await refreshProfileFromContext({ force: true });
 
       console.info("[AUTH_PROFILE_UPDATED]", {
         userId: user.value.id,
@@ -592,35 +460,21 @@ export const useAuth = () => {
         error: null,
       };
     } catch (updateError) {
-      const message =
-        updateError instanceof Error ? updateError.message : "No se pudo actualizar el perfil.";
-      setError(message);
+      const normalizedError = normalizeAuthError(updateError, "No se pudo actualizar el perfil.", "AUTH_PROFILE_UPDATE_ERROR");
+      setErrorPayload(normalizedError);
 
       return {
         data: null,
-        error: message,
+        error: normalizedError.message,
       };
     } finally {
       isSubmitting.value = false;
     }
   };
 
-  /**
-   * Envía el email de recuperación de contraseña al usuario.
-   *
-   * @example
-   * ```ts
-   * const { resetPassword } = useAuth()
-   * await resetPassword("user@nexuspos.com")
-   * ```
-   */
   const resetPassword = async (email: string): Promise<AuthOperationResult> => {
-    const sanitizedEmail = sanitizeEmail(email);
-
-    isSubmitting.value = true;
-    setError(null);
-
-    try {
+    const sanitizedEmail = sanitizeAuthEmail(email);
+    return executeAuthAction(async () => {
       if (!isValidEmail(sanitizedEmail)) {
         throw new Error("Ingresa un email válido.");
       }
@@ -635,36 +489,10 @@ export const useAuth = () => {
       if (resetError) {
         throw resetError;
       }
-
-      return {
-        data: null,
-        error: null,
-      };
-    } catch (resetError) {
-      const message =
-        resetError instanceof Error
-          ? resetError.message
-          : "No se pudo enviar el email de recuperación.";
-      setError(message);
-
-      return {
-        data: null,
-        error: message,
-      };
-    } finally {
-      isSubmitting.value = false;
-    }
+      return null;
+    }, "No se pudo enviar el email de recuperación.", "AUTH_PASSWORD_RESET_ERROR");
   };
 
-  /**
-   * Verifica si el usuario autenticado posee alguno de los roles permitidos.
-   *
-   * @example
-   * ```ts
-   * const { hasRole } = useAuth()
-   * const canManage = hasRole(["admin", "manager"])
-   * ```
-   */
   const hasRole = (roles: UserRole[]): boolean => {
     if (!role.value) {
       return false;
@@ -673,15 +501,6 @@ export const useAuth = () => {
     return roles.includes(role.value);
   };
 
-  /**
-   * Verifica si el usuario pertenece a una organización específica.
-   *
-   * @example
-   * ```ts
-   * const { isInOrganization } = useAuth()
-   * const sameTenant = isInOrganization("org-id")
-   * ```
-   */
   const isInOrganization = (orgId: string): boolean => {
     const sanitizedOrgId = sanitizeString(orgId);
     if (!sanitizedOrgId) {
@@ -720,6 +539,7 @@ export const useAuth = () => {
     isLoading,
     isSubmitting,
     error,
+    errorPayload,
     state,
     resolvedRole,
     activeOrganizationId,
@@ -738,4 +558,3 @@ export const useAuth = () => {
     isInOrganization,
   };
 };
-

@@ -16,12 +16,6 @@ definePageMeta({
       icon="i-lucide-shopping-cart"
     />
 
-    <GlobalBranchContextSelector
-      module-key="pos"
-      title="Contexto de venta"
-      description="Este contexto fija la sucursal para el flujo operativo del POS."
-    />
-
     <UiEmptyModuleState
       title="Punto de venta en preparacion"
       description="Estamos terminando la experiencia completa del POS para ventas rapidas, carrito hibrido y atajos operativos."

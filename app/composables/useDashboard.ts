@@ -627,7 +627,7 @@ export const useDashboard = () => {
     return getDefaultPathForRole(role);
   };
 
-  /**
+/**
    * Registra un intento de acceso a una funcionalidad bloqueada.
    */
   const logBlockedFeatureAttempt = async (payload: {
@@ -639,22 +639,26 @@ export const useDashboard = () => {
       return;
     }
 
-    const { error: insertError } = await supabase.from("audit_logs").insert({
-      action: "INSERT",
-      table_name: "dashboard_blocked_features",
-      record_id: pendingDashboard.value?.organization.id ?? null,
-      user_id: user.value.id,
-      context: {
-        event: "BLOCKED_FEATURE_ATTEMPT",
-        feature_key: payload.featureKey,
-        target_route: payload.targetRoute,
-        account_status: payload.accountStatus,
-        organization_id: pendingDashboard.value?.organization.id ?? null,
-      },
-    });
-
-    if (insertError && import.meta.dev) {
-      console.warn("[DASHBOARD_AUDIT]", insertError.message);
+    try {
+      await $fetch("/api/auth/audit", {
+        method: "POST",
+        body: {
+          action: "INSERT",
+          tableName: "dashboard_blocked_features",
+          recordId: pendingDashboard.value?.organization.id ?? null,
+          context: {
+            event: "BLOCKED_FEATURE_ATTEMPT",
+            feature_key: payload.featureKey,
+            target_route: payload.targetRoute,
+            account_status: payload.accountStatus,
+            organization_id: pendingDashboard.value?.organization.id ?? null,
+          },
+        },
+      });
+    } catch (error) {
+      if (import.meta.dev) {
+        console.warn("[DASHBOARD_AUDIT]", error);
+      }
     }
   };
 

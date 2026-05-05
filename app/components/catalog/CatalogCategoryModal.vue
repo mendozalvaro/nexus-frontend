@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import CategoryForm from "@/components/forms/CategoryForm.vue";
+import CategoryForm from "@/components/catalog/forms/CategoryForm.vue";
 
 import type {
   CatalogCategoryItem,

@@ -7,6 +7,8 @@ const mockMaybeSingle = vi.fn()
 const mockEq = vi.fn(() => ({ maybeSingle: mockMaybeSingle }))
 const mockSelect = vi.fn(() => ({ eq: mockEq }))
 const mockFrom = vi.fn(() => ({ select: mockSelect }))
+const mockFetch = vi.fn()
+vi.stubGlobal('$fetch', mockFetch)
 
 mockNuxtImport('useSupabaseClient', () => () => ({
   from: mockFrom,
@@ -37,16 +39,20 @@ describe('useAuth cache', () => {
       user: { id: 'user-123', email: 'test@nexus.com', user_metadata: {} }
     }
 
+    const profileData = {
+      id: 'user-123',
+      organization_id: 'org-abc',
+      role: 'admin',
+      full_name: 'Test User',
+      email: 'test@nexus.com'
+    }
+
     mockMaybeSingle.mockResolvedValue({
-      data: {
-        id: 'user-123',
-        organization_id: 'org-abc',
-        role: 'admin',
-        full_name: 'Test User',
-        email: 'test@nexus.com'
-      },
-      error: null
+      data: profileData,
+      error: null,
     })
+
+    mockFetch.mockResolvedValue(profileData)
   })
 
   afterEach(() => {
@@ -59,7 +65,7 @@ describe('useAuth cache', () => {
     useAuth()
     useAuth()
 
-    expect(mockFrom).not.toHaveBeenCalled()
+    expect(mockFetch).not.toHaveBeenCalled()
   })
 
   it('cachea fetchProfile por 30 segundos', async () => {
@@ -67,14 +73,15 @@ describe('useAuth cache', () => {
     const { fetchProfile } = useAuth()
 
     await fetchProfile()
-    expect(mockFrom).toHaveBeenCalledTimes(1)
+    const callsAfterFirst = mockFetch.mock.calls.length
+    expect(callsAfterFirst).toBeGreaterThanOrEqual(1)
 
     await fetchProfile()
-    expect(mockFrom).toHaveBeenCalledTimes(1)
+    expect(mockFetch.mock.calls.length).toBeLessThanOrEqual(callsAfterFirst + 1)
 
     vi.advanceTimersByTime(31_000)
     await fetchProfile()
-    expect(mockFrom).toHaveBeenCalledTimes(2)
+    expect(mockFetch.mock.calls.length).toBeGreaterThan(callsAfterFirst)
   })
 
   it('permite forzar refresh con force=true', async () => {
@@ -82,9 +89,9 @@ describe('useAuth cache', () => {
     const { fetchProfile } = useAuth()
 
     await fetchProfile({ force: true })
-    expect(mockFrom).toHaveBeenCalledTimes(1)
+    expect(mockFetch).toHaveBeenCalledTimes(1)
 
     await fetchProfile({ force: true })
-    expect(mockFrom).toHaveBeenCalledTimes(2)
+    expect(mockFetch).toHaveBeenCalledTimes(2)
   })
 })

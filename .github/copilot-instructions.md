@@ -1,179 +1,128 @@
-# Copilot Instructions - Nexus POS Frontend
+﻿# Copilot Instructions - Nexus POS Frontend
 
-## Estado actual
+## 1) Jerarquia de instrucciones (source of truth)
 
-Módulos/funcionalidades implementados al 100% según el código existente:
-- Multi-tenancy con organizaciones y RLS en Supabase
-- Sistema de autenticación con roles (admin, manager, employee, client)
-- Gestión de sucursales (branches) con asignación de empleados
-- Catálogo de productos y servicios con inventario y movimientos
-- Sistema de citas (appointments) con detección de conflictos
-- POS híbrido para productos y servicios
-- Reportes avanzados con filtros
-- Dashboard con métricas y gráficos
-- Onboarding completo para organizaciones
-- Sistema de pagos y validaciones
-- Logs forenses inmutables
-- Páginas de landing públicas
-- Tema oscuro/claro
-- Middleware de permisos y acceso
+Aplicar en este orden, sin excepcion:
+1. `.github/copilot-instructions.md` (este archivo)
+2. `.codex/instructions.md`
+3. `.ai/PROJECT_CONTEXT.md`
+4. Codigo fuente actual del repositorio
 
-## Stack técnico
+Si existe conflicto entre documento y codigo ejecutable, prevalece el codigo y se debe proponer actualizacion documental.
 
-NO SUGERIR CAMBIOS
+## 2) Estado del proyecto y stack (no inventar cambios)
 
-- Framework: Nuxt 4.4.2 (Vue 3.5.31)
-- UI: @nuxt/ui 4.6.0
-- Backend: @nuxtjs/supabase 2.0.4 (@supabase/supabase-js 2.101.1)
-- Charts: ApexCharts 5.10.4 (vue3-apexcharts 1.11.1)
-- Validation: Zod 4.3.6
-- Deployment: Cloudflare Pages (Wrangler 4.81.1)
-- TypeScript: Estricto con typeCheck activado
-- Color Mode: @nuxtjs/color-mode 4.0.0
-- DevTools: Habilitado
+Proyecto SaaS multi-tenant con Nuxt 4 + Supabase + RLS.
 
-## Estructura de carpetas
+Stack actual validado en `package.json` y `nuxt.config.ts`:
+- Nuxt `^4.4.2` / Vue `^3.5.31`
+- `@nuxt/ui ^4.6.0`
+- `@nuxtjs/supabase ^2.0.4` / `@supabase/supabase-js ^2.101.1`
+- Zod `^4.3.6`
+- ApexCharts `^5.10.4` / `vue3-apexcharts ^1.11.1`
+- TypeScript estricto con `typeCheck: true`
+- Deployment: Cloudflare Pages (`nitro.preset = cloudflare-pages`)
 
-- `/app`: Directorio principal de Nuxt
-  - `/assets`: CSS, imágenes, fuentes (main.css)
-  - `/components`: Componentes Vue organizados por feature (admin/, auth/, base/, business/, charts/, dashboard/, features/, forms/, landing/, layout/, modals/, onboarding/, receipts/, reports/, system/, ui/)
-  - `/composables`: Composables Vue (30+ archivos, uno por funcionalidad)
-  - `/config`: Configuraciones (navigation.ts)
-  - `/layouts`: Layouts de página (client.vue, default.vue)
-  - `/middleware`: Middleware de rutas (account-status.ts, branch-access.ts, pending-account.global.ts, permissions.ts, system-only.ts)
-  - `/pages`: Rutas basadas en archivos (auth/, client/, onboarding/, system/, páginas principales)
-  - `/types`: Definiciones TypeScript (auth.ts, database.types.ts, forensic.ts, navigation.ts, payment.ts, permissions.ts, registration.ts, subscription.ts)
-  - `/utils`: Utilidades (constants.ts, onboarding.ts, role-access.ts, roles.ts)
-- `/server/api`: Route Handlers de Nuxt (admin/, appointments/, auth/, catalog/, dev/, inventory/, pos/, service-assignment/, system/)
-- `/plugins`: Plugins de Nuxt
-- `/public`: Assets estáticos (robots.txt, images/)
-- `/supabase`: Configuración de Supabase (migrations/, seed.sql, etc.)
-- Raíz: nuxt.config.ts, package.json, tsconfig.json, wrangler.toml, schema.sql
+## 3) Arquitectura obligatoria (modulos nuevos y refactors)
 
-## Archivos fuente de verdad - Leer siempre antes de sugerir
-- `/supabase/schema.sql` → Nombres reales de tablas, columnas, constraints y enums
-- `/app/types/database.types.ts` → Tipos TypeScript generados desde Supabase. Usar estos, no inventar
-- `/app/utils/constants.ts` → Enums, roles válidos, estados de citas, valores por defecto
-- `/app/utils/roles.ts` → Matriz de permisos por rol. Respetar siempre
-- `/server/api/**` → Ejemplos de cómo validar con Zod + chequear organization_id + RLS
-- `/app/middleware/permissions.ts` → Lógica de control de acceso que ya existe
+### Patron de 3 capas
+- `Page Orchestrator` (`app/pages/**`): estado de UI, orchestration, loaders por recurso, computed derivados.
+- `Composable de Dominio` (`app/composables/**`): acceso a datos, mutaciones, normalizacion, cache y refresh selectivo.
+- `Componentes Presentacionales` (`app/components/**`): UI pura con `props`/`emits`, sin acceso directo a DB.
 
-## Reglas de negocio - NO ROMPER
-- Una cita/appointment bloquea 1 empleado + 1 recurso/mesa durante `duration_minutes`
-- Detección de conflictos: `SELECT ... WHERE time_range && tstzrange(start, end) AND status NOT IN ('cancelled', 'no_show') FOR UPDATE`
-- RLS obligatorio: Todo query a DB debe filtrar por `organization_id` desde JWT de Supabase. Nunca hardcodear IDs
-- Multi-tenancy: `manager` y `employee` solo ven datos de su `branch_id` salvo que sean `admin` de la org
-- Estados de cita: `pending` → `confirmed` → `in_progress` → `completed`. Solo `admin` o `manager` pueden forzar cambios
-- Inventario: Movimientos negativos requieren validación de stock. Generar log forense con checksum
-- Logs forenses: Tablas críticas usan triggers. No hacer INSERT/UPDATE directo sin pasar por composables
-- Onboarding: Pago validado por admin es requisito para activar organización
-- Permisos: `client` solo accede a su propia info y citas. `employee` accede a su branch. `manager` accede a su org. `admin` accede a todo
+### Implementacion backend alineada a 3 capas
+- `API Layer` (`server/api/**`): transporte HTTP solamente (entrada/salida, auth base, codigos de estado).
+- `Service Layer` (`server/services/**`): casos de uso por dominio, reglas de negocio, permisos, tenant enforcement, orchestration transaccional.
+- `Utility Layer` (`server/utils/**`): helpers puros y utilidades tecnicas transversales; no centralizar casos de uso aqui.
 
-## Reglas de código
+### Reglas de modularidad
+- Carga por recurso con claves independientes (`useAsyncData`/estados separados).
+- Refresh selectivo por entidad; evitar refresh global salvo caso justificado.
+- Manejo explicito de errores de mutacion (`try/catch`, feedback UI).
+- Mantener compatibilidad progresiva con modulos legacy durante migraciones.
 
-- Usar Route Handlers en `/server/api/` para lógica del servidor, no Server Actions
-- Validación con Zod en schemas definidos en `/utils/`
-- Tipos estrictos de TypeScript, sin `any`
-- Composables para lógica reutilizable, uno por archivo
-- Sanitización de inputs en composables de auth y forms
-- Estado global con `useState` de Nuxt
-- Imports absolutos con `@/` para types y utils
-- Middleware para control de acceso basado en roles
-- Componentes organizados por dominio/feature
-- Logs forenses con checksums para tablas críticas
+## 4) Multi-tenant y seguridad (obligatorio)
 
-## Metodologia de Orquestacion de Modulos (Obligatoria)
+- Todo acceso a datos debe respetar `organization_id` + RLS.
+- No hardcodear IDs de tenant, sucursal o usuario.
+- `manager` y `employee` operan con alcance de sucursal/organizacion segun reglas vigentes.
+- `client` solo accede a su propia informacion.
+- Endpoints sensibles deben validar actor, rol y contexto tenant server-side.
 
-Estandar obligatorio para modulos nuevos y refactors progresivos. Aplicar como regla general, no acoplada a un modulo especifico.
+## 5) Reglas de acceso a datos
 
-- Patron de 3 capas obligatorio:
-  - **Page Orchestrator**: estado UI, carga de datos, casos de uso y coordinacion.
-  - **Composable de Dominio**: acceso a datos, mutaciones, normalizacion de payloads/respuestas.
-  - **Componentes Presentacionales**: solo UI; comunicacion por `props`/`emits`; sin logica de negocio.
-- Carga de datos por recurso (no bloque monolitico), con claves independientes de cache/async-data.
-- Refresh selectivo por entidad/operacion; prohibido refresh global cuando no sea necesario.
-- Derivados de UI en `computed` dentro del orquestador (filtros, conteos, etiquetas derivadas).
-- Multi-tenant enforcement obligatorio en capa dominio/API (`organization_id` + RLS).
-- Errores de mutacion: manejo explicito (`try/catch`) y feedback de UI; evitar promesas no manejadas.
-- Compatibilidad: cuando exista loader agregado legacy, mantenerlo como composicion de loaders parciales.
+### Frontend
+- Prohibido usar `supabase.from()` o `fetch` directo dentro de componentes presentacionales.
+- Acceso a API/DB desde composables de dominio.
+- Llamadas HTTP del frontend deben centralizarse en composables via `$fetch('/api/...')`.
 
-### Checklist obligatorio para nuevos modulos/refactors
+### Backend
+- Route Handlers en `server/api/**` con validacion de entrada (Zod o equivalente tipado estricto).
+- Mover y/o implementar logica de dominio en `server/services/**` (evitar negocio en handlers).
+- Mantener `server/utils/**` para funciones de soporte, no para orquestacion de negocio.
+- No exponer operaciones cross-tenant.
 
-- Separacion de 3 capas aplicada.
-- Refresh selectivo implementado.
-- Componentes sin acceso directo a DB/API.
-- Contexto tenant validado.
-- Errores de mutacion controlados.
+## 6) Reglas de auth
 
-### Nota de adopcion
+- No invocar `supabase.auth.getUser()` en componentes de UI.
+- Usar `useAuth()` como fuente principal de sesion/perfil.
+- Excepciones permitidas: composables de infraestructura de sesion (`useSessionAccess`, `useRegistration`) donde la validacion activa de token sea parte del diseno.
+- En backend usar helpers server-side de Supabase para usuario autenticado y validar contexto de tenant.
 
-- Aplica a modulos nuevos y refactors progresivos.
-- Excepciones solo con limitacion tecnica explicita y documentada en PR/handoff.
+## 7) Estructura y convenciones de codigo limpio
 
-## Reglas de auth en Nexus POS
-- No hacer `supabase.auth.getUser()` en cada componente. Usar `useAuth()`
-- En `/server/api`: Usar `const user = await serverSupabaseUser(event)` + validar `organization_id`
-- El `profile` se cachea 30s. Para forzar refresh: `await fetchProfile({ force: true })`
-- `role` y `organizationId` ya están computados desde `profile` o metadata. No recalcular
+### Organizacion de componentes
+- **Todos los componentes se registran en `app/components/[modulo]/`** agrupados por dominio.
+- Subcarpetas obligatorias por tipo:
+  - Formularios → `app/components/[modulo]/forms/` (ej: `ProductForm.vue`, `BranchForm.vue`)
+  - Modales → `app/components/[modulo]/modals/` (ej: `InventoryMovementModal.vue`, `TransferModal.vue`)
+  - Tabs/Vistas → `app/components/[modulo]/tabs/` o `app/components/[modulo]/views/`
+  - Componentes reutilizables del modulo → `app/components/[modulo]/` (raiz)
+- Ejemplo: modales de inventario → `app/components/inventory/modals/InventoryMovementModal.vue`.
+- Carpetas validas: `auth/`, `layout/`, `ui/`, `inventory/`, `catalog/`, `users/`, `branches/`, `forms/`, `features/`, `dashboard/`, `admin/`, `reports/`, `onboarding/`, `landing/`, `system/`, `charts/`, `receipts/`.
+- Prohibido crear carpetas genericas como `modals/` o `features/` para componentes de dominio especifico; mover al modulo correspondiente.
 
-## Validación de auth - Probado con tests
-- `useAuth()` usa `useState` global + cache de 30s. Test: `app/composables/__tests__/useAuth.spec.ts`
-- `user`, `profile`, `role`, `organizationId` son computados reactivos. No recalcular ni volver a pedir
-- Para refrescar perfil tras UPDATE: `await fetchProfile({ force: true })`
-- En componentes nunca `supabase.auth.getUser()` - genera N requests. Usar `useAuth()` - genera 1 cada 30s
+### Convenciones generales
+- TypeScript estricto; evitar `any`.
+- Imports absolutos `@/` para `types`, `utils` y modulos compartidos.
+- Nombres descriptivos por dominio (`useInventory`, `useUsers`, `useAppointments`, etc.).
+- Evitar logica de negocio en templates Vue.
+- Extraer funciones puras reutilizables a `app/utils/**` o `server/utils/**`.
+- Mantener funciones pequenas, cohesion alta y bajo acoplamiento.
 
-## No hacer nunca en Nexus POS
-- No usar `fetch` o `supabase.from()` directo desde `/app/components`. Usar composables de `/app/composables`
-- No crear endpoints en `/server/api` sin validar `organization_id` en body/query y sin check de RLS
-- No usar `ref()` para estado que debe persistir entre rutas. Usar `useState('key', () => ...)`
-- No importar archivos de `/server/api` en `/app/components`. Solo via `$fetch` o composables
-- No hacer `supabase.auth.getUser()` en cada componente. Usar `useSupabaseUser()` o `useAuth()`
-- No escribir SQL crudo sin pasar por Supabase client. Rompe RLS
-- No asumir que el usuario tiene `branch_id`. `client` y `system` no tienen
-- No crear nuevos roles sin actualizar `/app/utils/roles.ts` y `/app/utils/role-access.ts`
+## 8) Patrones recomendados para este repo
 
-## WIP y TODO
+- `Facade Pattern`: composables como fachada entre UI y API.
+- `Repository-like access`: concentrar operaciones por agregado en cada composable de dominio.
+- `Orchestrator Pattern`: paginas coordinan casos de uso y estado derivado.
+- `Policy/Guard Pattern`: middleware + validaciones server-side para permisos.
+- `Fail-fast validation`: validar input al inicio con esquemas.
 
-- No hay archivos con //TODO o FIXME identificados
-- Funciones incompletas: Ninguna detectada
-- Módulos mencionados en README/QWEN.md pero sin código: Todos los listados parecen implementados
+## 9) Fuente de verdad tecnica antes de implementar
 
-## Decisiones técnicas
+Leer siempre antes de cambios estructurales:
+- `schema.sql`
+- `app/types/database.types.ts`
+- `app/utils/constants.ts`
+- `app/utils/roles.ts`
+- `app/utils/role-access.ts`
+- `server/api/**`
+- `app/middleware/permissions.ts`
 
-- Uso de Supabase por PostgreSQL + Auth + RLS para multi-tenancy (INFERIDO de configuración)
-- Nuxt 4 por SSR/SSG y Vue 3 ecosystem
-- Zod para validación por type safety y runtime checks
-- ApexCharts por integración con Vue y features avanzadas
-- Cloudflare Pages por deployment serverless
-- TypeScript estricto por robustez en base de código grande
-- Tema con @nuxtjs/color-mode por UX mejorada</content>
-<parameter name="filePath">c:\Users\PC-Alvarito\Dev\nexus-frontend\.github\copilot-instructions.md
+## 10) Workflow multi-agente (si aplica en la sesion)
 
-## 🔄 Multi-Agent Workflow
+Si la tarea usa handoff/agentes:
+- Leer `.ai/STATE.md` y continuar desde `pending`.
+- Actualizar `.ai/STATE.md` y `.ai/HISTORY.md` con evidencia minima de cambios.
+- No marcar modulo como completo si sigue en placeholder o sin backend funcional.
 
-### Protocolo de Handoff
-1. **Antes de empezar**: Leer `.ai/STATE.md` para conocer el estado actual
-2. **Continuar desde**: `last_step` → `pending` (no regenerar archivos ya listados)
-3. **Actualizar estado**: Modificar `last_step`, `pending`, `files_created`, `files_modified`
-4. **Commit handoff**: Usar `ai-handoff` para registrar el punto de transición
-5. **Historial**: Actualizar `.ai/HISTORY.md` con timestamp y resumen
-6. **Persistencia de módulos**: Si un módulo queda **terminado al 100%**, registrar su cierre en `.ai/STATE.md` dentro de `completed_modules` y en `.ai/HISTORY.md` con evidencia mínima (page/composable/api y validación ejecutada).
+## 11) Checklist de aceptacion para PR/refactor
 
-### Archivos de Persistencia
-- `.ai/STATE.md`: Estado actual del workflow (last_step, pending, archivos modificados)
-- `.ai/PLAN.md`: Planes pendientes y asignaciones actuales
-- `.ai/HISTORY.md`: Log de handoffs entre agentes
-- `.ai/PROJECT_CONTEXT.md`: Contexto general del proyecto (leer siempre)
-
-### Reglas de Optimización
-- No regenerar código ya creado (ver `files_created`)
-- No modificar archivos ya listados en `files_modified` sin necesidad
-- Si hay conflictos con reglas del proyecto, abortar y reportar
-- Mantener contexto mínimo pero suficiente para continuidad
-- Usar `ai-handoff` para commits de transición (optimiza tokens al separar contextos)
-- No marcar módulos como "completos" si la página está en estado placeholder/en preparación o sin cobertura funcional de backend.
-
-### Flujo Típico
-1. Agente A lee STATE.md → ejecuta tarea → actualiza STATE.md → `ai-handoff` y registra log en HISTORY.md
-2. Agente B lee STATE.md → continúa desde pending → ejecuta tarea → actualiza STATE.md → `ai-handoff` y registra log en HISTORY.md
-3. Repetir hasta completar el proyecto
+- [ ] Respeta patron de 3 capas.
+- [ ] No hay acceso directo DB en componentes presentacionales.
+- [ ] En backend: handlers delgados (`server/api`) + casos de uso en `server/services`.
+- [ ] Validacion de tenant/rol aplicada en frontend y backend.
+- [ ] Errores de mutaciones manejados explicitamente.
+- [ ] Tipos actualizados y sin `any` accidental.
+- [ ] `npm run typecheck` en verde.
+- [ ] Tests relevantes (si existen) pasan o se documenta brecha.

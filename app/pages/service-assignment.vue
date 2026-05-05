@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { h, resolveComponent } from "vue";
 
+import ServiceCoverageModal from "@/components/appointments/modals/ServiceCoverageModal.vue";
+
 import type {
   ServiceAssignmentCoverageItem,
   ServiceAssignmentService,
@@ -189,12 +191,6 @@ const columns = computed(() => {
 
 <template>
   <div class="space-y-6 md:space-y-8">
-    <GlobalBranchContextSelector
-      module-key="service-assignment"
-      title="Contexto de asignacion"
-      description="Las asignaciones y cambios se aplican a la sucursal seleccionada."
-    />
-
     <div class="flex flex-wrap gap-2">
       <UButton :variant="activeTab === 'summary' ? 'solid' : 'soft'" :color="activeTab === 'summary' ? 'primary' : 'neutral'" @click="activeTab = 'summary'">
         Resumen
@@ -275,7 +271,7 @@ const columns = computed(() => {
       min-width-class="min-w-[68rem] rounded-[1.5rem]"
     />
 
-    <ModalsServiceCoverageModal
+    <ServiceCoverageModal
       :open="modalOpen"
       :loading="mutationLoading"
       :service="selectedService"

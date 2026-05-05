@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import UserForm from "@/components/forms/UserForm.vue";
+import UserForm from "@/components/users/modals/UserFormModal.vue";
 import UserTable from "@/components/users/UserTable.vue";
 import UserAssignByRoleModal from "@/components/users/UserAssignByRoleModal.vue";
 

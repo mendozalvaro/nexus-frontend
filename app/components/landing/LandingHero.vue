@@ -69,10 +69,10 @@ const { navigateToAuth, scrollToSection } = useLanding()
             <div class="flex items-center justify-between gap-4">
               <div>
                 <p class="text-xs font-semibold uppercase tracking-[0.28em] text-slate-500 dark:text-slate-400">
-                  Dashboard NexusPOS
+                  Beneficios principales
                 </p>
                   <p class="mt-1.5 text-xl font-semibold text-slate-950 dark:text-white">
-                    Operacion centralizada en una sola vista
+                    Todo lo que necesitas para crecer
                   </p>
               </div>
               <div class="grid grid-cols-3 gap-2">
@@ -84,102 +84,31 @@ const { navigateToAuth, scrollToSection } = useLanding()
           </div>
 
           <div class="p-4 xl:p-5">
-            <div class="grid gap-3 xl:grid-cols-4">
-              <div class="landing-metric-card landing-metric-card-compact">
-                  <p class="landing-metric-label">Ventas hoy</p>
-                  <p class="landing-metric-value">$4,820</p>
-                  <p class="landing-metric-foot text-emerald-600 dark:text-emerald-300">+18% vs ayer</p>
+            <div class="grid gap-4 xl:grid-cols-3">
+              <div class="text-center">
+                <UIcon name="i-lucide-users" class="mx-auto h-8 w-8 text-primary-500" />
+                <p class="mt-2 font-semibold text-slate-950 dark:text-white">Multi-usuario</p>
+                <p class="text-sm text-slate-600 dark:text-slate-300">Admin, managers y empleados con roles granulares</p>
               </div>
-              <div class="landing-metric-card landing-metric-card-compact">
-                  <p class="landing-metric-label">Citas activas</p>
-                  <p class="landing-metric-value">27</p>
-                  <p class="landing-metric-foot">3 en espera</p>
+              <div class="text-center">
+                <UIcon name="i-lucide-building-2" class="mx-auto h-8 w-8 text-primary-500" />
+                <p class="mt-2 font-semibold text-slate-950 dark:text-white">Multi-sucursal</p>
+                <p class="text-sm text-slate-600 dark:text-slate-300">Gestiona múltiples ubicaciones desde un panel</p>
               </div>
-              <div class="landing-metric-card landing-metric-card-compact">
-                  <p class="landing-metric-label">Stock critico</p>
-                  <p class="landing-metric-value">5</p>
-                  <p class="landing-metric-foot text-amber-600 dark:text-amber-300">Requiere atencion</p>
-              </div>
-              <div class="landing-metric-card landing-metric-card-compact">
-                <p class="landing-metric-label">Agenda del dia</p>
-                <p class="landing-metric-value">12</p>
-                <p class="landing-metric-foot">Bloques sincronizados</p>
+              <div class="text-center">
+                <UIcon name="i-lucide-shield-check" class="mx-auto h-8 w-8 text-primary-500" />
+                <p class="mt-2 font-semibold text-slate-950 dark:text-white">Seguro</p>
+                <p class="text-sm text-slate-600 dark:text-slate-300">Auditoría forense y RLS en base de datos</p>
               </div>
             </div>
 
-            <div class="mt-3 grid gap-3 xl:grid-cols-[minmax(0,1.08fr)_minmax(280px,0.92fr)]">
-              <div class="landing-chart-shell landing-chart-shell-compact">
-                <div class="flex items-end justify-between gap-3">
-                  <div>
-                    <p class="landing-metric-label">Ingresos por sucursal</p>
-                    <p class="text-lg font-semibold text-slate-950 dark:text-white">Comparativo semanal</p>
-                  </div>
-                  <span class="rounded-full bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-700 dark:text-emerald-200">
-                    Actualizado ahora
-                  </span>
-                </div>
-                <div class="mt-4 flex h-32 items-end gap-2.5 xl:h-36">
-                  <div class="landing-bar h-[35%] w-1/6" />
-                  <div class="landing-bar h-[62%] w-1/6" />
-                  <div class="landing-bar h-[54%] w-1/6" />
-                  <div class="landing-bar h-[82%] w-1/6" />
-                  <div class="landing-bar h-[68%] w-1/6" />
-                  <div class="landing-bar h-[92%] w-1/6" />
-                </div>
-              </div>
-
-              <div class="space-y-3">
-                <div class="landing-side-panel landing-side-panel-compact">
-                <div class="flex items-center justify-between gap-3">
-                  <div>
-                    <p class="landing-metric-label">Agenda del dia</p>
-                    <p class="text-base font-semibold text-slate-950 dark:text-white xl:text-lg">Bloques sincronizados</p>
-                  </div>
-                  <UIcon name="i-lucide-calendar-clock" class="h-5 w-5 text-primary-500" />
-                </div>
-                <div class="mt-3 space-y-2.5">
-                  <div class="landing-appointment-row landing-appointment-row-compact">
-                    <div class="min-w-0">
-                      <p class="font-medium text-slate-950 dark:text-white">Color + corte</p>
-                      <p class="text-sm text-slate-600 dark:text-slate-300">Ana Lopez - 09:30</p>
-                    </div>
-                    <span class="landing-chip">Confirmada</span>
-                  </div>
-                  <div class="landing-appointment-row landing-appointment-row-compact">
-                    <div class="min-w-0">
-                      <p class="font-medium text-slate-950 dark:text-white">Servicio tecnico</p>
-                      <p class="text-sm text-slate-600 dark:text-slate-300">Taller Urbano - 11:00</p>
-                    </div>
-                    <span class="landing-chip landing-chip-amber">Pendiente</span>
-                  </div>
-                  <div class="landing-appointment-row landing-appointment-row-compact">
-                    <div class="min-w-0">
-                      <p class="font-medium text-slate-950 dark:text-white">Banio y grooming</p>
-                      <p class="text-sm text-slate-600 dark:text-slate-300">PetLab - 13:15</p>
-                    </div>
-                    <span class="landing-chip landing-chip-slate">Walk-in</span>
-                  </div>
-                </div>
-                </div>
-
-                <div class="landing-side-panel landing-side-panel-compact">
-                  <p class="landing-metric-label">Lo que hace diferente a NexusPOS</p>
-                  <ul class="mt-3 space-y-2.5 text-sm leading-6 text-slate-600 dark:text-slate-300">
-                    <li class="flex gap-3">
-                      <UIcon name="i-lucide-check-circle-2" class="mt-0.5 h-5 w-5 shrink-0 text-primary-500" />
-                      <span>Inventario, servicios y citas conectados en la misma operacion.</span>
-                    </li>
-                    <li class="flex gap-3">
-                      <UIcon name="i-lucide-check-circle-2" class="mt-0.5 h-5 w-5 shrink-0 text-primary-500" />
-                      <span>Control granular de roles para admin, manager, employee y client.</span>
-                    </li>
-                    <li class="flex gap-3">
-                      <UIcon name="i-lucide-check-circle-2" class="mt-0.5 h-5 w-5 shrink-0 text-primary-500" />
-                      <span>Auditoria forense automatica para decisiones y trazabilidad.</span>
-                    </li>
-                  </ul>
-                </div>
-              </div>
+            <div class="mt-6 text-center">
+              <p class="text-lg font-medium text-slate-950 dark:text-white">
+                Únete a miles de negocios que ya confían en NexusPOS
+              </p>
+              <p class="mt-2 text-sm text-slate-600 dark:text-slate-300">
+                Desde salones de belleza hasta talleres automotrices, unifica tu operación
+              </p>
             </div>
           </div>
         </UCard>

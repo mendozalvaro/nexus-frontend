@@ -1,6 +1,5 @@
-import { createError } from "h3";
-
 import { setCacheHeaders } from "../utils/cache";
+import { throwApiError } from "../utils/http-error";
 import { requireTenantContext } from "../utils/tenant-context";
 
 export default defineEventHandler(async (event) => {
@@ -8,12 +7,17 @@ export default defineEventHandler(async (event) => {
 
   const { data, error } = await context.adminClient
     .from("profiles")
-    .select("id, full_name, email, role, organization_id, branch_id, avatar_url, phone")
+    .select("id, full_name, email, role, organization_id, avatar_url, phone")
     .eq("id", context.userId)
     .single();
 
   if (error || !data) {
-    throw createError({ statusCode: 500, statusMessage: error?.message ?? "No se pudo cargar el perfil." });
+    throwApiError(
+      500,
+      "AUTH_PROFILE_FETCH_ERROR",
+      error?.message ?? "No se pudo cargar el perfil.",
+      { userId: context.userId, organizationId: context.organizationId },
+    );
   }
 
   setCacheHeaders(event, { sMaxAge: 120, staleWhileRevalidate: 30, visibility: "private" });

@@ -1,0 +1,24 @@
+{
+  "mcpServers": {
+    "nuxt-ui": {
+      "type": "http",
+      "url": "https://ui.nuxt.com/mcp"
+    },
+    "nuxt-seo": {
+      "type": "http",
+      "url": "https://nuxtseo.com/mcp"
+    },
+    "nuxt": {
+      "type": "http",
+      "url": "https://mcp.nuxt.space"
+    },
+    "chrome-devtools": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "chrome-devtools-mcp@latest",
+        "--headless=true"
+      ]
+    }
+  }
+}

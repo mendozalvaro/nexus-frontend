@@ -31,9 +31,24 @@ const auditAccessDenied = async (
 export default defineNuxtRouteMiddleware(async (to) => {
   const { resolvedRole } = useAuth();
   const { ensureAuthContext } = useAuthContext();
-  const { user, profile } = await ensureAuthContext({ requireProfile: true });
+  let { user, profile } = await ensureAuthContext({ requireProfile: true });
 
   if (!user) {
+    return navigateTo("/auth/login");
+  }
+
+  // Guard against hydration races where user exists but profile is not synced yet.
+  if (!profile) {
+    const refreshed = await ensureAuthContext({
+      requireProfile: true,
+      forceProfileRefresh: true,
+      forceUserValidation: true,
+    });
+    user = refreshed.user;
+    profile = refreshed.profile;
+  }
+
+  if (!user || !profile) {
     return navigateTo("/auth/login");
   }
 

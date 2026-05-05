@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import ServiceForm from "@/components/forms/ServiceForm.vue";
+import ServiceForm from "@/components/catalog/forms/ServiceForm.vue";
 
 import type {
   CatalogCategoryItem,

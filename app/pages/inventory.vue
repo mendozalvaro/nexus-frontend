@@ -1,11 +1,10 @@
 <script setup lang="ts">
-import InventoryMovementModal from "@/components/modals/InventoryMovementModal.vue";
-import InventoryTransferModal from "@/components/modals/InventoryTransferModal.vue";
-import InventoryMovementsTab from "@/components/inventory/InventoryMovementsTab.vue";
-import InventoryStockTab from "@/components/inventory/InventoryStockTab.vue";
-import InventorySummaryTab from "@/components/inventory/InventorySummaryTab.vue";
-import InventoryMovementDetailsModal from "@/components/inventory/InventoryMovementDetailsModal.vue";
-import type { InventoryMovementFilters } from "@/composables/useInventory";
+import InventoryMovementModal from "@/components/inventory/modals/InventoryMovementModal.vue";
+import InventoryTransferModal from "@/components/inventory/modals/InventoryTransferModal.vue";
+import InventoryMovementsTab from "@/components/inventory/tabs/InventoryMovementsTab.vue";
+import InventoryStockTab from "@/components/inventory/tabs/InventoryStockTab.vue";
+import InventorySummaryTab from "@/components/inventory/tabs/InventorySummaryTab.vue";
+import InventoryMovementDetailsModal from "@/components/inventory/modals/InventoryMovementDetailsModal.vue";
 
 definePageMeta({
   layout: "default",
@@ -32,9 +31,10 @@ const {
   transferPrecheckNormalization,
   movementPrecheckWarnings,
   transferPrecheckWarnings,
-  actorRole,
-  selectedBranchId,
-  overviewPending,
+    actorRole,
+    selectedBranchId,
+    allBranches,
+    overviewPending,
   movementsPending,
   overview,
   transferState,
@@ -70,19 +70,14 @@ const {
   getMovementColor,
 } = useInventoryPage();
 
-const handleMovementTypeUpdate = (value: string) => {
-  movementFilters.movementType = value as InventoryMovementFilters["movementType"];
-};
+void selectedProductId;
+void actorRole;
+void selectedBranchId;
+void transferState;
 </script>
 
 <template>
   <div class="space-y-6 md:space-y-8">
-    <GlobalBranchContextSelector
-      module-key="inventory"
-      title="Contexto de inventario"
-      description="Este contexto fija la sucursal para consultas y operaciones de inventario."
-    />
-
     <div class="flex flex-wrap gap-2">
       <UButton :variant="activeTab === 'summary' ? 'solid' : 'soft'" :color="activeTab === 'summary' ? 'primary' : 'neutral'" @click="activeTab = 'summary'">
         Resumen
@@ -131,7 +126,7 @@ const handleMovementTypeUpdate = (value: string) => {
       :movements-pending="movementsPending"
       :movement-branch-model="movementBranchModel"
       :movement-product-model="movementProductModel"
-      :movement-type="movementFilters.movementType"
+      :movement-type="movementTypeOptions.find(opt => opt.value === movementFilters.movementType)?.value ?? 'all'"
       :movement-date-from="movementDateFrom"
       :movement-date-to="movementDateTo"
       :movement-branch-options="movementBranchOptions"
@@ -140,44 +135,41 @@ const handleMovementTypeUpdate = (value: string) => {
       :format-date-time="formatDateTime"
       :get-movement-label="getMovementLabel"
       :get-movement-color="getMovementColor"
-      @update:movement-branch-model="movementBranchModel = $event"
-      @update:movement-product-model="movementProductModel = $event"
-      @update:movement-type="handleMovementTypeUpdate"
-      @update:movement-date-from="movementDateFrom = $event"
-      @update:movement-date-to="movementDateTo = $event"
+      @update:movement-branch-model="(value) => movementFilters.branchId = value === '__all__' ? null : value"
+      @update:movement-product-model="(value) => movementFilters.productId = value === '__all__' ? null : value"
+      @update:movement-type="(value) => movementFilters.movementType = value as any"
+      @update:movement-date-from="(value) => movementFilters.dateFrom = value || null"
+      @update:movement-date-to="(value) => movementFilters.dateTo = value || null"
       @view-details="handleViewMovementDetails($event)"
     />
 
     <InventoryMovementModal
-      :open="movementModalOpen"
-      :loading="movementLoading"
+      v-model:open="movementModalOpen"
+      title="Registrar movimiento"
       :branches="activeBranches"
-      :products="transferState?.products ?? overview?.products ?? []"
-      :selected-product-id="selectedProductId ?? undefined"
-      :selected-branch-id="selectedBranchId ?? undefined"
-      :precheck-errors="movementPrecheckErrors"
-      :precheck-normalization="movementPrecheckNormalization"
-      :precheck-warnings="movementPrecheckWarnings"
+      :products="(overview?.products ?? []) as any"
+      :loading="movementLoading"
       :role="actorRole"
-      @update:open="movementModalOpen = $event"
-      @validate="handleMovementValidate"
-      @submit="handleMovementSubmit"
+      :precheck-errors="movementPrecheckErrors as any"
+      :precheck-normalization="movementPrecheckNormalization as any"
+      :precheck-warnings="movementPrecheckWarnings"
+      @validate="handleMovementValidate($event)"
+      @submit="handleMovementSubmit($event)"
     />
 
     <InventoryTransferModal
-      :open="transferModalOpen"
+      v-model:open="transferModalOpen"
+      title="Transferir productos"
+      :branches="activeBranches"
+      :all-branches="allBranches"
+      :products="overview?.products ?? []"
       :loading="transferLoading"
-      :source-branches="activeBranches"
-      :destination-branches="(transferState?.destinationBranches ?? transferState?.branches ?? overview?.branches ?? []).filter((branch) => branch.isActive)"
-      :products="transferState?.products ?? overview?.products ?? []"
-      :selected-product-id="selectedProductId ?? undefined"
-      :selected-branch-id="selectedBranchId ?? undefined"
       :role="actorRole"
       :precheck-errors="transferPrecheckErrors"
       :precheck-normalization="transferPrecheckNormalization"
       :precheck-warnings="transferPrecheckWarnings"
-      @update:open="transferModalOpen = $event"
-      @submit="handleTransferSubmit"
+      @validate="handleTransferSubmit($event)"
+      @submit="handleTransferSubmit($event)"
     />
 
     <InventoryMovementDetailsModal

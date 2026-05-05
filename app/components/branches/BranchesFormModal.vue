@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import BranchForm from "@/components/forms/BranchForm.vue";
+import BranchForm from "@/components/branches/forms/BranchForm.vue";
 
 import type { BranchMutationPayload } from "@/composables/useBranches";
 

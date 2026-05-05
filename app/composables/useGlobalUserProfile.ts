@@ -5,6 +5,11 @@ export const useGlobalUserProfile = () => {
   const user = useSupabaseUser();
 
   const shouldFetchTenantProfile = computed(() => {
+    // No hacer llamadas API en páginas públicas
+    if (route.path === '/' || route.path.startsWith('/auth') || route.path === '/terms' || route.path === '/privacy') {
+      return false;
+    }
+
     if (!user.value) return false;
     if (route.path.startsWith("/system")) return false;
     if (import.meta.client && window.location.pathname.startsWith("/system")) return false;
@@ -22,7 +27,7 @@ export const useGlobalUserProfile = () => {
     key: CACHE_KEYS.profile,
     lazy: true,
     dedupe: "defer",
-    immediate: shouldFetchTenantProfile.value,
+    immediate: false, // Nunca ejecutar inmediatamente
     default: () => null,
   });
 

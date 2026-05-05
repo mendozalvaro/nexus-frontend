@@ -28,6 +28,12 @@ export interface AuthOperationResult<T = void> {
   error: string | null;
 }
 
+export interface AuthErrorPayload {
+  code: string;
+  message: string;
+  details?: unknown;
+}
+
 export interface AuthAuditContext {
   event:
     | "LOGIN_SUCCESS"

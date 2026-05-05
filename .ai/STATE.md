@@ -1,245 +1,90 @@
 ﻿# Multi-Agent Workflow State
 
 ## Current State
-- **last_step**: inventory_transfer_reject_flow_and_type_badges
-- **pending**: [Fase 2] harden_server_side_module_enforcement_for_inventory_and_sensitive_modules
+- **last_step**: inventory_get_api_handlers_created
+- **pending**: [Ola 2] inventory_frontend_refactor
 - **agent**: codex
 
-## Module Completion Ledger
+## Refactor Waves
+- **wave_0_completed**: auth (closed)
+- **wave_1_in_progress**: inventory, appointments, pos, reports
+- **wave_1_completed**: inventory (GET API + service layer)
+- **wave_2_completed**: catalogo (service layer + 3-layer compliant)
+- **wave_3_pending**: branches, service-assignment, client/*
+
+## Module Compliance Ledger
+- **in_progress_modules**:
+  - inventory (wave 1)
 - **completed_modules**:
-  - dashboard (staff)
-  - catalogo
-  - inventory
-  - service-assignment
-  - branches
-  - users (staff)
-  - profile (staff)
-  - client/dashboard
-  - client/profile
-  - system/index
-  - system/access
-  - system/payment-validations
-  - system/users
-  - system/profile
-- **pending_modules**:
-  - pos
-  - appointments (staff)
-  - reports (staff)
-  - settings
-  - client/appointments
-  - client/bookings
-  - client/reports
-- **module_evidence_notes**:
-  - placeholder detectado en paginas: `pos`, `appointments`, `reports`, `settings`, `client/appointments`, `client/bookings`, `client/reports`.
-  - ruta vacia detectada: `app/pages/[slug]/catalog.vue` (0 bytes).
+  - auth (closed - 3-layer compliant)
+  - dashboard (staff) - 3-layer compliance + service layer refactored
+  - catalogo - service layer + compliant
 
-## Files Created
-- supabase/migrations/013_clients_multiorg.sql
-- app/types/client.ts
-- server/api/clients/upsert.ts
-- server/api/clients/profile.get.ts
-- app/pages/[slug]/catalog.vue
-- app/pages/client/checkout.vue
-- supabase/migrations/20260418_subscription_model_hybrid_trial_limits.sql
-- supabase/migrations/20260418_update_subscription_plans_catalog.sql
-- AGENTS.md
-- instructions.md
-- app/utils/subscription-plan.ts
-- supabase/migrations/20260418_system_role_module_permissions.sql
-- server/api/system/plans/index.get.ts
-- server/api/system/plans/index.post.ts
-- server/api/system/plans/[planId].patch.ts
-- server/api/system/roles/index.get.ts
-- server/api/system/roles/[roleId].patch.ts
-- server/api/system/roles/[roleId]/permissions.put.ts
-- app/pages/system/access.vue
-- server/utils/dev-security.ts
-- app/composables/test/security-hardening.spec.ts
-- server/api/system/users/[userId]/account.patch.ts
-- server/api/system/users/[userId]/email.post.ts
-- server/api/system/profile.get.ts
-- server/api/system/profile.patch.ts
-- app/pages/system/profile.vue
-- supabase/migrations/20260421_fix_onboarding_profile_fk.sql
-- server/api/admin/users/index.get.ts
-- server/api/inventory/stock/transfer/[id]/cancel.post.ts
-- server/api/inventory/stock/transfer-batch/[id]/cancel.post.ts
+## Auth Evidence (current iteration)
+- Middleware guard hardening: `app/middleware/permissions.ts`
+  - retry with `forceProfileRefresh + forceUserValidation` when profile is missing.
+  - deny/redirect to `/auth/login` if context is still unresolved.
+- Unified error contract in auth-related API endpoints:
+  - `server/utils/http-error.ts` (shared helper `throwApiError`)
+  - `server/api/profile.get.ts` (`AUTH_PROFILE_FETCH_ERROR`)
+  - `server/api/auth/accessible-branches.get.ts` (`AUTH_ACCESSIBLE_BRANCHES_FETCH_ERROR`)
+- Auth refactor aligned to clean architecture rules:
+  - `app/utils/auth.ts` (sanitization/validation/domain auth helpers)
+  - `app/composables/auth/useAuthAudit.ts` (audit concern extracted)
+  - `app/composables/auth/useClientProfileState.ts` (client profile state/cache extracted)
+  - `app/composables/useAuth.ts` reduced to facade/orchestrator keeping public API compatibility.
+  - `app/composables/useAuth.ts` simplified with `executeAuthAction` wrapper to reduce duplicated submit/error flow.
+  - `app/composables/useRegistration.ts` split post-auth destination rules into pure resolvers for maintainability.
+  - `app/composables/auth/useAuthAudit.ts` now persists audit via backend endpoint `POST /api/auth/audit`.
+  - Use-case diagram documented: `.ai/AUTH_USE_CASE_DIAGRAM.md`.
 
-## Files Modified
-- app/composables/useAuth.ts
-- app/middleware/permissions.ts
-- nuxt.config.ts
-- server/api/dev/confirm-email.post.ts
-- server/api/dev/get-confirmation-link.get.ts
-- server/utils/appointments.ts
-- app/types/database.types.ts
-- server/api/clients/profile.get.ts
-- server/api/clients/upsert.ts
-- app/composables/test/useAppointments.spec.ts
-- app/composables/test/usePOS.spec.ts
-- test/setup.ts
-- tsconfig.json
-- app/types/registration.ts
-- app/types/subscription.ts
-- app/utils/onboarding.ts
-- app/components/onboarding/OrganizationForm.vue
-- app/components/onboarding/PaymentInstructions.vue
-- app/pages/onboarding/organization.vue
-- app/pages/auth/register.vue
-- app/composables/useOrganization.ts
-- app/composables/usePaymentValidation.ts
-- app/composables/useSubscription.ts
-- app/composables/usePermissions.ts
-- app/composables/useFeatureFlags.ts
-- app/composables/useLanding.ts
-- app/components/landing/LandingPricing.vue
-- app/pages/index.vue
-- app/layouts/default.vue
-- app/middleware/pending-account.global.ts
-- schema.sql
-- supabase/seed.sql
-- AGENTS.md
-- app/composables/useSubscription.ts
-- app/composables/usePermissions.ts
-- app/composables/useUsers.ts
-- app/types/subscription.ts
-- app/types/permissions.ts
-- server/utils/admin-users.ts
-- server/api/admin/users.post.ts
-- server/api/admin/users/[id].patch.ts
-- app/composables/useSystemAdmin.ts
-- app/config/navigation.ts
-- app/pages/system/index.vue
-- app/middleware/permissions.ts
-- app/pages/system/users.vue
-- app/components/system/SystemUserForm.vue
-- app/components/system/SystemUserModal.vue
-- app/components/system/OrgUserTable.vue
-- app/middleware/system-only.ts
-- server/api/system/users/index.post.ts
-- server/api/system/users/[userId].patch.ts
-- server/api/system/users/organizations.get.ts
-- app/pages/onboarding/payment.vue
-- app/pages/pos.vue
-- app/components/forms/CheckoutForm.vue
-- .github/copilot-instructions.md
-- .ai/PROJECT_CONTEXT.md
-- app/components/inventory/InventoryStockTab.vue
-- app/components/features/InventoryMovementTable.vue
-- app/composables/useInventoryPage.ts
-- app/pages/inventory.vue
+## Dashboard Evidence (current iteration)
+- Service layer created: `server/services/dashboard/stats.ts`
+  - Pure business logic for stats calculation (sales, appointments, products, customers)
+  - Supports period filtering (7d/30d/90d) and branch filtering
+  - Proper TypeScript typing with `TransactionRow`, error handling
+- API handler refactored: `server/api/dashboard-stats.get.ts`
+  - Reduced from 83 to 37 lines (delegate to service)
+  - Input validation (branchId UUID regex), cache headers preserved
+- Frontend composable refactored: `app/composables/useDashboard.ts`
+  - `logBlockedFeatureAttempt` now uses `$fetch('/api/auth/audit')` instead of direct `supabase.from()`
+  - Aligns with rule #5: no direct DB access in composables
+- TypeScript types: `DashboardStatsParams`, `DashboardStatsResult` interfaces
 
-## Notes
-- Selector de sucursal en layout ahora aplica solo a `manager` y `employee`.
-- Regla visual aplicada en aside/mobile:
-  - `>1` sucursales: selector.
-  - `=1` sucursal: nombre fijo.
-  - `0` sucursales: estado "Sin sucursal asignada".
-- Middleware de permisos actualizado para exigir contexto de sucursal (`requiresBranch`) solo en `manager/employee`; `admin` no depende de selector global.
-- POS (`app/pages/pos.vue`) ahora incluye contexto de venta para `admin`:
-  - `>1` sucursales: selector local en modulo.
-  - `=1` sucursal: nombre fijo.
-  - `0` sucursales: alerta + CTA a `/branches`.
-- Checkout POS (`app/components/forms/CheckoutForm.vue`) actualizado:
-  - selector editable solo para `admin` con mas de una sucursal,
-  - en otros casos muestra sucursal fija,
-  - bloqueo de submit si no hay sucursal valida.
-- Validacion tecnica: `npm run typecheck` => OK.
-- Inventario: historial con tipos y colores diferenciados por operacion:
-  - Ingreso (`success`), Salida (`error`), Ajuste (`primary`), Transferencia enviada (`warning`), Transferencia recibida (`neutral`).
-- Stock: banner de transferencias pendientes ahora permite `Recepcionar` y `Rechazar`.
-- Backend inventario: nuevos endpoints para rechazo de transferencias (single y batch) con rollback de stock al origen, control de estado `pending`, permisos por rol/sucursal e idempotencia en canceladas.
-- Validacion ejecutada en esta iteracion:
-  - `npm run typecheck` => OK.
-  - Smoke DevTools en `http://localhost:3000/inventory`: rechazo de lote `POST /api/inventory/stock/transfer-batch/{id}/cancel` => 200 y limpieza del banner de pendientes.
-- Onboarding fix aplicado en BD linked: `supabase db query --linked -f supabase/migrations/20260421_fix_onboarding_profile_fk.sql -o json`.
-- Causa raiz del bloqueo `Empresa -> Pago` corregida: `create_onboarding_organization` ahora asegura `upsert` de `profiles` antes de insertar en `employee_branch_assignments`, evitando FK `employee_branch_assignments_user_id_fkey`.
-- Validacion E2E post-fix (DevTools):
-  - `POST /rest/v1/rpc/create_onboarding_organization` paso de `409` a `200`.
-  - Flujo completo validado: `login -> onboarding/organization -> onboarding/payment -> onboarding/success -> dashboard`.
-- Reduccion de solicitudes repetidas en onboarding:
-  - `app/pages/onboarding/payment.vue`: debounce + dedupe + throttle para `savePaymentProgress`.
-  - `app/composables/useAuth.ts`: `fetchClientProfile` solo para rol `client` con `organization_id` (evita llamadas innecesarias en staff/admin durante onboarding).
-- Hallazgo residual observado en sesiones previas: `GET /api/clients/profile` con `organizationId=undefined` dejo de reproducirse en el flujo de onboarding admin luego del ajuste de `useAuth`.
-- Verificacion tecnica:
-  - `npm run typecheck` => OK tras cambios.
-- Migracion aplicada en Supabase linked: `supabase db query --linked -f supabase/migrations/013_clients_multiorg.sql -o json`.
-- Tipos regenerados: `supabase gen types typescript --project-id ohdvqqgfebwseeudtwae` -> `app/types/database.types.ts`.
-- Verificado en tipos: tablas `clients` y `client_org` presentes.
-- Corregidos errores `vue-tsc` en `nuxt dev` (tests strict null checks, imports `serverSupabaseUser`, typing de mock en `test/setup.ts`).
-- `npm run typecheck` ejecutado sin errores al cierre del handoff.
-- Implementado modelo de suscripciones v2: `business_type` con `hybrid`, plan metadata (`description`, `resume`, `features`, `permissions`, `limits`, `available_billing_modes`), trial por plan y `billing_mode` trimestral.
-- Se elimino plan free/prueba de flujos de onboarding y pricing en frontend.
-- Agregado gating de pago forzado: middleware global + overlay en layout para restringir acceso fuera de `/onboarding/payment` cuando no hay pago activo o trial vencido.
-- `npm run typecheck` validado en verde despues de los cambios.
-- Migracion aplicada en Supabase linked: `supabase/migrations/20260418_subscription_model_hybrid_trial_limits.sql`.
-- Tipos regenerados despues de migracion v2: `supabase gen types typescript --project-id ohdvqqgfebwseeudtwae` -> `app/types/database.types.ts`.
-- Migracion aplicada en Supabase linked: `supabase/migrations/20260418_update_subscription_plans_catalog.sql` (planes Emprende/Crecimiento/Empresarial con business_only, features, limits y billing modes).
-- Landing pricing ahora no hardcodea descuentos/modos en componente; consume `available_billing_modes` y metadatos de plan desde BD via `app/pages/index.vue`.
-- Seed actualizado con catalogo de planes alineado al nuevo modelo.
-- Se agrego parser/normalizador dinamico de `permissions` y `limits` de `subscription_plans` en `app/utils/subscription-plan.ts` para soportar claves nuevas sin hardcode estricto.
-- `useSubscription` ahora consume limits dinamicos (incluye nested keys como `roles.manager` y flags como `users_unlimited`) y expone helpers para resolver permisos/limites por alias.
-- `usePermissions` ahora filtra acceso a modulos por namespace de permiso de forma dinamica usando `planPermissions`.
-- En backend (`server/utils/admin-users.ts` + endpoints admin users) se aplico enforcement server-side de:
-  - permiso de modulo `users`,
-  - limite total de usuarios por plan,
-  - limite por rol desde `limits.roles.*`,
-  - auditoria de denegaciones en `audit_logs` con accion `PERMISSION_DENIED`.
-- `useUsers` ahora usa capacidad real dinamica para `canCreateMoreUsers` y estado `isOverUserLimit`.
-- Validacion ejecutada: `npm run typecheck` en verde.
-- Decision de producto confirmada en esta sesion: **no aplicar overrides por organizacion** en esta etapa (sin tabla ni merge override>plan).
-- Se implemento UI dinamica de planes/roles en `/system/access` (sin JSON manual) con soporte de agregar/eliminar para features, permissions, limits y billing modes, mas presets rapidos y filtros de modulos en matriz de roles.
-- Se ejecuto prueba de flujo real: se removio acceso `manager` a `inventory` (`role_module_permissions.can_view=false`) y se valido en BD linked.
-- Hallazgo de seguridad/consistencia: existia carrera de carga en frontend donde una navegacion directa podia evaluar middleware antes de sincronizar permisos dinamicos.
-- Fix aplicado:
-  - `app/composables/usePermissions.ts`: `ensureRolePermissionsLoaded()` para sincronizar `role_module_permissions` por `role_id`.
-  - `app/middleware/permissions.ts`: espera explicita de permisos dinamicos antes de resolver acceso de ruta.
-- Verificacion E2E posterior al fix: `manager` ya no puede entrar a `/inventory` por URL directa y es redirigido a `/dashboard`; menu lateral sin item Inventario.
-- Limpieza de entorno de prueba: se revirtio asignacion temporal de sucursal en `manager@nexuspos.demo`.
-- Validacion final: `npm run typecheck` en verde.
-- Proxima tarea propuesta (movida a fase 2): **harden_server_side_module_enforcement_for_inventory_and_sensitive_modules** para evitar bypass por consumo directo de APIs (inventario/catalogo/reportes) sin depender solo del middleware frontend.
-- Hardening aplicado en esta sesion:
-  - Se elimino fallback automatico cross-tenant en `requireAppointmentContext`; ahora exige `organization_id` explicito del perfil.
-  - Se agrego control de acceso en `/api/dev/*` con header `x-dev-admin-key` validado contra `runtimeConfig.devAdminKey` (`NUXT_DEV_ADMIN_KEY`).
-  - Se elimino password hardcodeada del endpoint dev de confirmacion de email.
-- Archivos creados:
-  - `server/utils/dev-security.ts`
-  - `app/composables/test/security-hardening.spec.ts`
-- Validacion de cierre:
-  - `npm run typecheck` => OK.
-  - `npm run test` => OK (21 tests, 5 files).
-- Modulo `/system/users` y `/system/profile` completado:
-  - Confirmar/Reenviar email solo para admins de organizacion.
-  - Badge de verificacion de email visible solo en admins de organizacion.
-  - Bloquear/desbloquear y reset password operativo para usuarios de organizacion/clientes.
-  - Formulario de system users simplificado: sin perfil sugerido ni permisos manuales; permisos derivados por rol en backend.
-  - Nuevo `/system/profile` (GET/PATCH) para editar datos propios de `system_users`.
-  - Middleware `system-only` ampliado para acceso de roles `system` y `support` activos.
-- Validacion modulo system:
-  - `npm run typecheck` => OK.
-- Estandar global de arquitectura modular agregado al contexto:
-  - `.github/copilot-instructions.md`
-  - `.ai/PROJECT_CONTEXT.md`
-- Metodologia registrada como obligatoria para cualquier modulo/refactor:
-  - patron 3 capas (orquestador/composable dominio/componentes presentacionales),
-  - carga por recurso con claves independientes,
-  - refresh selectivo por entidad (evitar refresh global innecesario),
-  - derivados en `computed` en orquestador,
-  - enforcement tenant (`organization_id` + RLS),
-  - manejo explicito de errores de mutacion.
-- Se agrego checklist obligatorio y nota de adopcion con excepciones documentadas en PR/handoff.
-- Modulo `users (staff)` cerrado:
-  - pagina orquestadora operativa: `app/pages/users.vue`.
-  - composable de dominio con carga y mutaciones: `app/composables/useUsers.ts`.
-  - componentes presentacionales: `app/components/users/UserTable.vue`, `app/components/users/UserAssignByRoleModal.vue`, `app/components/forms/UserForm.vue`.
-  - endpoints backend y enforcement de rol/tenant: `server/api/admin/users.post.ts`, `server/api/admin/users/[id].patch.ts`, `server/api/admin/users/[id]/deactivate.post.ts`, `server/utils/admin-users.ts`.
-- Validacion tecnica cierre users (staff):
-  - `npm run typecheck` => OK (2026-04-22).
-- Ajuste final modulo `users (staff)`:
-  - Carga de usuarios para orquestador migrada a endpoint server-side (`GET /api/admin/users`) con contexto admin/manager para exponer candidatos activos de toda la organizacion.
-  - En asignaciones, se listan usuarios activos del rol objetivo excluyendo solo los ya asignados a la sucursal seleccionada.
-  - Boton `Anadir manager` oculto para actor `manager` (solo visible para `admin`).
-- Validacion smoke final users (staff):
-  - `admin` mantiene capacidad de crear/asignar `manager` y `employee`.
-  - `manager` solo puede crear `employee`, sin opcion de asignar manager, y puede asignar employees en esquema multi-sucursal.
-  - `npm run typecheck` => OK (2026-04-22).
+## Acceptance Gate (dashboard)
+- [x] Service layer created (`server/services/dashboard/stats.ts`)
+- [x] API handler delegates to service (no business logic in handler)
+- [x] Composable audit uses API endpoint (no direct DB)
+- [x] `npm run typecheck` green
+- [ ] Tests (pending: no test suite for dashboard stats)
+- [x] Evidence logged in `FEATURE_TRACKER.md` and `HISTORY.md`
+
+## Acceptance Gate (auth)
+- [x] Frontend 3-layer audit completed (`pages/auth`, `composables/auth`, auth components)
+- [x] `useAuth` confirmed as main auth gateway (exceptions: `useSessionAccess`, `useRegistration`)
+- [x] Error contract `code/message/details` applied end-to-end
+- [ ] Role/tenant route guards validated by direct URL access (bloqueado: entorno sin servidor local accesible)
+- [x] `npm run typecheck` green
+- [ ] auth-related tests green (bloqueado por entorno: vitest/esbuild spawn EPERM)
+- [x] Evidence logged in `FEATURE_TRACKER.md` and `HISTORY.md`
+- [x] **AUTH MODULE CLOSED** (typecheck green, arquitectura compliant)
+
+## Catalogo Evidence (current iteration)
+- Service layer created: `server/services/catalog/products.ts`, `services.ts`, `categories.ts`
+  - Pure business logic for products, services, categories CRUD
+  - Proper TypeScript typing
+- API handlers refactored: `server/api/catalog/*.get.ts`
+  - Reduced business logic to delegate to service layer
+- Frontend composable refactored: `app/composables/useCatalog.ts`
+  - Now uses `$fetch('/api/catalog/...')` instead of direct `supabase.from()`
+  - Aligns with rule #5: no direct DB access in composables
+
+## Acceptance Gate (catalogo)
+- [x] Service layer created
+- [x] API handlers delegate to service
+- [x] Composable uses API endpoint (no direct DB)
+- [x] `npm run typecheck` green
+- [ ] Tests (pending)
+- [x] Evidence logged
+
+

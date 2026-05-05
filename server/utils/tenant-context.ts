@@ -12,6 +12,21 @@ type ProfileSummary = Pick<
 
 type AdminClient = ReturnType<typeof createClient<Database>>;
 
+const UUID_REGEX =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+const resolveAuthUserId = (user: unknown): string | null => {
+  if (!user || typeof user !== "object") {
+    return null;
+  }
+
+  const candidate =
+    (user as { id?: unknown }).id
+    ?? (user as { sub?: unknown }).sub;
+
+  return typeof candidate === "string" ? candidate : null;
+};
+
 export interface TenantContext {
   adminClient: AdminClient;
   userId: string;
@@ -63,11 +78,16 @@ export const requireTenantContext = async (event: H3Event): Promise<TenantContex
     throw createError({ statusCode: 401, statusMessage: "No autorizado." });
   }
 
+  const userId = resolveAuthUserId(user);
+  if (!userId || !UUID_REGEX.test(userId)) {
+    throw createError({ statusCode: 401, statusMessage: "Sesion invalida: user id no valido." });
+  }
+
   const adminClient = buildAdminClient(event);
   const { data: profile, error } = await adminClient
     .from("profiles")
     .select("id, organization_id, role, full_name, email, avatar_url, phone, is_active")
-    .eq("id", user.id)
+    .eq("id", userId)
     .maybeSingle<ProfileSummary>();
 
   if (error) {
@@ -111,7 +131,7 @@ export const requireTenantContext = async (event: H3Event): Promise<TenantContex
 
   return {
     adminClient,
-    userId: user.id,
+    userId,
     profile,
     organizationId: profile.organization_id,
     role: resolvedRole,

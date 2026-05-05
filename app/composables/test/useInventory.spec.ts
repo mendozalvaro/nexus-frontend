@@ -204,7 +204,7 @@ describe('useInventory', () => {
   })
 
   it('normaliza lineas repetidas en ajuste add/remove sumando cantidades', async () => {
-    const { normalizeInventoryAdjustmentBatchLines } = await import('../useInventory')
+    const { normalizeInventoryAdjustmentBatchLines } = await import('@/utils/inventory')
 
     const result = normalizeInventoryAdjustmentBatchLines('add', [
       { productId: 'prod-1', quantity: 3, minStockLevel: null },
@@ -222,7 +222,7 @@ describe('useInventory', () => {
   })
 
   it('normaliza lineas repetidas en ajuste set usando ultimo valor y ultimo min no nulo', async () => {
-    const { normalizeInventoryAdjustmentBatchLines } = await import('../useInventory')
+    const { normalizeInventoryAdjustmentBatchLines } = await import('@/utils/inventory')
 
     const result = normalizeInventoryAdjustmentBatchLines('set', [
       { productId: 'prod-1', quantity: 3, minStockLevel: 4 },
@@ -236,7 +236,7 @@ describe('useInventory', () => {
   })
 
   it('normaliza lineas repetidas en transferencias sumando por producto', async () => {
-    const { normalizeInventoryTransferBatchLines } = await import('../useInventory')
+    const { normalizeInventoryTransferBatchLines } = await import('@/utils/inventory')
 
     const result = normalizeInventoryTransferBatchLines([
       { productId: 'prod-1', quantity: 1 },

@@ -1,6 +1,5 @@
 import type {
   InventoryAdjustmentBatchLine,
-  InventoryAdjustmentBatchPayload,
   InventoryBatchNormalization,
   InventoryBatchValidationError,
   InventoryHistoryData,
@@ -9,10 +8,11 @@ import type {
   InventoryOverviewData,
   InventoryProductRowView,
   InventoryTransferBatchLine,
-  InventoryTransferBatchPayload,
   InventoryTransferDetailData,
   InventoryTransferRowView,
-} from "@/composables/useInventory";
+  InventoryAdjustmentBatchPayload,
+  InventoryTransferBatchPayload,
+} from "@/utils/inventory";
 
 export type InventoryTab = "summary" | "stock" | "movements";
 
@@ -194,6 +194,16 @@ export const useInventoryPage = () => {
   const activeBranches = computed(() => (overview.value?.branches ?? []).filter((branch) => branch.isActive));
   const activeBranchIds = computed(() => activeBranches.value.map((branch) => branch.id));
   const showStockBranchesColumn = computed(() => activeBranchIds.value.length > 1);
+
+  const { data: allBranchesData } = useFetch<Array<{ id: string; name: string; code: string | null; is_active: boolean | null }>>("/api/branches-all", {
+    lazy: true,
+    immediate: typeof useRoute().path === "string" && useRoute().path.includes("inventory"),
+  });
+  const allBranches = computed(() =>
+    (allBranchesData.value ?? [])
+      .filter((b) => b.is_active !== false)
+      .map((b) => ({ id: b.id, name: b.name, code: b.code ?? undefined }))
+  );
 
   const stockRows = computed<InventoryProductRowView[]>(() => {
     const allRows = overview.value?.products ?? [];
@@ -527,6 +537,7 @@ export const useInventoryPage = () => {
     movementState,
     activeBranches,
     activeBranchIds,
+    allBranches,
     showStockBranchesColumn,
     stockRows,
     movementFilters,

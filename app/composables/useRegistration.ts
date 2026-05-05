@@ -10,15 +10,19 @@ import type {
 } from "@/types/registration";
 import {
   ERROR_MESSAGES,
-  ORGANIZATION_STORAGE_KEY,
-  PAYMENT_STORAGE_KEY,
   REGISTRATION_SCHEMA,
-  REGISTRATION_STORAGE_KEY,
-  RESEND_STORAGE_KEY,
   asJsonObject,
   sanitizeEmail,
   sanitizeText,
 } from "@/utils/onboarding";
+import { isValidUuid } from "@/utils/auth";
+import {
+  clearOnboardingDraftsStorage,
+  loadRegistrationDraft,
+  loadResendState,
+  saveRegistrationDraft,
+  saveResendState,
+} from "@/utils/registration-storage";
 
 const createRegistrationDraft = (): RegistrationDraft => ({
   fullName: "",
@@ -81,78 +85,56 @@ export const useRegistration = () => {
   });
 
   const persistRegistrationDraft = () => {
-    if (!import.meta.client) return;
-    localStorage.setItem(REGISTRATION_STORAGE_KEY, JSON.stringify(registrationDraft.value));
+    saveRegistrationDraft(registrationDraft.value);
   };
 
   const hydrateRegistrationDraft = () => {
-    if (!import.meta.client) return;
-    const rawValue = localStorage.getItem(REGISTRATION_STORAGE_KEY);
-    if (!rawValue) return;
-    try {
-      const parsed = JSON.parse(rawValue) as RegistrationDraft;
-      registrationDraft.value = { ...createRegistrationDraft(), ...parsed };
-    } catch {
-      localStorage.removeItem(REGISTRATION_STORAGE_KEY);
-    }
+    registrationDraft.value = loadRegistrationDraft(createRegistrationDraft);
   };
 
   const clearLocalOnboardingDrafts = () => {
-    if (!import.meta.client) return;
-    localStorage.removeItem(REGISTRATION_STORAGE_KEY);
-    localStorage.removeItem(ORGANIZATION_STORAGE_KEY);
-    localStorage.removeItem(PAYMENT_STORAGE_KEY);
+    clearOnboardingDraftsStorage();
   };
 
   const hydrateResendState = () => {
-    if (!import.meta.client) return;
-    try {
-      const rawValue = localStorage.getItem(RESEND_STORAGE_KEY);
-      resendState.value = rawValue ? (JSON.parse(rawValue) as { lastSentAt: number }) : createResendState();
-    } catch {
-      resendState.value = createResendState();
-      localStorage.removeItem(RESEND_STORAGE_KEY);
-    }
+    resendState.value = loadResendState(createResendState);
   };
 
   const persistResendState = () => {
-    if (!import.meta.client) return;
-    localStorage.setItem(RESEND_STORAGE_KEY, JSON.stringify(resendState.value));
+    saveResendState(resendState.value);
   };
 
   const saveOnboardingProgress = async (
     payload: OnboardingProgressPayload,
   ): Promise<OnboardingProgressRow | null> => {
     const user = await resolveUser();
-    if (!user) return null;
+    if (!user || !isValidUuid(user.id)) return null;
 
-    const { data, error: upsertError } = await supabase
-      .from("onboarding_progress")
-      .upsert(
+    try {
+      const response = await $fetch<{ progress: OnboardingProgressRow | null }>(
+        "/api/auth/onboarding-progress",
         {
-          user_id: user.id,
-          organization_id: payload.organizationId ?? null,
-          current_step: payload.currentStep,
-          progress_data: payload.progressData,
-          updated_at: new Date().toISOString(),
+          method: "POST",
+          body: {
+            organizationId: payload.organizationId ?? null,
+            currentStep: payload.currentStep,
+            progressData: payload.progressData,
+          },
         },
-        { onConflict: "user_id" },
-      )
-      .select()
-      .single();
+      );
 
-    if (upsertError) {
-      console.error("[ONBOARDING_PROGRESS_SAVE_ERROR]", upsertError.message);
+      progress.value = response.progress;
+      return response.progress;
+    } catch (upsertError) {
+      const message = upsertError instanceof Error ? upsertError.message : "unknown_error";
+      console.error("[ONBOARDING_PROGRESS_SAVE_ERROR]", message);
       return null;
     }
-
-    progress.value = data;
-    return data;
   };
 
   const loadOnboardingProgress = async (options: { force?: boolean } = {}): Promise<OnboardingProgressRow | null> => {
     const user = await resolveUser();
-    if (!user) {
+    if (!user || !isValidUuid(user.id)) {
       progress.value = null;
       progressFetchedForUserId.value = null;
       progressFetchedAt.value = 0;
@@ -168,24 +150,23 @@ export const useRegistration = () => {
     if (!forceRefresh && pendingOnboardingProgressPromise) return await pendingOnboardingProgressPromise;
 
     const loader = (async (): Promise<OnboardingProgressRow | null> => {
-      const { data, error: loadError } = await supabase
-        .from("onboarding_progress")
-        .select("*")
-        .eq("user_id", user.id)
-        .maybeSingle();
+      try {
+        const response = await $fetch<{ progress: OnboardingProgressRow | null }>(
+          "/api/auth/onboarding-progress",
+        );
 
-      if (loadError) {
-        console.error("[ONBOARDING_PROGRESS_LOAD_ERROR]", loadError.message);
+        progress.value = response.progress;
+        progressFetchedForUserId.value = user.id;
+        progressFetchedAt.value = Date.now();
+        return response.progress;
+      } catch (loadError) {
+        const message = loadError instanceof Error ? loadError.message : "unknown_error";
+        console.error("[ONBOARDING_PROGRESS_LOAD_ERROR]", message);
         progress.value = null;
         progressFetchedForUserId.value = null;
         progressFetchedAt.value = 0;
         return null;
       }
-
-      progress.value = data;
-      progressFetchedForUserId.value = user.id;
-      progressFetchedAt.value = Date.now();
-      return data;
     })();
 
     if (!forceRefresh) pendingOnboardingProgressPromise = loader;
@@ -290,40 +271,48 @@ export const useRegistration = () => {
     }
   };
 
+  const resolvePendingOrganizationDestination = (
+    role: string | null,
+    latestPaymentValidationStatus: string | null,
+  ): PostAuthResolution => {
+    if (role === "admin" && (!latestPaymentValidationStatus || latestPaymentValidationStatus === "rejected")) {
+      return { destination: "/onboarding/payment", reason: "payment" };
+    }
+    return { destination: "/dashboard?status=pending", reason: "pending" };
+  };
+
+  const resolveStaffOrClientDestination = (
+    organizationId: string | null,
+    role: string | null,
+    organizationStatus: string | null,
+    latestPaymentValidationStatus: string | null,
+  ): PostAuthResolution => {
+    if (!organizationId) return { destination: "/onboarding/organization", reason: "organization" };
+    if (role === "client") return { destination: "/client/dashboard", reason: "active" };
+    if (organizationStatus === "pending") {
+      return resolvePendingOrganizationDestination(role, latestPaymentValidationStatus);
+    }
+    return { destination: "/dashboard", reason: "active" };
+  };
+
   const resolvePostAuthDestination = async (): Promise<PostAuthResolution> => {
     const user = await resolveUser();
     if (!user) return { destination: "/auth/login", reason: "login" };
     if (!user.email_confirmed_at) return { destination: `/auth/verify-email?email=${encodeURIComponent(user.email ?? registrationDraft.value.email)}`, reason: "verify" };
 
     const profile = await fetchProfile();
-    const { data: isSystem } = await supabase.rpc("is_system_user");
-    if (isSystem) return { destination: "/system", reason: "active" };
-
-    if (!profile?.organization_id) return { destination: "/onboarding/organization", reason: "organization" };
-    if (profile.role === "client") return { destination: "/client/dashboard", reason: "active" };
-
-    const { data: organization } = await supabase
-      .from("organizations")
-      .select("id, status")
-      .eq("id", profile.organization_id)
-      .maybeSingle();
-
-    if (organization?.status === "pending") {
-      const { data: validation } = await supabase
-        .from("payment_validations")
-        .select("status, id")
-        .eq("organization_id", profile.organization_id)
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      if (profile.role === "admin" && (!validation || validation.status === "rejected")) {
-        return { destination: "/onboarding/payment", reason: "payment" };
-      }
-      return { destination: "/dashboard?status=pending", reason: "pending" };
-    }
-
-    return { destination: "/dashboard", reason: "active" };
+    const postAuthContext = await $fetch<{
+      isSystem: boolean;
+      organizationStatus: string | null;
+      latestPaymentValidationStatus: string | null;
+    }>("/api/auth/post-auth-context");
+    if (postAuthContext.isSystem) return { destination: "/system", reason: "active" };
+    return resolveStaffOrClientDestination(
+      profile?.organization_id ?? null,
+      profile?.role ?? null,
+      postAuthContext.organizationStatus,
+      postAuthContext.latestPaymentValidationStatus,
+    );
   };
 
   if (import.meta.client) {
@@ -337,7 +326,7 @@ export const useRegistration = () => {
   watch(
     () => session.value?.user?.id ?? null,
     async (userId) => {
-      if (!userId) {
+      if (!isValidUuid(userId)) {
         progress.value = null;
         return;
       }

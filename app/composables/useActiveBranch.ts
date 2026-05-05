@@ -8,6 +8,11 @@ export const useActiveBranch = () => {
   const user = useSupabaseUser();
 
   const shouldFetchBranches = computed(() => {
+    // No hacer llamadas API en páginas públicas
+    if (route.path === '/' || route.path.startsWith('/auth') || route.path === '/terms' || route.path === '/privacy') {
+      return false;
+    }
+
     if (!user.value) return false;
     if (route.path.startsWith("/system")) return false;
     if (import.meta.client && window.location.pathname.startsWith("/system")) return false;
@@ -25,7 +30,7 @@ export const useActiveBranch = () => {
     key: CACHE_KEYS.branches,
     lazy: true,
     dedupe: "defer",
-    immediate: shouldFetchBranches.value,
+    immediate: false, // Nunca ejecutar inmediatamente
     default: () => [],
   });
 

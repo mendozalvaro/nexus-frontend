@@ -1,9 +1,3 @@
-import type { Database } from "@/types/database.types";
-
-type ProductRow = Database["public"]["Tables"]["products"]["Row"];
-type ServiceRow = Database["public"]["Tables"]["services"]["Row"];
-type CategoryRow = Database["public"]["Tables"]["categories"]["Row"];
-
 export interface CatalogProductPayload {
   name: string;
   sku: string;
@@ -77,7 +71,6 @@ export interface CatalogData {
 }
 
 export const useCatalog = () => {
-  const supabase = useSupabaseClient<Database>();
   const { resolveAccessToken } = useSessionAccess();
   const { profile, fetchProfile } = useAuth();
 
@@ -130,91 +123,27 @@ export const useCatalog = () => {
   };
 
   const loadProducts = async (): Promise<CatalogProductItem[]> => {
-    const organizationId = await ensureOrganizationId();
-    const { data, error } = await supabase
-      .from("products")
-      .select("*")
-      .eq("organization_id", organizationId)
-      .order("name", { ascending: true })
-      .returns<ProductRow[]>();
-
-    if (error) {
-      throw createError({
-        statusCode: 500,
-        statusMessage: error.message,
-      });
-    }
-
-    return (data ?? []).map((product) => ({
-      id: product.id,
-      name: product.name,
-      sku: product.sku,
-      description: product.description,
-      imageUrl: product.image_url ?? null,
-      costPrice: Number(product.cost_price ?? 0),
-      salePrice: Number(product.sale_price),
-      categoryId: product.category_id,
-      categoryName: null,
-      trackInventory: product.track_inventory ?? true,
-      isActive: product.is_active ?? true,
-    }));
+    await ensureOrganizationId();
+    const products = await $fetch<CatalogProductItem[]>("/api/catalog/products", {
+      headers: await getAuthHeaders(),
+    });
+    return products;
   };
 
   const loadServices = async (): Promise<CatalogServiceItem[]> => {
-    const organizationId = await ensureOrganizationId();
-    const { data, error } = await supabase
-      .from("services")
-      .select("*")
-      .eq("organization_id", organizationId)
-      .order("name", { ascending: true })
-      .returns<ServiceRow[]>();
-
-    if (error) {
-      throw createError({
-        statusCode: 500,
-        statusMessage: error.message,
-      });
-    }
-
-    return (data ?? []).map((service) => ({
-      id: service.id,
-      name: service.name,
-      description: service.description,
-      imageUrl: service.image_url ?? null,
-      price: Number(service.price),
-      durationMinutes: service.duration_minutes,
-      categoryId: service.category_id,
-      categoryName: null,
-      isActive: service.is_active ?? true,
-    }));
+    await ensureOrganizationId();
+    const services = await $fetch<CatalogServiceItem[]>("/api/catalog/services", {
+      headers: await getAuthHeaders(),
+    });
+    return services;
   };
 
   const loadCategories = async (): Promise<CatalogCategoryItem[]> => {
-    const organizationId = await ensureOrganizationId();
-    const { data, error } = await supabase
-      .from("categories")
-      .select("*")
-      .eq("organization_id", organizationId)
-      .order("name", { ascending: true })
-      .returns<CategoryRow[]>();
-
-    if (error) {
-      throw createError({
-        statusCode: 500,
-        statusMessage: error.message,
-      });
-    }
-
-    const categoryMap = new Map((data ?? []).map((category) => [category.id, category]));
-    return (data ?? []).map((category) => ({
-      id: category.id,
-      name: category.name,
-      type: category.type as "product" | "service",
-      parentId: category.parent_id,
-      parentName: category.parent_id ? (categoryMap.get(category.parent_id)?.name ?? null) : null,
-      isActive: category.is_active ?? true,
-      linkedCount: 0,
-    }));
+    await ensureOrganizationId();
+    const categories = await $fetch<CatalogCategoryItem[]>("/api/catalog/categories", {
+      headers: await getAuthHeaders(),
+    });
+    return categories;
   };
 
   const loadCatalog = async (): Promise<CatalogData> => {
