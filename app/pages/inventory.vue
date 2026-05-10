@@ -31,10 +31,10 @@ const {
   transferPrecheckNormalization,
   movementPrecheckWarnings,
   transferPrecheckWarnings,
-    actorRole,
-    selectedBranchId,
-    allBranches,
-    overviewPending,
+  actorRole,
+  selectedBranchId,
+  allBranches,
+  overviewPending,
   movementsPending,
   overview,
   transferState,
@@ -59,6 +59,7 @@ const {
   canRejectTransfer,
   handleMovementValidate,
   handleMovementSubmit,
+  handleTransferValidate,
   handleTransferSubmit,
   handleReceiveTransfer,
   handleRejectTransfer,
@@ -70,7 +71,6 @@ const {
   getMovementColor,
 } = useInventoryPage();
 
-void selectedProductId;
 void actorRole;
 void selectedBranchId;
 void transferState;
@@ -114,8 +114,8 @@ void transferState;
       :can-receive-transfer="canReceiveTransfer"
       :can-reject-transfer="canRejectTransfer"
       @update:stock-query="stockQuery = $event"
-      @open-movement="openMovementModal()"
-      @open-transfer="openTransferModal()"
+      @open-movement="openMovementModal($event)"
+      @open-transfer="openTransferModal($event)"
       @receive-transfer="handleReceiveTransfer($event)"
       @reject-transfer="handleRejectTransfer($event)"
     />
@@ -145,8 +145,9 @@ void transferState;
 
     <InventoryMovementModal
       v-model:open="movementModalOpen"
-      title="Registrar movimiento"
+      title="Registrar movimiento masivo"
       :branches="activeBranches"
+      :initial-product-id="selectedProductId"
       :products="(overview?.products ?? []) as any"
       :loading="movementLoading"
       :role="actorRole"
@@ -159,16 +160,17 @@ void transferState;
 
     <InventoryTransferModal
       v-model:open="transferModalOpen"
-      title="Transferir productos"
+      title="Registrar transferencia masiva"
       :branches="activeBranches"
       :all-branches="allBranches"
       :products="overview?.products ?? []"
+      :initial-product-id="selectedProductId"
       :loading="transferLoading"
       :role="actorRole"
       :precheck-errors="transferPrecheckErrors"
       :precheck-normalization="transferPrecheckNormalization"
       :precheck-warnings="transferPrecheckWarnings"
-      @validate="handleTransferSubmit($event)"
+      @validate="handleTransferValidate($event)"
       @submit="handleTransferSubmit($event)"
     />
 

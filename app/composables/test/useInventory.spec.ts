@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+﻿import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { ref } from 'vue'
 import { mockNuxtImport } from '@nuxt/test-utils/runtime'
 import { globalStateMap } from '../../../test/setup'
@@ -108,6 +108,7 @@ describe('useInventory', () => {
       branchId: 'branch-1',
       mode: 'add' as const,
       reason: 'Carga inicial',
+      referenceCode: 'INV-MOV-0001/2026',
       note: 'lote',
       lines: [{ productId: 'prod-1', quantity: 10 }]
     }
@@ -148,6 +149,7 @@ describe('useInventory', () => {
       branchId: 'branch-1',
       mode: 'add' as const,
       reason: 'Carga inicial',
+      referenceCode: 'INV-MOV-0002/2026',
       note: 'lote',
       lines: [
         { productId: 'prod-1', quantity: 2, minStockLevel: null },
@@ -178,7 +180,7 @@ describe('useInventory', () => {
       sourceBranchId: 'branch-1',
       destinationBranchId: 'branch-2',
       observations: 'rebalanceo',
-      internalNote: 'lote semanal',
+      referenceCode: 'INV-TRA-0001/2026',
       lines: [{ productId: 'prod-1', quantity: 3 }]
     }
 
@@ -253,3 +255,4 @@ describe('useInventory', () => {
     ])
   })
 })
+

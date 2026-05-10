@@ -1,5 +1,11 @@
 import type { OrganizationCapabilities } from "@/types/subscription";
 import type {
+  InventoryAdjustmentBatchPayload,
+  InventoryTransferBatchPayload,
+  InventoryBatchApiMeta,
+  InventoryBatchValidationError,
+  InventoryAdjustmentBatchLine,
+  InventoryTransferBatchLine,
   InventoryOverviewData,
   InventoryProductsData,
   InventoryAdjustmentsData,
@@ -11,6 +17,10 @@ import type {
   InventoryTransferFilters,
   InventoryMovementFilters,
   InventoryTransferDetailData,
+} from "@/utils/inventory";
+import {
+  normalizeInventoryAdjustmentBatchPayload,
+  normalizeInventoryTransferBatchPayload,
 } from "@/utils/inventory";
 
 const toAuthHeaders = (accessToken: string) => ({
@@ -35,7 +45,7 @@ export const useInventory = () => {
     return token;
   };
 
-  const { formatCurrency: formatCurrencyUtil, formatDateTime: formatDateTimeUtil, getMovementLabel, getMovementColor, getStockTone, normalizeInventoryAdjustmentBatchPayload, normalizeInventoryTransferBatchPayload } = useUtilsInventory();
+  const { formatCurrency: formatCurrencyUtil, formatDateTime: formatDateTimeUtil, getMovementLabel, getMovementColor, getStockTone } = useUtilsInventory();
 
   const loadOverview = async (): Promise<InventoryOverviewData> => {
     const accessToken = await getAccessToken();
@@ -191,11 +201,7 @@ export const useInventory = () => {
   };
 
   const precheckAdjustStockBatch = async (payload: InventoryAdjustmentBatchPayload) => {
-    const normalized = normalizeInventoryAdjustmentBatchPayload(
-      payload.branchId,
-      payload.mode,
-      payload.lines.map((l) => ({ productId: l.productId, quantity: l.quantity })),
-    );
+    const normalized = normalizeInventoryAdjustmentBatchPayload(payload);
 
     return await $fetch<{
       success: boolean;
@@ -207,17 +213,13 @@ export const useInventory = () => {
       {
         method: "POST",
         headers: toAuthHeaders(await getAccessToken()),
-        body: normalized.normalized,
+        body: normalized.payload,
       },
     );
   };
 
   const adjustStockBatch = async (payload: InventoryAdjustmentBatchPayload) => {
-    const normalized = normalizeInventoryAdjustmentBatchPayload(
-      payload.branchId,
-      payload.mode,
-      payload.lines.map((l) => ({ productId: l.productId, quantity: l.quantity })),
-    );
+    const normalized = normalizeInventoryAdjustmentBatchPayload(payload);
 
     return await $fetch<{
       success: boolean;
@@ -229,17 +231,13 @@ export const useInventory = () => {
       {
         method: "POST",
         headers: toAuthHeaders(await getAccessToken()),
-        body: normalized.normalized,
+        body: normalized.payload,
       },
     );
   };
 
   const precheckTransferStockBatch = async (payload: InventoryTransferBatchPayload) => {
-    const normalized = normalizeInventoryTransferBatchPayload(
-      payload.sourceBranchId,
-      payload.destinationBranchId,
-      payload.lines.map((l) => ({ productId: l.productId, quantity: l.quantity })),
-    );
+    const normalized = normalizeInventoryTransferBatchPayload(payload);
 
     return await $fetch<{
       success: boolean;
@@ -251,17 +249,13 @@ export const useInventory = () => {
       {
         method: "POST",
         headers: toAuthHeaders(await getAccessToken()),
-        body: normalized.normalized,
+        body: normalized.payload,
       },
     );
   };
 
   const transferStockBatch = async (payload: InventoryTransferBatchPayload) => {
-    const normalized = normalizeInventoryTransferBatchPayload(
-      payload.sourceBranchId,
-      payload.destinationBranchId,
-      payload.lines.map((l) => ({ productId: l.productId, quantity: l.quantity })),
-    );
+    const normalized = normalizeInventoryTransferBatchPayload(payload);
 
     return await $fetch<{
       success: boolean;
@@ -274,7 +268,7 @@ export const useInventory = () => {
       {
         method: "POST",
         headers: toAuthHeaders(await getAccessToken()),
-        body: normalized.normalized,
+        body: normalized.payload,
       },
     );
   };

@@ -1,24 +1,26 @@
 ﻿# Multi-Agent Workflow State
 
 ## Current State
-- **last_step**: inventory_get_api_handlers_created
-- **pending**: [Ola 2] inventory_frontend_refactor
+- **last_step**: inventory_module_completed
+- **pending**: [Ola 2] appointments_pos_reports_refactor
 - **agent**: codex
 
 ## Refactor Waves
 - **wave_0_completed**: auth (closed)
-- **wave_1_in_progress**: inventory, appointments, pos, reports
-- **wave_1_completed**: inventory (GET API + service layer)
+- **wave_1_completed**: inventory (full 3-layer + forms + tests)
 - **wave_2_completed**: catalogo (service layer + 3-layer compliant)
-- **wave_3_pending**: branches, service-assignment, client/*
+- **wave_3_pending**: appointments, pos, reports, branches, service-assignment, client/*
 
 ## Module Compliance Ledger
 - **in_progress_modules**:
-  - inventory (wave 1)
+  - (none)
 - **completed_modules**:
   - auth (closed - 3-layer compliant)
   - dashboard (staff) - 3-layer compliance + service layer refactored
   - catalogo - service layer + compliant
+  - inventory - full 3-layer compliant
+  - branches - full 3-layer compliant
+  - users (staff) - full 3-layer compliant
 
 ## Auth Evidence (current iteration)
 - Middleware guard hardening: `app/middleware/permissions.ts`
@@ -68,6 +70,55 @@
 - [ ] auth-related tests green (bloqueado por entorno: vitest/esbuild spawn EPERM)
 - [x] Evidence logged in `FEATURE_TRACKER.md` and `HISTORY.md`
 - [x] **AUTH MODULE CLOSED** (typecheck green, arquitectura compliant)
+
+## Catalogo Evidence (current iteration)
+- Service layer created: `server/services/catalog/products.ts`, `services.ts`, `categories.ts`
+  - Pure business logic for products, services, categories CRUD
+  - Proper TypeScript typing
+- API handlers refactored: `server/api/catalog/*.get.ts`
+  - Reduced business logic to delegate to service layer
+- Frontend composable refactored: `app/composables/useCatalog.ts`
+  - Now uses `$fetch('/api/catalog/...')` instead of direct `supabase.from()`
+  - Aligns with rule #5: no direct DB access in composables
+
+## Acceptance Gate (catalogo)
+- [x] Service layer created
+- [x] API handlers delegate to service
+- [x] Composable uses API endpoint (no direct DB)
+- [x] `npm run typecheck` green
+- [ ] Tests (pending)
+- [x] Evidence logged
+
+## Inventory Evidence (current iteration)
+- Service layer: `server/services/inventory/`
+  - `categories.ts` - CRUD + product counts
+  - `products.ts` - CRUD with category resolution
+  - `stock.ts` - getInventoryStock, getInventoryMovements + mapMovementType
+  - `overview.ts` - getInventoryOverview (aggregates stock + products + categories)
+  - `products-page.ts` - getInventoryProductsPage
+  - `history-page.ts` - getInventoryHistoryPage
+  - `transfers-page.ts` - getInventoryTransfersPage
+  - `transfer-cancel.ts` - cancel/receive business logic (pre-existing)
+- GET API handlers: `server/api/inventory/`
+  - `categories.get.ts`, `products.get.ts`, `stock.get.ts` (base CRUD)
+  - `overview.get.ts`, `products-page.get.ts`, `history-page.get.ts`, `transfers-page.get.ts` (page-level)
+  - Original POST/PATCH handlers preserved, now delegate to services
+- Frontend composables refactored:
+  - `app/composables/useInventory.ts` - 0 supabase.from() calls, uses $fetch
+  - `app/composables/useInventoryPage.ts` - 0 supabase calls
+  - `app/composables/useUtilsInventory.ts` - utilities only, no DB access
+- Form system refactored (5 files):
+  - All `<select>` custom → `<USelect>` unified
+  - All TextArea: `:rows="4"` + `md:col-span-2`
+  - Grid: `gap-4` + `w-full` inputs consistent
+
+## Acceptance Gate (inventory)
+- [x] Service layer created (8 files)
+- [x] GET API handlers delegate to services (7 endpoints)
+- [x] Composables use $fetch (no direct supabase.from())
+- [x] `npm run typecheck` green
+- [x] Form system unified (5 files)
+- [x] Evidence logged
 
 ## Catalogo Evidence (current iteration)
 - Service layer created: `server/services/catalog/products.ts`, `services.ts`, `categories.ts`

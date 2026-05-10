@@ -38,8 +38,9 @@ const formInitialValue = computed(() => {
 <template>
   <UModal
     :open="props.open"
-    :title="props.initialValue ? 'Editar categoria' : 'Nueva categoria'"
-    :description="props.initialValue ? 'Actualiza la estructura del catalogo.' : 'Crea una categoria para productos o servicios.'"
+    :title="props.initialValue ? 'Editar categoría' : 'Nueva categoría'"
+    :description="props.initialValue ? 'Actualiza la estructura del catálogo.' : 'Crea una categoría para productos o servicios.'"
+    :ui="{ content: 'max-w-xl' }"
     @update:open="emits('update:open', $event)"
   >
     <template #body>

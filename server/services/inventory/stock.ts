@@ -102,6 +102,7 @@ export interface InventoryMovementRow {
   quantity: number;
   previous_quantity: number;
   new_quantity: number;
+  reference_code: string | null;
   reason: string | null;
   note: string | null;
   reference_type: string | null;
@@ -125,6 +126,7 @@ export interface InventoryMovement {
   quantity: number;
   previousQuantity: number;
   newQuantity: number;
+  referenceCode: string | null;
   reason: string | null;
   note: string | null;
   referenceType: string | null;
@@ -254,6 +256,7 @@ export const getInventoryMovements = async (
     quantity: row.quantity,
     previousQuantity: row.previous_quantity,
     newQuantity: row.new_quantity,
+    referenceCode: row.reference_code,
     reason: row.reason,
     note: row.note,
     referenceType: row.reference_type,

@@ -15,8 +15,8 @@ const props = defineProps<{
 
 const emits = defineEmits<{
   "update:stockQuery": [string];
-  openMovement: [];
-  openTransfer: [];
+  openMovement: [string?];
+  openTransfer: [string?];
   receiveTransfer: [InventoryTransferRowView];
   rejectTransfer: [InventoryTransferRowView];
 }>();
@@ -31,9 +31,9 @@ const stockQueryModel = computed({
   <UiSectionShell
     eyebrow="Stock"
     title="Productos operativos"
-    description="Una sola vista para registrar movimientos y consultar disponibilidad por categoria."
+    description="Una sola vista para registrar movimientos masivos, transferencias masivas y consultar disponibilidad por categoría."
   >
-    <UiSearchFilters title="Buscar producto" description="Filtra por nombre, SKU o categoria." surface>
+    <UiSearchFilters title="Buscar producto" description="Filtra por nombre, SKU o categoría." surface>
       <template #controls>
         <div class="flex flex-wrap items-center gap-3">
           <UInput
@@ -44,10 +44,10 @@ const stockQueryModel = computed({
             class="min-w-[18rem] flex-1"
           />
           <UButton color="primary" icon="i-lucide-package-plus" @click="emits('openMovement')">
-            Registrar movimiento
+            Movimiento masivo
           </UButton>
           <UButton color="neutral" variant="soft" icon="i-lucide-arrow-left-right" @click="emits('openTransfer')">
-            Transferir stock
+            Transferencia masiva
           </UButton>
         </div>
       </template>
@@ -72,10 +72,10 @@ const stockQueryModel = computed({
       >
         <div>
           <p class="font-medium text-slate-900 dark:text-slate-100">
-            {{ row.internalNote ?? row.productName }}
+            {{ row.referenceCode ?? row.productName }}
           </p>
           <p class="text-slate-600 dark:text-slate-300">
-            {{ row.sourceBranchCode }} -> {{ row.destinationBranchCode }} · {{ row.quantity }} unidad(es)
+            {{ row.sourceBranchCode }} → {{ row.destinationBranchCode }} · {{ row.quantity }} unidad(es)
           </p>
         </div>
         <div class="flex items-center gap-2">
@@ -94,6 +94,8 @@ const stockQueryModel = computed({
       :loading="props.overviewPending"
       :show-branches="props.showStockBranchesColumn"
       :active-branch-ids="props.activeBranchIds"
+      @open-movement="emits('openMovement', $event)"
+      @open-transfer="emits('openTransfer', $event)"
     />
   </UiSectionShell>
 </template>

@@ -61,7 +61,7 @@ export default defineEventHandler(async (event) => {
     sourceBranchId: body.sourceBranchId,
     destinationBranchId: body.destinationBranchId,
     observations: body.observations.trim(),
-    internalNote: movementCode,
+    referenceCode: body.referenceCode.trim() || movementCode,
     lines: normalization.lines,
   });
 
@@ -75,10 +75,12 @@ export default defineEventHandler(async (event) => {
       idempotent: result.idempotent,
       sourceBranchId: body.sourceBranchId,
       destinationBranchId: body.destinationBranchId,
+      requestedReferenceCode: body.referenceCode.trim() || null,
     },
     extraContext: {
       observations: body.observations.trim(),
       movement_code: movementCode,
+      requested_reference_code: body.referenceCode.trim() || null,
       total_lines: normalization.normalizedLines,
       input_lines: normalization.originalLines,
       idempotency_key: body.idempotencyKey,
@@ -92,6 +94,7 @@ export default defineEventHandler(async (event) => {
     idempotent: result.idempotent,
     status: "pending",
     movementCode,
+    requestedReferenceCode: body.referenceCode.trim() || null,
     normalization,
     warnings: getInventoryBatchNormalizationWarnings(normalization),
   };

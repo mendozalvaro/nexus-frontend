@@ -5,6 +5,10 @@ import type {
   CatalogCategoryItem,
   CatalogProductPayload,
 } from "@/composables/useCatalog";
+import AdminFieldGroup from "@/components/ui/forms/AdminFieldGroup.vue";
+import AdminFormActions from "@/components/ui/forms/AdminFormActions.vue";
+import AdminFormSection from "@/components/ui/forms/AdminFormSection.vue";
+import { ADMIN_FIELD_UI } from "@/utils/ui/forms";
 
 interface ProductFormState {
   name: string;
@@ -149,109 +153,132 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <UForm :schema="schema" :state="state" class="space-y-4" @submit="submit">
-    <div class="grid gap-4 md:grid-cols-2">
-      <UFormField label="Nombre" name="name">
-        <UInput v-model="state.name" placeholder="Ej. Shampoo Repair Pro" :disabled="loading" class="w-full" />
-      </UFormField>
+  <UForm :schema="schema" :state="state" class="space-y-6" @submit="submit">
+    <AdminFormSection
+      title="Informacion general"
+      description="Datos comerciales y de control del producto."
+      :columns="2"
+    >
+      <AdminFieldGroup :columns="2">
+        <UFormField label="Nombre" name="name">
+          <UInput v-model="state.name" placeholder="Ej. Shampoo Repair Pro" :disabled="loading" class="w-full" :ui="ADMIN_FIELD_UI" />
+        </UFormField>
 
-      <UFormField label="SKU" name="sku">
-        <UInput v-model="state.sku" placeholder="SKU-001" :disabled="loading" class="w-full" />
-      </UFormField>
+        <UFormField label="SKU" name="sku">
+          <UInput v-model="state.sku" placeholder="SKU-001" :disabled="loading" class="w-full" :ui="ADMIN_FIELD_UI" />
+        </UFormField>
 
-      <div class="md:col-span-2">
-        <UFormField label="Descripcion" name="description">
+        <UFormField label="Descripcion" name="description" class="sm:col-span-2">
           <UTextarea
             v-model="state.description"
             :rows="4"
             placeholder="Resumen corto para el equipo o el POS"
             :disabled="loading"
+            class="w-full"
+            :ui="ADMIN_FIELD_UI"
           />
         </UFormField>
-      </div>
 
-      <UFormField label="Precio costo" name="costPrice">
-        <UInput v-model.number="state.costPrice" type="number" min="0" step="0.01" :disabled="loading" class="w-full" />
-      </UFormField>
+        <UFormField label="Precio costo" name="costPrice">
+          <UInput v-model.number="state.costPrice" type="number" min="0" step="0.01" :disabled="loading" class="w-full" :ui="ADMIN_FIELD_UI" />
+        </UFormField>
 
-      <UFormField label="Precio venta" name="salePrice">
-        <UInput v-model.number="state.salePrice" type="number" min="0" step="0.01" :disabled="loading" class="w-full" />
-      </UFormField>
-    </div>
+        <UFormField label="Precio venta" name="salePrice">
+          <UInput v-model.number="state.salePrice" type="number" min="0" step="0.01" :disabled="loading" class="w-full" :ui="ADMIN_FIELD_UI" />
+        </UFormField>
+      </AdminFieldGroup>
+    </AdminFormSection>
 
-    <UFormField label="Imagen del producto" name="imageUrl">
-      <div class="space-y-3">
-        <div
-          v-if="previewUrl"
-          class="overflow-hidden rounded-xl border border-slate-200 dark:border-slate-800"
-          :class="state.cropSquare ? 'mx-auto aspect-square max-w-52' : 'h-36 w-full'"
-        >
-          <img
-            :src="previewUrl"
-            :alt="state.name || 'Imagen de producto'"
-            class="object-cover"
-            :class="state.cropSquare ? 'h-full w-full' : 'h-36 w-full'"
-          >
-        </div>
-        <input
-          ref="imageInputRef"
-          type="file"
-          accept="image/png,image/jpeg,image/webp"
-          class="block w-full cursor-pointer rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 file:mr-4 file:rounded-lg file:border-0 file:bg-sky-100 file:px-3 file:py-2 file:text-sm file:font-medium file:text-sky-700 hover:border-slate-300 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-200 dark:file:bg-sky-950/50 dark:file:text-sky-200"
-          :disabled="loading"
-          @change="handleImageSelection"
-        >
-        <div class="flex items-center justify-between">
-          <p class="text-xs text-slate-500 dark:text-slate-400">
-            JPG, PNG o WebP. Maximo 2MB.
-          </p>
-          <UButton v-if="previewUrl" type="button" size="xs" color="neutral" variant="ghost" :disabled="loading" @click="clearImageSelection">
-            Quitar imagen
-          </UButton>
-        </div>
-        <label class="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
-          <input v-model="state.cropSquare" type="checkbox" class="h-4 w-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500">
-          Recortar a formato cuadrado (1:1)
-        </label>
-      </div>
-    </UFormField>
-
-    <UFormField label="Categoria" name="categoryId">
-      <USelect
-        v-model="categoryModel"
-        :items="categoryOptions"
-        label-key="label"
-        value-key="value"
-        placeholder="Sin categoria"
-        class="w-full"
-        :disabled="loading"
-      />
-    </UFormField>
-
-    <UFormField name="trackInventory">
-      <div class="rounded-2xl border border-slate-200 p-4 dark:border-slate-800">
-        <div class="flex items-start justify-between gap-4">
-          <div>
-            <p class="font-medium text-slate-950 dark:text-white">
-              Controlar inventario
-            </p>
-            <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">
-              Desactiva esta opcion si el producto no debe descontar stock ni mostrar alertas.
-            </p>
+    <AdminFormSection
+      title="Imagen y categorizacion"
+      description="Aspecto visual y clasificacion en el catalogo."
+      :columns="1"
+    >
+      <AdminFieldGroup :columns="1">
+        <UFormField label="Imagen del producto" name="imageUrl">
+          <div class="space-y-3">
+            <div
+              v-if="previewUrl"
+              class="overflow-hidden rounded-xl border border-slate-200 dark:border-slate-800"
+              :class="state.cropSquare ? 'mx-auto aspect-square max-w-52' : 'h-36 w-full'"
+            >
+              <img
+                :src="previewUrl"
+                :alt="state.name || 'Imagen de producto'"
+                class="object-cover"
+                :class="state.cropSquare ? 'h-full w-full' : 'h-36 w-full'"
+              >
+            </div>
+            <input
+              ref="imageInputRef"
+              type="file"
+              accept="image/png,image/jpeg,image/webp"
+              class="block w-full cursor-pointer rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 file:mr-4 file:rounded-lg file:border-0 file:bg-sky-100 file:px-3 file:py-2 file:text-sm file:font-medium file:text-sky-700 hover:border-slate-300 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-200 dark:file:bg-sky-950/50 dark:file:text-sky-200"
+              :disabled="loading"
+              @change="handleImageSelection"
+            >
+            <div class="flex items-center justify-between">
+              <p class="text-xs text-slate-500 dark:text-slate-400">
+                JPG, PNG o WebP. Maximo 2MB.
+              </p>
+              <UButton v-if="previewUrl" type="button" size="xs" color="neutral" variant="ghost" :disabled="loading" @click="clearImageSelection">
+                Quitar imagen
+              </UButton>
+            </div>
+            <label class="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
+              <input v-model="state.cropSquare" type="checkbox" class="h-4 w-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500">
+              Recortar a formato cuadrado (1:1)
+            </label>
           </div>
+        </UFormField>
 
-          <USwitch v-model="state.trackInventory" :disabled="loading" />
-        </div>
-      </div>
-    </UFormField>
+        <UFormField label="Categoria" name="categoryId">
+          <USelect
+            v-model="categoryModel"
+            :items="categoryOptions"
+            label-key="label"
+            value-key="value"
+            placeholder="Sin categoria"
+            class="w-full"
+            :disabled="loading"
+            :ui="ADMIN_FIELD_UI"
+          />
+        </UFormField>
+      </AdminFieldGroup>
+    </AdminFormSection>
 
-    <div class="flex justify-end gap-3 pt-2">
+    <AdminFormSection
+      title="Control de inventario"
+      description="Configuracion de stock y alertas."
+      :columns="1"
+    >
+      <AdminFieldGroup :columns="1">
+        <UFormField name="trackInventory">
+          <div class="rounded-2xl border border-slate-200 p-4 dark:border-slate-800">
+            <div class="flex items-start justify-between gap-4">
+              <div>
+                <p class="font-medium text-slate-950 dark:text-white">
+                  Controlar inventario
+                </p>
+                <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                  Desactiva esta opcion si el producto no debe descontar stock ni mostrar alertas.
+                </p>
+              </div>
+
+              <USwitch v-model="state.trackInventory" :disabled="loading" />
+            </div>
+          </div>
+        </UFormField>
+      </AdminFieldGroup>
+    </AdminFormSection>
+
+    <AdminFormActions>
       <UButton color="neutral" variant="ghost" :disabled="loading" @click="emits('cancel')">
         Cancelar
       </UButton>
       <UButton type="submit" color="primary" :loading="loading">
         {{ submitLabel }}
       </UButton>
-    </div>
+    </AdminFormActions>
   </UForm>
 </template>

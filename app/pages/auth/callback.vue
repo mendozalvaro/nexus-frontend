@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import AuthLayout from "../../components/auth/AuthLayout.vue";
+import { sanitizeInternalRedirect } from "@/utils/redirect";
 
 
 definePageMeta({
@@ -32,18 +33,6 @@ const featureItems = [
   },
 ] as const;
 
-const sanitizeRedirect = (value: unknown): string | null => {
-  if (typeof value !== "string" || value.length === 0) {
-    return null;
-  }
-
-  if (!value.startsWith("/") || value.startsWith("//")) {
-    return null;
-  }
-
-  return value;
-};
-
 const handleCallback = async () => {
   try {
     if (!session.value?.user) {
@@ -53,7 +42,7 @@ const handleCallback = async () => {
     }
 
     const resolution = await resolvePostAuthDestination();
-    const redirectTarget = sanitizeRedirect(route.query.redirect) ?? resolution.destination;
+    const redirectTarget = sanitizeInternalRedirect(route.query.redirect) ?? resolution.destination;
 
     statusMessage.value = "Redirigiendo a tu espacio...";
     await navigateTo(redirectTarget, { replace: true });

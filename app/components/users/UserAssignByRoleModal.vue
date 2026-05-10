@@ -1,4 +1,10 @@
 <script setup lang="ts">
+import { z } from "zod";
+
+import AdminFormActions from "@/components/ui/forms/AdminFormActions.vue";
+import AdminFormSection from "@/components/ui/forms/AdminFormSection.vue";
+import { ADMIN_FIELD_UI } from "@/utils/ui/forms";
+
 type AssignRole = "manager" | "employee";
 
 interface AssignOption {
@@ -21,7 +27,13 @@ const emits = defineEmits<{
   submit: [string];
 }>();
 
-const selectedUserId = ref<string | undefined>(undefined);
+const state = reactive({
+  userId: "",
+});
+
+const schema = z.object({
+  userId: z.string().min(1, "Selecciona un usuario."),
+});
 
 watch(
   () => props.open,
@@ -30,17 +42,17 @@ watch(
       return;
     }
 
-    selectedUserId.value = undefined;
+    state.userId = "";
   },
   { immediate: true },
 );
 
 const title = computed(() => {
   if (props.role === "manager") {
-    return "Anadir manager";
+    return "Añadir manager";
   }
 
-  return "Anadir empleado";
+  return "Añadir empleado";
 });
 
 const description = computed(() => {
@@ -52,18 +64,14 @@ const description = computed(() => {
 });
 
 const handleSubmit = () => {
-  if (!selectedUserId.value) {
-    return;
-  }
-
-  emits("submit", selectedUserId.value);
+  emits("submit", state.userId);
 };
 </script>
 
 <template>
-  <UModal :open="open" :title="title" :description="description" @update:open="emits('update:open', $event)">
+  <UModal :open="open" :title="title" :description="description" :ui="{ content: 'max-w-xl' }" @update:open="emits('update:open', $event)">
     <template #body>
-      <div class="space-y-4">
+      <UForm :schema="schema" :state="state" class="space-y-4" @submit="handleSubmit">
         <UAlert
           v-if="items.length === 0"
           color="warning"
@@ -73,28 +81,36 @@ const handleSubmit = () => {
           description="No se encontraron usuarios con este rol para asignar en esta sucursal."
         />
 
-        <UFormField v-else label="Usuario" name="userId">
-          <USelect
-            v-model="selectedUserId"
-            :items="items"
-            label-key="label"
-            value-key="value"
-            placeholder="Selecciona un usuario"
-            class="w-full"
-          />
-        </UFormField>
-      </div>
+        <AdminFormSection
+          v-else
+          title="Asignación"
+          description="Elige el usuario disponible para incorporarlo a la sucursal actual."
+          :columns="1"
+        >
+          <UFormField label="Usuario" name="userId">
+            <USelect
+              v-model="state.userId"
+              :items="items"
+              label-key="label"
+              value-key="value"
+              placeholder="Selecciona un usuario"
+              class="w-full"
+              :ui="ADMIN_FIELD_UI"
+            />
+          </UFormField>
+        </AdminFormSection>
+      </UForm>
     </template>
 
     <template #footer>
-      <div class="flex w-full justify-end gap-3">
+      <AdminFormActions>
         <UButton color="neutral" variant="ghost" :disabled="loading" @click="emits('update:open', false)">
           Cancelar
         </UButton>
-        <UButton color="primary" :loading="loading" :disabled="!selectedUserId || items.length === 0" @click="handleSubmit">
+        <UButton color="primary" :loading="loading" :disabled="!state.userId || items.length === 0" @click="handleSubmit">
           Asignar
         </UButton>
-      </div>
+      </AdminFormActions>
     </template>
   </UModal>
 </template>

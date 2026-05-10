@@ -19,7 +19,9 @@ export default defineEventHandler(async (event) => {
     );
   }
 
-  const { data: isSystem, error: systemError } = await adminClient.rpc("is_system_user");
+  const { data: isSystem, error: systemError } = await adminClient.rpc("is_system_user", {
+    input_user_id: userId,
+  });
   if (systemError) {
     throwApiError(
       500,

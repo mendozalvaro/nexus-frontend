@@ -1,3 +1,5 @@
+﻿import { z } from "zod";
+
 export interface InventoryBatchLine {
   productId: string;
   quantity: number;
@@ -133,16 +135,58 @@ export type InventoryAdjustmentBatchPayload = {
   branchId: string;
   mode: "set" | "add" | "remove";
   reason: string;
+  referenceCode?: string;
   note?: string;
   lines: InventoryBatchLine[];
 };
+
+export type InventoryAdjustmentMode = "set" | "add" | "remove";
+
+export interface InventoryMovementFormLine {
+  id: string;
+  productId: string;
+  quantity: number;
+  minStockLevel: number | null;
+}
+
+export interface InventoryMovementFormState {
+  branchId: string;
+  mode: InventoryAdjustmentMode;
+  reason: string;
+  referenceCode: string;
+  lines: InventoryMovementFormLine[];
+}
+
+export interface InventoryMovementWarningState {
+  active: boolean;
+  message: string;
+}
+
+export interface InventoryTransferFormLine {
+  id: string;
+  productId: string;
+  quantity: number;
+}
+
+export interface InventoryTransferFormState {
+  sourceBranchId: string;
+  destinationBranchId: string;
+  observations: string;
+  generatedCode: string;
+  lines: InventoryTransferFormLine[];
+}
+
+export interface InventoryTransferWarningState {
+  active: boolean;
+  message: string;
+}
 
 export type InventoryTransferBatchPayload = {
   idempotencyKey: string;
   sourceBranchId: string;
   destinationBranchId: string;
   observations: string;
-  internalNote?: string;
+  referenceCode?: string;
   lines: InventoryTransferBatchLine[];
 };
 
@@ -169,6 +213,62 @@ export const normalizeInventoryAdjustmentBatchPayload = (
   };
 };
 
+export const buildInventoryMovementSchema = (
+  products: InventoryProductRowView[],
+) =>
+  z.object({
+    branchId: z.string().trim().min(1, "Selecciona una sucursal."),
+    mode: z.enum(["set", "add", "remove"] satisfies InventoryAdjustmentMode[]),
+    reason: z.string().trim().min(3, "Ingresa un motivo para el movimiento."),
+    referenceCode: z.string(),
+    lines: z.array(z.object({
+      id: z.string(),
+      productId: z.string().trim().min(1, "Selecciona un producto."),
+      quantity: z.coerce.number().int("La cantidad debe ser entera.").positive("La cantidad debe ser mayor a cero."),
+      minStockLevel: z.union([z.number().int("El mínimo debe ser entero.").min(0, "El mínimo no puede ser negativo."), z.null()]),
+    })).min(1, "Agrega al menos un producto al movimiento."),
+  }).superRefine((value, context) => {
+    const seenProducts = new Map<string, number>();
+
+    value.lines.forEach((line, index) => {
+      const product = products.find((item) => item.id === line.productId);
+
+      if (!product) {
+        context.addIssue({
+          code: "custom",
+          path: ["lines", index, "productId"],
+          message: "Selecciona un producto válido.",
+        });
+        return;
+      }
+
+      const firstIndex = seenProducts.get(line.productId);
+      if (firstIndex !== undefined) {
+        context.addIssue({
+          code: "custom",
+          path: ["lines", index, "productId"],
+          message: "Este producto ya fue agregado en otra línea.",
+        });
+        return;
+      }
+
+      seenProducts.set(line.productId, index);
+
+      if (value.mode !== "remove") {
+        return;
+      }
+
+      const stockInfo = product.stockByBranch.find((stock) => stock.branchId === value.branchId) ?? null;
+      if (stockInfo && line.quantity > stockInfo.quantity) {
+        context.addIssue({
+          code: "custom",
+          path: ["lines", index, "quantity"],
+          message: "La cantidad supera el stock disponible para esta sucursal.",
+        });
+      }
+    });
+  });
+
 export const normalizeInventoryTransferBatchPayload = (
   payload: InventoryTransferBatchPayload,
 ): {
@@ -191,6 +291,74 @@ export const normalizeInventoryTransferBatchPayload = (
     ),
   };
 };
+
+export const buildInventoryTransferSchema = (
+  products: InventoryProductRowView[],
+) =>
+  z.object({
+    sourceBranchId: z.string().trim().min(1, "Selecciona la sucursal origen."),
+    destinationBranchId: z.string().trim().min(1, "Selecciona la sucursal destino."),
+    observations: z.string().trim().min(3, "Ingresa las observaciones de la transferencia."),
+    generatedCode: z.string(),
+    lines: z.array(z.object({
+      id: z.string(),
+      productId: z.string().trim().min(1, "Selecciona un producto."),
+      quantity: z.coerce.number().int("La cantidad debe ser entera.").positive("La cantidad debe ser mayor a cero."),
+    })).min(1, "Agrega al menos un producto a la transferencia."),
+  }).superRefine((value, context) => {
+    if (value.sourceBranchId && value.destinationBranchId && value.sourceBranchId === value.destinationBranchId) {
+      context.addIssue({
+        code: "custom",
+        path: ["destinationBranchId"],
+        message: "La sucursal destino debe ser distinta de la sucursal origen.",
+      });
+    }
+
+    const seenProducts = new Map<string, number>();
+
+    value.lines.forEach((line, index) => {
+      const product = products.find((item) => item.id === line.productId);
+
+      if (!product) {
+        context.addIssue({
+          code: "custom",
+          path: ["lines", index, "productId"],
+          message: "Selecciona un producto válido.",
+        });
+        return;
+      }
+
+      const firstIndex = seenProducts.get(line.productId);
+      if (firstIndex !== undefined) {
+        context.addIssue({
+          code: "custom",
+          path: ["lines", index, "productId"],
+          message: "Este producto ya fue agregado en otra línea.",
+        });
+        return;
+      }
+
+      seenProducts.set(line.productId, index);
+
+      const stockInfo = product.stockByBranch.find((stock) => stock.branchId === value.sourceBranchId) ?? null;
+      if (!stockInfo) {
+        context.addIssue({
+          code: "custom",
+          path: ["lines", index, "productId"],
+          message: "El producto no tiene stock configurado en la sucursal origen.",
+        });
+        return;
+      }
+
+      if (line.quantity > stockInfo.availableQuantity) {
+        context.addIssue({
+          code: "custom",
+          path: ["lines", index, "quantity"],
+          message: "La cantidad supera el stock disponible en la sucursal origen.",
+        });
+      }
+    });
+  });
 
 export type MovementType = "entry" | "exit" | "adjustment" | "transfer_in" | "transfer_out";
 
@@ -310,7 +478,7 @@ export interface InventoryTransferPayload {
   productId: string;
   quantity: number;
   observations: string;
-  internalNote?: string;
+  referenceCode?: string;
 }
 
 export interface InventoryTransferFilters {
@@ -360,6 +528,7 @@ export interface InventoryMovementRowView {
   quantity: number;
   previousQuantity: number;
   newQuantity: number;
+  referenceCode: string | null;
   reason: string | null;
   note: string | null;
   referenceType: string | null;
@@ -391,7 +560,7 @@ export interface InventoryTransferRowView {
   quantity: number;
   status: "pending" | "received" | "cancelled";
   observations: string | null;
-  internalNote: string | null;
+  referenceCode: string | null;
   requestedAt: string | null;
   requestedBy: string | null;
   requestedByName: string | null;
@@ -404,7 +573,7 @@ export interface InventoryTransferDetailData {
   id: string;
   isBatch: boolean;
   status: "pending" | "received" | "cancelled";
-  internalNote: string | null;
+  referenceCode: string | null;
   observations: string | null;
   origin: {
     branchId: string;
@@ -455,6 +624,120 @@ export interface InventoryMovementFilters {
   dateFrom: string | null;
   dateTo: string | null;
 }
+
+export const getInventoryProductById = (
+  products: InventoryProductRowView[],
+  productId: string,
+): InventoryProductRowView | null => {
+  return products.find((product) => product.id === productId) ?? null;
+};
+
+export const getInventoryLineStockInfo = (
+  line: Pick<InventoryMovementFormLine, "productId" | "minStockLevel">,
+  branchId: string,
+  products: InventoryProductRowView[],
+): InventoryProductStockItem | null => {
+  const product = getInventoryProductById(products, line.productId);
+  if (!product || !branchId) {
+    return null;
+  }
+
+  return product.stockByBranch.find((stock) => stock.branchId === branchId) ?? null;
+};
+
+export const getInventoryCurrentQuantity = (
+  line: Pick<InventoryMovementFormLine, "productId" | "minStockLevel">,
+  branchId: string,
+  products: InventoryProductRowView[],
+): number => {
+  return getInventoryLineStockInfo(line, branchId, products)?.quantity ?? -1;
+};
+
+export const getInventoryTransferCurrentQuantity = (
+  line: Pick<InventoryTransferFormLine, "productId">,
+  branchId: string,
+  products: InventoryProductRowView[],
+): number => {
+  const product = getInventoryProductById(products, line.productId);
+  if (!product || !branchId) {
+    return -1;
+  }
+
+  return product.stockByBranch.find((stock) => stock.branchId === branchId)?.availableQuantity ?? -1;
+};
+
+export const getInventoryResolvedMinStockLevel = (
+  line: Pick<InventoryMovementFormLine, "productId" | "minStockLevel">,
+  branchId: string,
+  products: InventoryProductRowView[],
+): number => {
+  const stockInfo = getInventoryLineStockInfo(line, branchId, products);
+  return line.minStockLevel ?? stockInfo?.minStockLevel ?? 0;
+};
+
+export const getInventoryMovementWarning = (
+  line: Pick<InventoryMovementFormLine, "productId" | "quantity" | "minStockLevel">,
+  mode: InventoryAdjustmentMode,
+  branchId: string,
+  products: InventoryProductRowView[],
+): InventoryMovementWarningState => {
+  if (!line.productId) {
+    return { active: false, message: "" };
+  }
+
+  const currentQuantity = getInventoryCurrentQuantity(line, branchId, products);
+  if (currentQuantity === -1) {
+    return { active: false, message: "" };
+  }
+
+  const minStockLevel = getInventoryResolvedMinStockLevel(line, branchId, products);
+
+  if (mode === "set" && line.quantity < minStockLevel) {
+    return { active: true, message: "Estás estableciendo la cantidad por debajo del nivel mínimo." };
+  }
+
+  if (mode === "add" && currentQuantity + line.quantity < minStockLevel) {
+    return { active: true, message: "El resultado seguirá por debajo del nivel mínimo." };
+  }
+
+  return { active: false, message: "" };
+};
+
+export const getInventoryTransferWarning = (
+  line: Pick<InventoryTransferFormLine, "productId" | "quantity">,
+  branchId: string,
+  products: InventoryProductRowView[],
+): InventoryTransferWarningState => {
+  if (!line.productId) {
+    return { active: false, message: "" };
+  }
+
+  const product = getInventoryProductById(products, line.productId);
+  if (!product || !branchId) {
+    return { active: false, message: "" };
+  }
+
+  const stockInfo = product.stockByBranch.find((stock) => stock.branchId === branchId) ?? null;
+  if (!stockInfo) {
+    return { active: false, message: "" };
+  }
+
+  const remaining = stockInfo.availableQuantity - line.quantity;
+  if (remaining < 0) {
+    return { active: true, message: "La cantidad excede el stock disponible en origen." };
+  }
+
+  if (remaining === 0) {
+    return { active: true, message: "Esta transferencia dejará el producto sin stock disponible en origen." };
+  }
+
+  if (remaining < stockInfo.minStockLevel) {
+    return { active: true, message: "El stock restante quedará por debajo del mínimo configurado en origen." };
+  }
+
+  return { active: false, message: "" };
+};
+
 export const getMovementLabel = (movementType: MovementType): string => {
   return movementLabels[movementType];
 };
@@ -513,3 +796,5 @@ export const getTodayLocalDate = (): string => {
   const day = String(now.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
 };
+
+

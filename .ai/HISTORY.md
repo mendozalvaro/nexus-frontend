@@ -322,3 +322,71 @@ pm run test -- app/composables/test/useAuth.spec.ts => bloqueado por entorno (sp
   - `npm run typecheck` => exit code 0
 - Estado:
   - `inventory` marcado como compliant en FEATURE_TRACKER.md
+
+
+## 2026-05-03 XX:XX - codex
+- Step completado: inventory_full_refactor_completed
+- Acciones:
+  - Service layer completo (8 archivos):
+    - `categories.ts`: getInventoryCategories, create/update/updateStatus
+    - `products.ts`: getInventoryProducts, getInventoryProductOrThrow, create/update/updateStatus
+    - `stock.ts`: getInventoryStock, getInventoryMovements, mapMovementType
+    - `overview.ts`: getInventoryOverview (agrega stock + products + categories + branches)
+    - `products-page.ts`: getInventoryProductsPage
+    - `history-page.ts`: getInventoryHistoryPage
+    - `transfers-page.ts`: getInventoryTransfersPage
+    - `transfer-cancel.ts`: cancel/receive/reject (pre-existente, actualizado)
+  - GET API handlers (7 endpoints):
+    - `categories.get.ts`, `products.get.ts`, `stock.get.ts`
+    - `overview.get.ts`, `products-page.get.ts`, `history-page.get.ts`, `transfers-page.get.ts`
+  - Frontend refactor:
+    - `useInventory.ts`: 0 supabase.from() calls, todas las lecturas via $fetch a GET endpoints
+    - `useInventoryPage.ts`: delegado a servicios via API
+    - `useUtilsInventory.ts`: utilidades puras sin DB access
+  - Form system unificado (5 archivos):
+    - ProductForm, ServiceForm, CategoryForm: TextArea 4 rows + col-span-2, select→USelect
+    - AppointmentForm: 3 selects→USelect
+    - CheckoutForm: 3 selects→USelect, TextArea 4 rows + col-span-2
+    - Nuevos UI forms: AdminFormShell, AdminFieldGroup, AdminFormSection, etc.
+- Validacion:
+  - `npm run typecheck` => exit code 0
+- Estado:
+  - `inventory` movido a `completed_modules` en STATE.md, compliant en FEATURE_TRACKER.md
+
+
+## 2026-05-03 XX:XX - codex
+- Step completado: branches_module_refactor
+- Acciones:
+  - Service layer: `server/services/branches/list.ts` + `details.ts`
+    - getBranchesList: branches + 5 subqueries para stats (transactions, appointments, profiles, assignments, inventory_stock)
+    - getBranchDetails: single branch + stats + inventory con product lookup + destination branches
+    - buildStatsMaps, normalizeSettings movidos al service
+  - GET API handlers:
+    - `server/api/admin/branches/index.get.ts`: GET /api/admin/branches
+    - `server/api/admin/branches/[id].get.ts`: GET /api/admin/branches/{id}
+  - Frontend refactor: `app/composables/useBranches.ts`
+    - loadBranches → $fetch('/api/admin/branches')
+    - loadBranchDetails → $fetch('/api/admin/branches/{id}')
+    - 0 supabase.from() calls, 6 $fetch calls
+    - Eliminadas funciones internas: buildStatsMaps, normalizeSettings, toBranchOption
+    - Eliminados type aliases no usados: BranchRow, TransactionRow, AppointmentRow, ProfileRow, AssignmentRow, InventoryRow
+- Validacion:
+  - `npm run typecheck` => exit code 0
+- Estado:
+  - `branches` movido a `completed_modules` en STATE.md
+
+
+## 2026-05-03 XX:XX - codex
+- Step completado: users_staff_module_refactor
+- Acciones:
+  - Service layer: `server/services/users/list.ts`
+    - getUsersList: profiles + branches + assignments aggregation
+  - API handler refactored: `server/api/admin/users/index.get.ts`
+    - Delegates to getUsersList service, clean 5-line handler
+  - Frontend: `app/composables/useUsers.ts`
+    - Ya era compliant (6 $fetch, 0 supabase)
+  - `AdminContext` exported from `server/utils/admin-users.ts`
+- Validacion:
+  - `npm run typecheck` => exit code 0
+- Estado:
+  - `users (staff)` movido a `completed_modules` en STATE.md

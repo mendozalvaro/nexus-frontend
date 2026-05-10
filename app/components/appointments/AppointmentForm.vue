@@ -1,6 +1,11 @@
 <script setup lang="ts">
 import { z } from "zod";
 
+import AdminFieldGroup from "@/components/ui/forms/AdminFieldGroup.vue";
+import AdminFormActions from "@/components/ui/forms/AdminFormActions.vue";
+import AdminFormSection from "@/components/ui/forms/AdminFormSection.vue";
+import { ADMIN_FIELD_UI } from "@/utils/ui/forms";
+
 import type {
   AppointmentBranchOption,
   AppointmentEmployeeOption,
@@ -86,10 +91,10 @@ const filteredEmployees = computed(() => {
   }
 
   const branchEmployees = props.employees.filter((employee) => {
-    const operatesInBranch =
-      !employee.branchId
-      || employee.branchId === state.branchId
-      || employee.assignedBranchIds.includes(state.branchId);
+    const operatesInBranch
+      = !employee.branchId
+        || employee.branchId === state.branchId
+        || employee.assignedBranchIds.includes(state.branchId);
 
     if (!operatesInBranch) {
       return false;
@@ -195,44 +200,71 @@ const toggleReminder = (channel: ReminderChannel, checked: boolean | "indetermin
 
 <template>
   <UForm :schema="schema" :state="state" class="space-y-5" @submit="submit">
-    <div class="grid gap-4 md:grid-cols-2">
-      <UFormField label="Sucursal" name="branchId">
-        <USelect
-          v-model="state.branchId"
-          :items="branches"
-          label-key="label"
-          value-key="value"
-          placeholder="Selecciona una sucursal"
-          class="w-full"
-          :disabled="loading"
-        />
-      </UFormField>
+    <AdminFormSection
+      title="Agenda de la cita"
+      description="Selecciona sucursal, servicio, colaborador y horario de ejecución."
+      :columns="2"
+    >
+      <AdminFieldGroup :columns="2" class="sm:col-span-2">
+        <UFormField label="Sucursal" name="branchId">
+          <USelect
+            v-model="state.branchId"
+            :items="branches"
+            label-key="label"
+            value-key="value"
+            placeholder="Selecciona una sucursal"
+            class="w-full"
+            :disabled="loading"
+            :ui="ADMIN_FIELD_UI"
+          />
+        </UFormField>
 
-      <UFormField label="Servicio" name="serviceId">
-        <USelect
-          v-model="state.serviceId"
-          :items="services"
-          label-key="label"
-          value-key="value"
-          placeholder="Selecciona un servicio"
-          class="w-full"
-          :disabled="loading"
-        />
-      </UFormField>
+        <UFormField label="Servicio" name="serviceId">
+          <USelect
+            v-model="state.serviceId"
+            :items="services"
+            label-key="label"
+            value-key="value"
+            placeholder="Selecciona un servicio"
+            class="w-full"
+            :disabled="loading"
+            :ui="ADMIN_FIELD_UI"
+          />
+        </UFormField>
 
-      <UFormField label="Empleado" name="employeeId">
-        <USelect
-          v-model="state.employeeId"
-          :items="filteredEmployees"
-          label-key="label"
-          value-key="value"
-          placeholder="Selecciona un empleado"
-          class="w-full"
-          :disabled="loading"
-        />
-      </UFormField>
+        <UFormField label="Empleado" name="employeeId">
+          <USelect
+            v-model="state.employeeId"
+            :items="filteredEmployees"
+            label-key="label"
+            value-key="value"
+            placeholder="Selecciona un empleado"
+            class="w-full"
+            :disabled="loading"
+            :ui="ADMIN_FIELD_UI"
+          />
+        </UFormField>
 
-      <div v-if="state.branchId && state.serviceId && filteredEmployees.length === 0" class="md:col-span-2">
+        <UFormField label="Fecha" name="date">
+          <UInput v-model="state.date" type="date" :disabled="loading" :ui="ADMIN_FIELD_UI" />
+        </UFormField>
+
+        <UFormField label="Hora de inicio" name="startTimeLocal">
+          <UInput v-model="state.startTimeLocal" type="time" :disabled="loading" :ui="ADMIN_FIELD_UI" />
+        </UFormField>
+
+        <UFormField label="Notas internas" name="notes" class="sm:col-span-2">
+          <UTextarea
+            v-model="state.notes"
+            :rows="4"
+            placeholder="Detalles útiles para operación o atención."
+            :disabled="loading"
+            :ui="ADMIN_FIELD_UI"
+          />
+        </UFormField>
+      </AdminFieldGroup>
+
+      <div v-if="state.branchId && state.serviceId && filteredEmployees.length === 0" class="sm:col-span-2">
         <UAlert
           color="warning"
           variant="soft"
@@ -241,41 +273,22 @@ const toggleReminder = (channel: ReminderChannel, checked: boolean | "indetermin
           description="No hay colaboradores asignados al servicio en la sucursal seleccionada."
         />
       </div>
+    </AdminFormSection>
 
-      <UFormField label="Fecha" name="date">
-        <UInput v-model="state.date" type="date" :disabled="loading" />
-      </UFormField>
+    <AdminFormSection
+      title="Recordatorios"
+      description="Define la intención de notificación para integraciones de email y SMS."
+      :columns="1"
+    >
+      <UAlert
+        color="neutral"
+        variant="soft"
+        icon="i-lucide-bell-ring"
+        title="Integración pendiente"
+        description="Se guarda la intención del canal para conectarlo luego con email o SMS."
+      />
 
-      <UFormField label="Hora de inicio" name="startTimeLocal">
-        <UInput v-model="state.startTimeLocal" type="time" :disabled="loading" />
-      </UFormField>
-
-      <UFormField label="Notas internas" name="notes" class="md:col-span-2">
-        <UTextarea v-model="state.notes" :rows="4" placeholder="Detalles útiles para operación o atención." :disabled="loading" />
-      </UFormField>
-    </div>
-
-    <div class="rounded-[1.5rem] border border-slate-200 p-4 dark:border-slate-800">
-      <div class="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-        <div>
-          <p class="text-sm font-semibold text-slate-950 dark:text-white">
-            Recordatorios
-          </p>
-          <p class="text-sm text-slate-500 dark:text-slate-400">
-            Placeholder listo para integrar email y SMS más adelante.
-          </p>
-        </div>
-
-        <UAlert
-          color="neutral"
-          variant="soft"
-          icon="i-lucide-bell-ring"
-          title="Integración pendiente"
-          description="Se guarda la intención del canal para conectarlo luego con email/SMS."
-        />
-      </div>
-
-      <div class="mt-4 flex flex-wrap gap-4">
+      <div class="flex flex-wrap gap-4">
         <UCheckbox
           :model-value="state.reminderChannels.includes('email')"
           label="Email"
@@ -289,32 +302,26 @@ const toggleReminder = (channel: ReminderChannel, checked: boolean | "indetermin
           @update:model-value="toggleReminder('sms', $event)"
         />
       </div>
-    </div>
+    </AdminFormSection>
 
-    <div v-if="allowWalkIn && mode === 'create'" class="rounded-[1.5rem] border border-slate-200 p-4 dark:border-slate-800">
-      <div class="flex items-start justify-between gap-4">
-        <div>
-          <p class="text-sm font-semibold text-slate-950 dark:text-white">
-            Walk-in
-          </p>
-          <p class="text-sm text-slate-500 dark:text-slate-400">
-            Crea una cita rápida con un cliente temporal sin cuenta de usuario.
-          </p>
-        </div>
+    <AdminFormSection
+      v-if="allowWalkIn && mode === 'create'"
+      title="Walk-in"
+      description="Crea una cita rápida con un cliente temporal sin cuenta asociada."
+      :columns="1"
+    >
+      <UCheckbox v-model="state.walkInEnabled" label="Activar walk-in" :disabled="loading" />
 
-        <UCheckbox v-model="state.walkInEnabled" label="Activar walk-in" :disabled="loading" />
-      </div>
-
-      <div v-if="state.walkInEnabled" class="mt-4 grid gap-4 md:grid-cols-2">
+      <AdminFieldGroup v-if="state.walkInEnabled" :columns="2">
         <UFormField label="Nombre del cliente" name="walkInFullName">
-          <UInput v-model="state.walkInFullName" placeholder="Ej. Cliente de paso" :disabled="loading" />
+          <UInput v-model="state.walkInFullName" placeholder="Ej. Cliente de paso" :disabled="loading" :ui="ADMIN_FIELD_UI" />
         </UFormField>
 
         <UFormField label="Teléfono" name="walkInPhone">
-          <UInput v-model="state.walkInPhone" placeholder="+591 70000000" :disabled="loading" />
+          <UInput v-model="state.walkInPhone" placeholder="+591 70000000" :disabled="loading" :ui="ADMIN_FIELD_UI" />
         </UFormField>
-      </div>
-    </div>
+      </AdminFieldGroup>
+    </AdminFormSection>
 
     <div
       v-if="selectedService"
@@ -324,13 +331,13 @@ const toggleReminder = (channel: ReminderChannel, checked: boolean | "indetermin
       <span class="font-semibold">{{ selectedService.durationMinutes }} minutos</span>.
     </div>
 
-    <div class="flex flex-wrap justify-end gap-3">
+    <AdminFormActions>
       <UButton color="neutral" variant="ghost" :disabled="loading" @click="emits('cancel')">
         Cancelar
       </UButton>
       <UButton type="submit" color="primary" :loading="loading">
         {{ resolvedSubmitLabel }}
       </UButton>
-    </div>
+    </AdminFormActions>
   </UForm>
 </template>

@@ -2,6 +2,7 @@
 import { z } from "zod";
 
 import SocialLoginButtons from "./SocialLoginButtons.vue";
+import { sanitizeInternalRedirect } from "@/utils/redirect";
 
 type LoginFormData = z.output<typeof schema>;
 type LoginSubmitEvent = SubmitEvent & { data: LoginFormData };
@@ -68,11 +69,7 @@ const submitLabel = computed(() => {
 });
 
 const sanitizedRedirect = computed(() => {
-  if (!props.redirect || !props.redirect.startsWith("/") || props.redirect.startsWith("//")) {
-    return null;
-  }
-
-  return props.redirect;
+  return sanitizeInternalRedirect(props.redirect);
 });
 
 const secondaryLinksQuery = computed(() => sanitizedRedirect.value ? { redirect: sanitizedRedirect.value } : undefined);

@@ -1,88 +1,148 @@
 <script setup lang="ts">
-import { computed } from "vue";
+import { z } from "zod";
+
+import AdminFieldGroup from "@/components/ui/forms/AdminFieldGroup.vue";
+import AdminFormActions from "@/components/ui/forms/AdminFormActions.vue";
+import AdminFormSection from "@/components/ui/forms/AdminFormSection.vue";
+import { ADMIN_FIELD_UI } from "@/utils/ui/forms";
 
 interface Props {
-    isEditing: boolean;
-    formState: {
-        email: string;
-        fullName: string;
-        password: string;
-        confirmPassword: string;
-        role: string;
-    };
-    formError: string | null;
-    actionLoading: boolean;
+  isEditing: boolean;
+  formState: {
+    email: string;
+    fullName: string;
+    password: string;
+    confirmPassword: string;
+    role: "system" | "support";
+  };
+  formError: string | null;
+  actionLoading: boolean;
 }
 
 interface Emits {
-    (e: "update:formState", value: Props["formState"]): void;
-    (e: "save"): void;
-    (e: "reset"): void;
+  (e: "update:formState", value: Props["formState"]): void;
+  (e: "save"): void;
+  (e: "reset"): void;
 }
 
 const props = defineProps<Props>();
 const emit = defineEmits<Emits>();
 
 const formState = computed({
-    get: () => props.formState,
-    set: (val) => emit("update:formState", val),
+  get: () => props.formState,
+  set: (val) => emit("update:formState", val),
 });
+
+const schema = computed(() =>
+  z.object({
+    email: z.string().trim().email("Ingresa un email válido."),
+    fullName: z.string().trim().min(3, "El nombre completo es obligatorio."),
+    password: props.isEditing
+      ? z.string().optional()
+      : z.string().min(8, "La contraseña debe tener al menos 8 caracteres."),
+    confirmPassword: z.string(),
+    role: z.enum(["system", "support"]),
+  }).superRefine((value, context) => {
+    if (!props.isEditing || value.password?.trim().length) {
+      if ((value.password ?? "").length < 8) {
+        context.addIssue({
+          code: "custom",
+          path: ["password"],
+          message: "La contraseña debe tener al menos 8 caracteres.",
+        });
+      }
+
+      if (value.password !== value.confirmPassword) {
+        context.addIssue({
+          code: "custom",
+          path: ["confirmPassword"],
+          message: "La confirmación debe coincidir con la contraseña.",
+        });
+      }
+    }
+  }),
+);
 </script>
 
 <template>
-    <div class="space-y-5">
-        <div
-            class="space-y-4 rounded-2xl border border-slate-200/80 bg-white p-4 dark:border-slate-800 dark:bg-slate-950/70">
-            <div class="space-y-3">
-                <label class="text-sm font-medium text-slate-700 dark:text-slate-300">Email</label>
-                <UInput v-model="formState.email" type="email" placeholder="usuario@dominio.com" size="lg"
-                    class="w-full" :ui="{ base: 'min-h-11 text-base' }" />
-            </div>
+  <UForm :schema="schema" :state="formState" class="space-y-5" @submit="emit('save')">
+    <AdminFormSection
+      title="Identidad y acceso"
+      description="Configura credenciales, nombre visible y nivel de acceso del usuario de sistema."
+      :columns="2"
+    >
+      <AdminFieldGroup :columns="2" class="sm:col-span-2">
+        <UFormField label="Email" name="email">
+          <UInput
+            v-model="formState.email"
+            type="email"
+            placeholder="usuario@dominio.com"
+            class="w-full"
+            :ui="ADMIN_FIELD_UI"
+          />
+        </UFormField>
 
-            <div class="space-y-3">
-                <label class="text-sm font-medium text-slate-700 dark:text-slate-300">Nombre completo</label>
-                <UInput v-model="formState.fullName" placeholder="Ej. Maria Lopez" size="lg" class="w-full"
-                    :ui="{ base: 'min-h-11 text-base' }" />
-            </div>
+        <UFormField label="Nombre completo" name="fullName">
+          <UInput
+            v-model="formState.fullName"
+            placeholder="Ej. Maria Lopez"
+            class="w-full"
+            :ui="ADMIN_FIELD_UI"
+          />
+        </UFormField>
 
-            <div class="grid gap-4 sm:grid-cols-2">
-                <div class="space-y-3">
-                    <label class="text-sm font-medium text-slate-700 dark:text-slate-300">
-                        {{ isEditing ? "Nueva contraseña (opcional)" : "Contraseña" }}
-                    </label>
-                    <UInput v-model="formState.password" type="password" autocomplete="new-password"
-                        placeholder="Minimo 8 caracteres" size="lg" class="w-full"
-                        :ui="{ base: 'min-h-11 text-base' }" />
-                </div>
-                <div class="space-y-3">
-                    <label class="text-sm font-medium text-slate-700 dark:text-slate-300">
-                        Confirmar contraseña
-                    </label>
-                    <UInput v-model="formState.confirmPassword" type="password" autocomplete="new-password"
-                        placeholder="Repite la contraseña" size="lg" class="w-full"
-                        :ui="{ base: 'min-h-11 text-base' }" />
-                </div>
-            </div>
+        <UFormField :label="isEditing ? 'Nueva contraseña (opcional)' : 'Contraseña'" name="password">
+          <UInput
+            v-model="formState.password"
+            type="password"
+            autocomplete="new-password"
+            placeholder="Minimo 8 caracteres"
+            class="w-full"
+            :ui="ADMIN_FIELD_UI"
+          />
+        </UFormField>
 
-            <div class="space-y-3">
-                <label class="text-sm font-medium text-slate-700 dark:text-slate-300">Rol</label>
-                <USelect v-model="formState.role" size="lg" class="w-full" :options="[
-                    { label: 'system', value: 'system' },
-                    { label: 'support', value: 'support' },
-                ]" />
-            </div>
+        <UFormField label="Confirmar contraseña" name="confirmPassword">
+          <UInput
+            v-model="formState.confirmPassword"
+            type="password"
+            autocomplete="new-password"
+            placeholder="Repite la contraseña"
+            class="w-full"
+            :ui="ADMIN_FIELD_UI"
+          />
+        </UFormField>
 
-            <div v-if="formError"
-                class="rounded-2xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700 dark:border-rose-700/60 dark:bg-rose-950/30 dark:text-rose-200">
-                {{ formError }}
-            </div>
+        <UFormField label="Rol" name="role">
+          <USelect
+            v-model="formState.role"
+            class="w-full"
+            :items="[
+              { label: 'system', value: 'system' },
+              { label: 'support', value: 'support' },
+            ]"
+            :ui="ADMIN_FIELD_UI"
+          />
+        </UFormField>
+      </AdminFieldGroup>
+    </AdminFormSection>
 
-            <div class="flex flex-col gap-3 pt-2 sm:flex-row sm:justify-end">
-                <UButton variant="ghost" color="neutral" @click="$emit('reset')">Limpiar</UButton>
-                <UButton :loading="actionLoading" color="primary" @click="$emit('save')">
-                    {{ isEditing ? "Actualizar usuario" : "Crear usuario" }}
-                </UButton>
-            </div>
-        </div>
-    </div>
+    <UAlert
+      v-if="formError"
+      color="error"
+      variant="soft"
+      icon="i-lucide-triangle-alert"
+      title="No se pudo guardar"
+      :description="formError"
+    />
+
+    <AdminFormActions>
+      <UButton variant="ghost" color="neutral" @click="$emit('reset')">
+        Limpiar
+      </UButton>
+      <UButton type="submit" :loading="actionLoading" color="primary">
+        {{ isEditing ? "Actualizar usuario" : "Crear usuario" }}
+      </UButton>
+    </AdminFormActions>
+  </UForm>
 </template>

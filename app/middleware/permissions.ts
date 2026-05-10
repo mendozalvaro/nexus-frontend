@@ -1,5 +1,6 @@
 import type { Permission, RoutePermissionMeta } from "@/types/permissions";
 import { getDefaultPathForRole } from "@/utils/role-access";
+import { buildLoginRedirectPath } from "@/utils/redirect";
 
 type RouteLike = {
   params: Record<string, unknown>;
@@ -31,14 +32,15 @@ const auditAccessDenied = async (
 export default defineNuxtRouteMiddleware(async (to) => {
   const { resolvedRole } = useAuth();
   const { ensureAuthContext } = useAuthContext();
-  let { user, profile } = await ensureAuthContext({ requireProfile: true });
+  let { user, profile, bootstrapState } = await ensureAuthContext({ requireProfile: true });
 
   if (!user) {
-    return navigateTo("/auth/login");
+    console.info("[AUTH_REDIRECT]", { route: to.fullPath, reason: "unauthenticated", target: "login" });
+    return navigateTo(buildLoginRedirectPath(to.fullPath));
   }
 
   // Guard against hydration races where user exists but profile is not synced yet.
-  if (!profile) {
+  if (!profile && bootstrapState !== "profile_incomplete") {
     const refreshed = await ensureAuthContext({
       requireProfile: true,
       forceProfileRefresh: true,
@@ -46,14 +48,20 @@ export default defineNuxtRouteMiddleware(async (to) => {
     });
     user = refreshed.user;
     profile = refreshed.profile;
+    bootstrapState = refreshed.bootstrapState;
   }
 
   if (!user || !profile) {
-    return navigateTo("/auth/login");
+    if (bootstrapState === "profile_incomplete") {
+      return navigateTo(getDefaultPathForRole(resolvedRole.value === "guest" ? null : resolvedRole.value));
+    }
+
+    console.info("[AUTH_REDIRECT]", { route: to.fullPath, reason: bootstrapState, target: "login" });
+    return navigateTo(buildLoginRedirectPath(to.fullPath));
   }
 
   if (to.path.startsWith("/client/checkout") && resolvedRole.value === "guest") {
-    return navigateTo("/auth/login");
+    return navigateTo(buildLoginRedirectPath(to.fullPath));
   }
 
   const fallbackPath = getDefaultPathForRole(profile?.role ?? null);
@@ -89,6 +97,7 @@ export default defineNuxtRouteMiddleware(async (to) => {
     }
 
     if (!selectedBranchId.value) {
+      console.info("[AUTH_REDIRECT]", { route: to.fullPath, reason: "branch_selection_required", target: "select-branch" });
       return navigateTo(`/select-branch?redirect=${encodeURIComponent(to.fullPath)}`);
     }
   }
@@ -109,6 +118,7 @@ export default defineNuxtRouteMiddleware(async (to) => {
       ...(resolution.context ?? {}),
       requiredPermission: (meta.permission ?? null) as Permission | null,
     });
+    console.info("[AUTH_REDIRECT]", { route: to.fullPath, reason: resolution.reason, target: fallbackPath });
     return navigateTo(fallbackPath);
   }
 });

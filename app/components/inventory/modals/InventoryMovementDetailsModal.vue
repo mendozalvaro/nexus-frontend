@@ -120,6 +120,9 @@ const transferStatusLabel = computed(() => {
             <p v-if="props.transferDetails.observations" class="mt-3 text-sm text-slate-600 dark:text-slate-300">
               Observaciones: {{ props.transferDetails.observations }}
             </p>
+            <p v-if="props.transferDetails.referenceCode" class="mt-1 text-sm text-slate-600 dark:text-slate-300">
+              Código: {{ props.transferDetails.referenceCode }}
+            </p>
           </div>
         </div>
 
@@ -155,6 +158,9 @@ const transferStatusLabel = computed(() => {
           </p>
           <p class="mt-1 text-slate-600 dark:text-slate-300">
             Fecha: {{ props.formatDateTime(props.movement.createdAt) }}
+          </p>
+          <p v-if="props.movement.referenceCode || props.movement.note" class="mt-1 text-slate-600 dark:text-slate-300">
+            Código: {{ props.movement.referenceCode ?? props.movement.note }}
           </p>
           <p class="mt-1 text-slate-600 dark:text-slate-300">
             Usuario: {{ props.movement.createdByName ?? "Sistema" }}

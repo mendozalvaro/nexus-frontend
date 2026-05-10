@@ -100,6 +100,7 @@ export const useClientProfileState = (
   return {
     clientProfile,
     clientProfileFetchedForOrgId,
+    clientProfileLoading,
     fetchClientProfile,
     clearClientProfileState,
   };

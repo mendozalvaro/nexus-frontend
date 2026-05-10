@@ -12,13 +12,18 @@ const props = withDefaults(defineProps<{
   activeBranchIds: () => [],
 });
 
+const emits = defineEmits<{
+  openMovement: [string];
+  openTransfer: [string];
+}>();
+
 const effectiveBranchIds = computed(() => new Set(props.activeBranchIds));
 
 const groupedRows = computed(() => {
   const groups = new Map<string, { categoryName: string; rows: InventoryProductRowView[] }>();
 
   for (const row of props.rows) {
-    const categoryName = row.categoryName?.trim() || "Sin categoria";
+    const categoryName = row.categoryName?.trim() || "Sin categoría";
     const bucket = groups.get(categoryName);
     if (bucket) {
       bucket.rows.push(row);
@@ -83,7 +88,7 @@ const toggleCategory = (categoryName: string) => {
         >
           <div>
             <p class="text-sm uppercase tracking-wide text-slate-500 dark:text-slate-400">
-              Categoria
+              Categoría
             </p>
             <h3 class="text-base font-semibold text-slate-950 dark:text-white">
               {{ group.categoryName }}
@@ -105,6 +110,7 @@ const toggleCategory = (categoryName: string) => {
               <th class="px-2 py-2">Producto y SKU</th>
               <th class="px-2 py-2">Disponible</th>
               <th v-if="showBranches" class="px-2 py-2">Sucursales</th>
+              <th class="px-2 py-2 text-right">Acciones</th>
             </tr>
           </thead>
           <tbody>
@@ -133,6 +139,16 @@ const toggleCategory = (categoryName: string) => {
                   >
                     {{ stock.branchCode }}: {{ stock.availableQuantity }}
                   </UBadge>
+                </div>
+              </td>
+              <td class="px-2 py-2 align-top">
+                <div class="flex justify-end gap-2">
+                  <UButton size="xs" color="primary" variant="soft" @click="emits('openMovement', row.id)">
+                    Movimiento masivo
+                  </UButton>
+                  <UButton size="xs" color="neutral" variant="soft" @click="emits('openTransfer', row.id)">
+                    Transferencia masiva
+                  </UButton>
                 </div>
               </td>
             </tr>

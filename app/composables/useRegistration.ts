@@ -300,13 +300,14 @@ export const useRegistration = () => {
     if (!user) return { destination: "/auth/login", reason: "login" };
     if (!user.email_confirmed_at) return { destination: `/auth/verify-email?email=${encodeURIComponent(user.email ?? registrationDraft.value.email)}`, reason: "verify" };
 
-    const profile = await fetchProfile();
     const postAuthContext = await $fetch<{
       isSystem: boolean;
       organizationStatus: string | null;
       latestPaymentValidationStatus: string | null;
     }>("/api/auth/post-auth-context");
     if (postAuthContext.isSystem) return { destination: "/system", reason: "active" };
+
+    const profile = await fetchProfile();
     return resolveStaffOrClientDestination(
       profile?.organization_id ?? null,
       profile?.role ?? null,

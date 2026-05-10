@@ -2,6 +2,7 @@ import type {
   InventoryAdjustmentBatchLine,
   InventoryBatchNormalization,
   InventoryBatchValidationError,
+  InventoryBranchOption,
   InventoryHistoryData,
   InventoryMovementFilters,
   InventoryMovementRowView,
@@ -199,10 +200,16 @@ export const useInventoryPage = () => {
     lazy: true,
     immediate: typeof useRoute().path === "string" && useRoute().path.includes("inventory"),
   });
-  const allBranches = computed(() =>
+  const allBranches = computed<InventoryBranchOption[]>(() =>
     (allBranchesData.value ?? [])
       .filter((b) => b.is_active !== false)
-      .map((b) => ({ id: b.id, name: b.name, code: b.code ?? undefined }))
+      .map((b) => ({
+        id: b.id,
+        name: b.name,
+        code: b.code ?? "",
+        address: null,
+        isActive: true,
+      }))
   );
 
   const stockRows = computed<InventoryProductRowView[]>(() => {
@@ -349,8 +356,8 @@ export const useInventoryPage = () => {
 
       if (precheck.isValid) {
         toast.add({
-          title: "Validacion completada",
-          description: "No se encontraron errores. Puedes registrar el lote.",
+          title: "Validación completada",
+          description: "No se encontraron errores. Puedes registrar el lote masivo.",
           color: "success",
         });
       }
@@ -369,8 +376,8 @@ export const useInventoryPage = () => {
       movementPrecheckNormalization.value = null;
       movementPrecheckWarnings.value = [];
       toast.add({
-        title: "Movimiento realizado",
-        description: `Se registraron ${result.processedCount} linea(s) en el lote.`,
+        title: "Movimiento masivo realizado",
+        description: `Se registraron ${result.processedCount} línea(s) en el lote masivo.`,
         color: "success",
       });
       const refreshTasks: Array<Promise<unknown>> = [refreshOverview()];
@@ -405,8 +412,8 @@ export const useInventoryPage = () => {
       transferPrecheckNormalization.value = null;
       transferPrecheckWarnings.value = [];
       toast.add({
-        title: "Transferencia creada",
-        description: `Se registraron ${result.processedCount} linea(s) para transferencia.`,
+        title: "Transferencia masiva creada",
+        description: `Se registraron ${result.processedCount} línea(s) en el lote de transferencia.`,
         color: "success",
       });
       const refreshTasks: Array<Promise<unknown>> = [refreshOverview()];
@@ -422,6 +429,27 @@ export const useInventoryPage = () => {
     }
   };
 
+  const handleTransferValidate = async (payload: InventoryTransferBatchPayload) => {
+    transferLoading.value = true;
+
+    try {
+      const precheck = await precheckTransferStockBatch(payload);
+      transferPrecheckErrors.value = precheck.errors ?? [];
+      transferPrecheckNormalization.value = precheck.normalization ?? null;
+      transferPrecheckWarnings.value = precheck.warnings ?? [];
+
+      if (precheck.isValid) {
+        toast.add({
+          title: "Validación completada",
+          description: "No se encontraron errores. Puedes crear la transferencia masiva.",
+          color: "success",
+        });
+      }
+    } finally {
+      transferLoading.value = false;
+    }
+  };
+
   const handleReceiveTransfer = async (row: InventoryTransferRowView) => {
     transferLoading.value = true;
     try {
@@ -432,7 +460,7 @@ export const useInventoryPage = () => {
       }
       toast.add({
         title: "Transferencia recepcionada",
-        description: row.internalNote ?? `${row.sourceBranchCode} -> ${row.destinationBranchCode}`,
+        description: row.referenceCode ?? `${row.sourceBranchCode} -> ${row.destinationBranchCode}`,
         color: "success",
       });
       const refreshTasks: Array<Promise<unknown>> = [refreshOverview()];
@@ -458,7 +486,7 @@ export const useInventoryPage = () => {
       }
       toast.add({
         title: "Transferencia rechazada",
-        description: row.internalNote ?? `${row.sourceBranchCode} -> ${row.destinationBranchCode}`,
+        description: row.referenceCode ?? `${row.sourceBranchCode} -> ${row.destinationBranchCode}`,
         color: "warning",
       });
       const refreshTasks: Array<Promise<unknown>> = [refreshOverview()];
@@ -498,7 +526,7 @@ export const useInventoryPage = () => {
   const movementDetailTitle = computed(() => {
     const movement = selectedMovementDetails.value;
     if (!movement) return "Detalle de movimiento";
-    const code = movement.note ?? "--";
+    const code = movement.referenceCode ?? movement.note ?? "--";
     if (movement.movementType === "entry") return `Nota de Ingreso ${code}`;
     if (movement.movementType === "exit") return `Nota de Salida ${code}`;
     if (movement.movementType === "adjustment") return `Nota de Ajuste ${code}`;
@@ -556,6 +584,7 @@ export const useInventoryPage = () => {
     canRejectTransfer,
     handleMovementValidate,
     handleMovementSubmit,
+    handleTransferValidate,
     handleTransferSubmit,
     handleReceiveTransfer,
     handleRejectTransfer,

@@ -1,13 +1,13 @@
 ﻿| Modulo | Estado funcional | Estado cumplimiento arquitectura | 3-layer frontend | service-layer backend | tenant/role enforcement | tests | Evidencia |
 |---|---|---|---|---|---|---|---|
 | auth | Completado | completed | Compliant | Compliant | Compliant | Pendiente | `app/composables/useAuth.ts`, `app/composables/useSessionAccess.ts`, `app/composables/useRegistration.ts`, `app/composables/auth/useAuthAudit.ts`, `app/middleware/permissions.ts`, `server/api/profile.get.ts`, `server/api/profile.patch.ts`, `server/api/auth/accessible-branches.get.ts`, `server/api/auth/onboarding-progress.get.ts`, `server/api/auth/onboarding-progress.post.ts`, `server/api/auth/post-auth-context.get.ts`, `server/api/auth/audit.post.ts`, `.ai/AUTH_USE_CASE_DIAGRAM.md` |
-| inventory | Completado | in_progress | Parcial | Compliant | Pendiente | Pendiente | `server/services/inventory/*.ts` ( partial) |
+| inventory | Completado | completed | Compliant | Compliant | Compliant | Parcial | `server/services/inventory/*.ts` (8 files), `server/api/inventory/*.get.ts` (7 endpoints), `app/composables/useInventory.ts` (0 supabase) |
 | appointments (staff) | Completado | pending | Pendiente recertificacion | Pendiente | Parcial | Pendiente | `app/pages/appointments.vue`, `server/api/appointments/**` |
 | pos | Completado | pending | Pendiente recertificacion | Pendiente | Parcial | Pendiente | `app/pages/pos.vue`, `server/api/pos/**` |
 | reports (staff) | Parcial | pending | Pendiente recertificacion | Pendiente | Pendiente | Pendiente | `app/pages/reports.vue`, `app/composables/useReports.ts` |
-| users (staff) | Completado | pending | Pendiente recertificacion | Parcial | Parcial | Pendiente | `app/pages/users.vue`, `server/api/admin/users/**` |
+| users (staff) | Completado | completed | Compliant | Compliant | Compliant | Pendiente | `server/services/users/list.ts`, `server/api/admin/users/index.get.ts`, `app/composables/useUsers.ts` (0 supabase) |
 | system/users | Completado | pending | Pendiente recertificacion | Parcial | Parcial | Pendiente | `app/pages/system/users.vue`, `server/api/system/users/**` |
-| branches | Completado | pending | Pendiente recertificacion | Pendiente | Parcial | Pendiente | `app/pages/branches.vue`, `server/api/admin/branches/**` |
+| branches | Completado | completed | Compliant | Compliant | Compliant | Pendiente | `server/services/branches/*.ts`, `server/api/admin/branches/*.get.ts`, `app/composables/useBranches.ts` (0 supabase) |
 | catalogo | Completado | completed | Compliant | Compliant (+service) | Compliant | Pendiente | `server/services/catalog/**`, `server/api/catalog/products.get.ts`, `app/composables/useCatalog.ts` |
 | service-assignment | Completado | pending | Pendiente recertificacion | Pendiente | Parcial | Pendiente | `app/pages/service-assignment.vue`, `server/api/service-assignment/**` |
 | dashboard (staff) | Completado | completed | Compliant | Compliant (+service) | Compliant | Pendiente | `server/services/dashboard/stats.ts`, `server/api/dashboard-stats.get.ts`, `app/composables/useDashboard.ts` |

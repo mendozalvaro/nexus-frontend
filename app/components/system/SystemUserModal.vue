@@ -6,7 +6,7 @@ interface FormState {
   fullName: string;
   password: string;
   confirmPassword: string;
-  role: string;
+  role: "system" | "support";
 }
 
 interface Props {
@@ -34,15 +34,17 @@ const closeModal = () => {
 </script>
 
 <template>
-  <UModal :open="props.open" :close="true" @update:open="emit('update:open', $event)" @close="closeModal">
+  <UModal
+    :open="props.open"
+    :close="true"
+    :title="isEditing ? 'Editar usuario de sistema' : 'Nuevo usuario de sistema'"
+    :description="isEditing ? 'Actualiza credenciales y nivel de acceso del usuario.' : 'Crea un usuario interno con acceso a herramientas de sistema.'"
+    :ui="{ content: 'max-w-4xl' }"
+    @update:open="emit('update:open', $event)"
+    @close="closeModal"
+  >
     <template #body>
       <div class="p-2">
-        <div class="mb-4">
-          <h3 class="text-lg font-semibold text-slate-900 dark:text-white">
-            {{ isEditing ? "Editar Usuario" : "Crear Usuario del Sistema" }}
-          </h3>
-        </div>
-
         <SystemUserForm
           :is-editing="isEditing"
           :form-state="formState"

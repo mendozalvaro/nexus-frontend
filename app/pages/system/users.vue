@@ -41,6 +41,7 @@ const {
     toggleSystemUserStatus,
 } = useSystemAdmin();
 const currentUser = useSupabaseUser();
+type SystemRole = "system" | "support";
 
 const systemUserPage = ref(1);
 const orgUserPage = ref(1);
@@ -50,7 +51,13 @@ const orgUsersLoaded = ref(false);
 const clientsLoaded = ref(false);
 
 const selectedUser = ref<SystemUserRow | null>(null);
-const formState = reactive({
+const formState = reactive<{
+    email: string;
+    fullName: string;
+    password: string;
+    confirmPassword: string;
+    role: SystemRole;
+}>({
     email: "",
     fullName: "",
     password: "",
@@ -124,7 +131,7 @@ const setFormFromUser = (user: SystemUserRow) => {
     formState.fullName = user.full_name ?? "";
     formState.password = "";
     formState.confirmPassword = "";
-    formState.role = user.role;
+    formState.role = user.role === "support" ? "support" : "system";
     isSystemUserModalOpen.value = true;
 };
 

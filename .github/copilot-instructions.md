@@ -23,7 +23,7 @@ Stack actual validado en `package.json` y `nuxt.config.ts`:
 - TypeScript estricto con `typeCheck: true`
 - Deployment: Cloudflare Pages (`nitro.preset = cloudflare-pages`)
 
-## 3) Arquitectura obligatoria (modulos nuevos y refactors)
+## 3) Arquitectura obligatoria (módulos nuevos y refactors)
 
 ### Patron de 3 capas
 - `Page Orchestrator` (`app/pages/**`): estado de UI, orchestration, loaders por recurso, computed derivados.
@@ -39,7 +39,7 @@ Stack actual validado en `package.json` y `nuxt.config.ts`:
 - Carga por recurso con claves independientes (`useAsyncData`/estados separados).
 - Refresh selectivo por entidad; evitar refresh global salvo caso justificado.
 - Manejo explicito de errores de mutacion (`try/catch`, feedback UI).
-- Mantener compatibilidad progresiva con modulos legacy durante migraciones.
+- Mantener compatibilidad progresiva con módulos legacy durante migraciones.
 
 ## 4) Multi-tenant y seguridad (obligatorio)
 
@@ -84,7 +84,7 @@ Stack actual validado en `package.json` y `nuxt.config.ts`:
 
 ### Convenciones generales
 - TypeScript estricto; evitar `any`.
-- Imports absolutos `@/` para `types`, `utils` y modulos compartidos.
+- Imports absolutos `@/` para `types`, `utils` y módulos compartidos.
 - Nombres descriptivos por dominio (`useInventory`, `useUsers`, `useAppointments`, etc.).
 - Evitar logica de negocio en templates Vue.
 - Extraer funciones puras reutilizables a `app/utils/**` o `server/utils/**`.

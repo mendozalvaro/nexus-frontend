@@ -62,3 +62,10 @@ export interface AuthState {
   organizationId: string | null;
   role: UserRole | null;
 }
+
+export type AuthBootstrapState =
+  | "idle"
+  | "resolving"
+  | "authenticated"
+  | "unauthenticated"
+  | "profile_incomplete";

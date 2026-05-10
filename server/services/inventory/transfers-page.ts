@@ -23,7 +23,7 @@ interface InventoryTransferRowView {
   quantity: number;
   status: TransferStatus;
   observations: string | null;
-  internalNote: string | null;
+  referenceCode: string | null;
   requestedAt: string | null;
   requestedBy: string | null;
   requestedByName: string | null;
@@ -86,7 +86,7 @@ export const getInventoryTransfersPage = async (
         .limit(300),
       context.adminClient
         .from("inventory_transfer_batches" as never)
-        .select("id, organization_id, source_branch_id, destination_branch_id, status, observations, internal_note, total_lines, total_quantity, requested_by, requested_at, received_by, received_at")
+        .select("id, organization_id, source_branch_id, destination_branch_id, status, observations, reference_code, total_lines, total_quantity, requested_by, requested_at, received_by, received_at")
         .eq("organization_id", context.organizationId)
         .order("requested_at", { ascending: false })
         .limit(300),
@@ -125,7 +125,7 @@ export const getInventoryTransfersPage = async (
     destination_branch_id: string;
     status: TransferStatus;
     observations: string | null;
-    internal_note: string | null;
+    reference_code: string | null;
     total_lines: number;
     total_quantity: number;
     requested_by: string | null;
@@ -211,7 +211,7 @@ export const getInventoryTransfersPage = async (
     quantity: row.quantity,
     status: row.status as TransferStatus,
     observations: row.observations,
-    internalNote: row.internal_note,
+    referenceCode: row.reference_code,
     requestedAt: row.requested_at,
     requestedBy: row.requested_by,
     requestedByName: row.requested_by ? lookupProfileMap.get(row.requested_by)?.full_name ?? null : null,
@@ -238,7 +238,7 @@ export const getInventoryTransfersPage = async (
     quantity: row.total_quantity,
     status: row.status as TransferStatus,
     observations: row.observations,
-    internalNote: row.internal_note,
+    referenceCode: row.reference_code,
     requestedAt: row.requested_at,
     requestedBy: row.requested_by,
     requestedByName: row.requested_by ? lookupProfileMap.get(row.requested_by)?.full_name ?? null : null,

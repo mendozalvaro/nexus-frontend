@@ -74,7 +74,7 @@ export default defineEventHandler(async (event) => {
     destination_branch_id: string;
     status: TransferStatus;
     observations: string | null;
-    internal_note: string | null;
+    reference_code: string | null;
     total_lines: number;
     total_quantity: number;
     requested_by: string | null;
@@ -192,7 +192,7 @@ export default defineEventHandler(async (event) => {
     quantity: row.quantity,
     status: row.status,
     observations: row.observations,
-    internalNote: row.internal_note,
+    referenceCode: row.reference_code,
     requestedAt: row.requested_at,
     requestedBy: row.requested_by,
     requestedByName: profileMap.get(row.requested_by)?.full_name ?? null,
@@ -219,7 +219,7 @@ export default defineEventHandler(async (event) => {
     quantity: row.total_quantity,
     status: row.status,
     observations: row.observations,
-    internalNote: row.internal_note,
+    referenceCode: row.reference_code,
     requestedAt: row.requested_at,
     requestedBy: row.requested_by,
     requestedByName: row.requested_by ? profileMap.get(row.requested_by)?.full_name ?? null : null,

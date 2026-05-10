@@ -1,6 +1,6 @@
 import type { User } from "@supabase/supabase-js";
 
-import type { Profile } from "@/types/auth";
+import type { AuthBootstrapState, Profile } from "@/types/auth";
 
 export interface EnsureAuthContextOptions {
   requireProfile?: boolean;
@@ -11,12 +11,13 @@ export interface EnsureAuthContextOptions {
 export interface AuthContextPayload {
   user: User | null;
   profile: Profile | null;
+  bootstrapState: AuthBootstrapState;
 }
 
 let pendingAuthContextPromise: Promise<AuthContextPayload> | null = null;
 
 export const useAuthContext = () => {
-  const { profile, ensureContext } = useUserContext();
+  const { profile, ensureContext, contextBootstrapState } = useUserContext();
 
   const ensureAuthContext = async (
     options: EnsureAuthContextOptions = {},
@@ -43,6 +44,7 @@ export const useAuthContext = () => {
         return {
           user: null,
           profile: null,
+          bootstrapState: contextBootstrapState.value,
         };
       }
 
@@ -50,12 +52,14 @@ export const useAuthContext = () => {
         return {
           user: currentUser,
           profile: resolvedProfile ?? (profile.value?.id === currentUser.id ? profile.value : null),
+          bootstrapState: contextBootstrapState.value,
         };
       }
 
       return {
         user: currentUser,
         profile: resolvedProfile,
+        bootstrapState: contextBootstrapState.value,
       };
     })();
 

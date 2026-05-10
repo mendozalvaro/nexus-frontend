@@ -53,6 +53,7 @@ export default defineEventHandler(async (event) => {
     branchId: body.branchId,
     mode: body.mode,
     reason: body.reason.trim(),
+    referenceCode: body.referenceCode.trim(),
     note: movementCode,
     lines: normalization.lines,
   });
@@ -70,6 +71,7 @@ export default defineEventHandler(async (event) => {
     },
     extraContext: {
       reason: body.reason.trim(),
+      reference_code: body.referenceCode.trim() || null,
       note: body.note.trim() || null,
       movement_code: movementCode,
       total_lines: normalization.normalizedLines,
@@ -83,6 +85,7 @@ export default defineEventHandler(async (event) => {
     batchId: result.batchId,
     processedCount: result.processedCount,
     idempotent: result.idempotent,
+    requestedReferenceCode: body.referenceCode.trim() || null,
     movementCode,
     normalization,
     warnings: getInventoryBatchNormalizationWarnings(normalization),

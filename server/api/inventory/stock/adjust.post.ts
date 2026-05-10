@@ -44,6 +44,7 @@ export default defineEventHandler(async (event) => {
     previous_quantity: stockMutation.previousQuantity,
     new_quantity: stockMutation.newQuantity,
     reason: body.reason.trim(),
+    reference_code: movementCode,
     note: movementCode,
     reference_type: "manual_adjustment",
     reference_id: stockMutation.stockId,

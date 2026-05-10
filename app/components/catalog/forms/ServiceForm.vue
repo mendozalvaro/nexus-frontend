@@ -5,6 +5,10 @@ import type {
   CatalogCategoryItem,
   CatalogServicePayload,
 } from "@/composables/useCatalog";
+import AdminFieldGroup from "@/components/ui/forms/AdminFieldGroup.vue";
+import AdminFormActions from "@/components/ui/forms/AdminFormActions.vue";
+import AdminFormSection from "@/components/ui/forms/AdminFormSection.vue";
+import { ADMIN_FIELD_UI } from "@/utils/ui/forms";
 
 interface ServiceFormState {
   name: string;
@@ -131,88 +135,103 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <UForm :schema="schema" :state="state" class="space-y-4" @submit="submit">
-    <div class="grid gap-4 md:grid-cols-2">
-      <UFormField label="Nombre" name="name" class="md:col-span-2">
-        <UInput v-model="state.name" placeholder="Ej. Corte clasico" :disabled="loading" class="w-full" />
-      </UFormField>
+  <UForm :schema="schema" :state="state" class="space-y-6" @submit="submit">
+    <AdminFormSection
+      title="Informacion general"
+      description="Datos comerciales del servicio."
+      :columns="2"
+    >
+      <AdminFieldGroup :columns="2">
+        <UFormField label="Nombre" name="name" class="sm:col-span-2">
+          <UInput v-model="state.name" placeholder="Ej. Corte clasico" :disabled="loading" class="w-full" :ui="ADMIN_FIELD_UI" />
+        </UFormField>
 
-      <div class="md:col-span-2">
-        <UFormField label="Descripcion" name="description">
+        <UFormField label="Descripcion" name="description" class="sm:col-span-2">
           <UTextarea
             v-model="state.description"
             :rows="4"
             placeholder="Resumen corto para agenda y equipo"
             :disabled="loading"
+            class="w-full"
+            :ui="ADMIN_FIELD_UI"
           />
         </UFormField>
-      </div>
 
-      <UFormField label="Precio" name="price">
-        <UInput v-model.number="state.price" type="number" min="0" step="0.01" :disabled="loading" class="w-full" />
-      </UFormField>
+        <UFormField label="Precio" name="price">
+          <UInput v-model.number="state.price" type="number" min="0" step="0.01" :disabled="loading" class="w-full" :ui="ADMIN_FIELD_UI" />
+        </UFormField>
 
-      <UFormField label="Duracion (min)" name="durationMinutes">
-        <UInput v-model.number="state.durationMinutes" type="number" min="5" step="5" :disabled="loading" class="w-full" />
-      </UFormField>
-    </div>
+        <UFormField label="Duracion (min)" name="durationMinutes">
+          <UInput v-model.number="state.durationMinutes" type="number" min="5" step="5" :disabled="loading" class="w-full" :ui="ADMIN_FIELD_UI" />
+        </UFormField>
+      </AdminFieldGroup>
+    </AdminFormSection>
 
-    <UFormField label="Imagen del servicio" name="imageUrl">
-      <div class="space-y-3">
-        <div
-          v-if="previewUrl"
-          class="overflow-hidden rounded-xl border border-slate-200 dark:border-slate-800"
-          :class="state.cropSquare ? 'mx-auto aspect-square max-w-52' : 'h-36 w-full'"
-        >
-          <img
-            :src="previewUrl"
-            :alt="state.name || 'Imagen de servicio'"
-            class="object-cover"
-            :class="state.cropSquare ? 'h-full w-full' : 'h-36 w-full'"
-          >
-        </div>
-        <input
-          ref="imageInputRef"
-          type="file"
-          accept="image/png,image/jpeg,image/webp"
-          class="block w-full cursor-pointer rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 file:mr-4 file:rounded-lg file:border-0 file:bg-violet-100 file:px-3 file:py-2 file:text-sm file:font-medium file:text-violet-700 hover:border-slate-300 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-200 dark:file:bg-violet-950/50 dark:file:text-violet-200"
-          :disabled="loading"
-          @change="handleImageSelection"
-        >
-        <div class="flex items-center justify-between">
-          <p class="text-xs text-slate-500 dark:text-slate-400">
-            JPG, PNG o WebP. Maximo 2MB.
-          </p>
-          <UButton v-if="previewUrl" type="button" size="xs" color="neutral" variant="ghost" :disabled="loading" @click="clearImageSelection">
-            Quitar imagen
-          </UButton>
-        </div>
-        <label class="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
-          <input v-model="state.cropSquare" type="checkbox" class="h-4 w-4 rounded border-slate-300 text-violet-600 focus:ring-violet-500">
-          Recortar a formato cuadrado (1:1)
-        </label>
-      </div>
-    </UFormField>
+    <AdminFormSection
+      title="Imagen y categorizacion"
+      description="Aspecto visual y clasificacion en el catalogo."
+      :columns="1"
+    >
+      <AdminFieldGroup :columns="1">
+        <UFormField label="Imagen del servicio" name="imageUrl">
+          <div class="space-y-3">
+            <div
+              v-if="previewUrl"
+              class="overflow-hidden rounded-xl border border-slate-200 dark:border-slate-800"
+              :class="state.cropSquare ? 'mx-auto aspect-square max-w-52' : 'h-36 w-full'"
+            >
+              <img
+                :src="previewUrl"
+                :alt="state.name || 'Imagen de servicio'"
+                class="object-cover"
+                :class="state.cropSquare ? 'h-full w-full' : 'h-36 w-full'"
+              >
+            </div>
+            <input
+              ref="imageInputRef"
+              type="file"
+              accept="image/png,image/jpeg,image/webp"
+              class="block w-full cursor-pointer rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 file:mr-4 file:rounded-lg file:border-0 file:bg-violet-100 file:px-3 file:py-2 file:text-sm file:font-medium file:text-violet-700 hover:border-slate-300 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-200 dark:file:bg-violet-950/50 dark:file:text-violet-200"
+              :disabled="loading"
+              @change="handleImageSelection"
+            >
+            <div class="flex items-center justify-between">
+              <p class="text-xs text-slate-500 dark:text-slate-400">
+                JPG, PNG o WebP. Maximo 2MB.
+              </p>
+              <UButton v-if="previewUrl" type="button" size="xs" color="neutral" variant="ghost" :disabled="loading" @click="clearImageSelection">
+                Quitar imagen
+              </UButton>
+            </div>
+            <label class="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
+              <input v-model="state.cropSquare" type="checkbox" class="h-4 w-4 rounded border-slate-300 text-violet-600 focus:ring-violet-500">
+              Recortar a formato cuadrado (1:1)
+            </label>
+          </div>
+        </UFormField>
 
-    <UFormField label="Categoria" name="categoryId">
-      <USelect
-        v-model="categoryModel"
-        :items="categoryOptions"
-        label-key="label"
-        value-key="value"
-        placeholder="Sin categoria"
-        class="w-full"
-        :disabled="loading"
-      />
-    </UFormField>
+        <UFormField label="Categoria" name="categoryId">
+          <USelect
+            v-model="categoryModel"
+            :items="categoryOptions"
+            label-key="label"
+            value-key="value"
+            placeholder="Sin categoria"
+            class="w-full"
+            :disabled="loading"
+            :ui="ADMIN_FIELD_UI"
+          />
+        </UFormField>
+      </AdminFieldGroup>
+    </AdminFormSection>
 
-    <UiResponsiveModalActions>
-      <UButton color="neutral" variant="ghost" block class="min-h-11 sm:w-auto" :disabled="loading" @click="emits('cancel')">
+    <AdminFormActions>
+      <UButton color="neutral" variant="ghost" :disabled="loading" @click="emits('cancel')">
         Cancelar
       </UButton>
-      <UButton type="submit" color="primary" block class="min-h-11 sm:w-auto" :loading="loading">
+      <UButton type="submit" color="primary" :loading="loading">
         {{ submitLabel }}
       </UButton>
-    </UiResponsiveModalActions>
+    </AdminFormActions>
   </UForm>
 </template>

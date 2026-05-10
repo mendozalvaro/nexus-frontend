@@ -112,6 +112,7 @@ export const useAuth = () => {
   const {
     clientProfile,
     clientProfileFetchedForOrgId,
+    clientProfileLoading,
     fetchClientProfile,
     clearClientProfileState,
   } = useClientProfileState(user, activeOrganizationId, resolveUser);
@@ -127,7 +128,10 @@ export const useAuth = () => {
       return "client";
     }
 
-    if (role.value === "client" && clientProfileFetchedForOrgId.value !== activeOrganizationId.value) {
+    if (role.value === "client" && (
+      clientProfileFetchedForOrgId.value !== activeOrganizationId.value
+      || clientProfileLoading.value
+    )) {
       return "client";
     }
 

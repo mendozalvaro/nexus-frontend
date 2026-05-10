@@ -5,6 +5,10 @@ import type {
   CatalogCategoryItem,
   CatalogCategoryPayload,
 } from "@/composables/useCatalog";
+import AdminFieldGroup from "@/components/ui/forms/AdminFieldGroup.vue";
+import AdminFormActions from "@/components/ui/forms/AdminFormActions.vue";
+import AdminFormSection from "@/components/ui/forms/AdminFormSection.vue";
+import { ADMIN_FIELD_UI } from "@/utils/ui/forms";
 
 interface CategoryFormState {
   name: string;
@@ -73,30 +77,39 @@ const submit = () => {
 </script>
 
 <template>
-  <UForm :schema="schema" :state="state" class="space-y-4" @submit="submit">
-    <UFormField label="Nombre" name="name">
-      <UInput v-model="state.name" placeholder="Ej. Capilares" :disabled="loading" />
-    </UFormField>
+  <UForm :schema="schema" :state="state" class="space-y-6" @submit="submit">
+    <AdminFormSection
+      title="Datos de la categoria"
+      description="Estructura del catalogo."
+      :columns="1"
+    >
+      <AdminFieldGroup :columns="1">
+        <UFormField label="Nombre" name="name">
+          <UInput v-model="state.name" placeholder="Ej. Capilares" :disabled="loading" class="w-full" :ui="ADMIN_FIELD_UI" />
+        </UFormField>
 
-    <UFormField label="Categoria padre" name="parentId">
-        <USelect
-          v-model="parentModel"
-          :items="options"
-          label-key="label"
-          value-key="value"
-          placeholder="Sin categoria padre"
-          class="w-full"
-          :disabled="loading"
-        />
-      </UFormField>
+        <UFormField label="Categoria padre" name="parentId">
+          <USelect
+            v-model="parentModel"
+            :items="options"
+            label-key="label"
+            value-key="value"
+            placeholder="Sin categoria padre"
+            class="w-full"
+            :disabled="loading"
+            :ui="ADMIN_FIELD_UI"
+          />
+        </UFormField>
+      </AdminFieldGroup>
+    </AdminFormSection>
 
-    <UiResponsiveModalActions>
-      <UButton color="neutral" variant="ghost" block class="min-h-11 sm:w-auto" :disabled="loading" @click="emits('cancel')">
+    <AdminFormActions>
+      <UButton color="neutral" variant="ghost" :disabled="loading" @click="emits('cancel')">
         Cancelar
       </UButton>
-      <UButton type="submit" color="primary" block class="min-h-11 sm:w-auto" :loading="loading">
+      <UButton type="submit" color="primary" :loading="loading">
         {{ submitLabel }}
       </UButton>
-    </UiResponsiveModalActions>
+    </AdminFormActions>
   </UForm>
 </template>

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import AuthLayout from "../../components/auth/AuthLayout.vue";
 import LoginForm from "../../components/auth/LoginForm.vue";
+import { sanitizeInternalRedirect } from "@/utils/redirect";
 
 definePageMeta({
   layout: false,
@@ -32,12 +33,7 @@ const getStringQuery = (value: unknown): string | null => {
 };
 
 const redirect = computed(() => {
-  const target = getStringQuery(route.query.redirect);
-  if (!target || !target.startsWith("/") || target.startsWith("//")) {
-    return null;
-  }
-
-  return target;
+  return sanitizeInternalRedirect(getStringQuery(route.query.redirect));
 });
 
 const registered = computed(() => getStringQuery(route.query.registered) === "true");

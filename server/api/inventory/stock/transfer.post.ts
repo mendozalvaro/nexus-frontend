@@ -33,6 +33,7 @@ export default defineEventHandler(async (event) => {
   const destinationBranch = await getInventoryBranchOrThrow(context, body.destinationBranchId);
   const product = await getInventoryProductOrThrow(context, body.productId);
   const movementCode = await generateInventoryDocumentCode(context, "TRA");
+  const referenceCode = body.referenceCode?.trim() || movementCode;
 
   let sourceMutationApplied = false;
   let sourceMutationPrevious = 0;
@@ -58,7 +59,7 @@ export default defineEventHandler(async (event) => {
       quantity: body.quantity,
       status: "pending",
       observations: body.observations.trim(),
-      internal_note: movementCode,
+      reference_code: referenceCode,
       requested_by: context.userId,
     });
 
@@ -71,7 +72,8 @@ export default defineEventHandler(async (event) => {
       previous_quantity: sourceMutation.previousQuantity,
       new_quantity: sourceMutation.newQuantity,
       reason: body.observations.trim(),
-      note: movementCode,
+      reference_code: referenceCode,
+      note: referenceCode,
       reference_type: "branch_transfer",
       reference_id: transfer.id,
       source_branch_id: body.sourceBranchId,
@@ -100,7 +102,7 @@ export default defineEventHandler(async (event) => {
         product_name: product.name,
         quantity: body.quantity,
         observations: body.observations.trim(),
-        internal_note: movementCode,
+        reference_code: referenceCode,
         movement_code: movementCode,
       },
     });
@@ -113,6 +115,7 @@ export default defineEventHandler(async (event) => {
       transferredQuantity: body.quantity,
       status: transfer.status,
       movementCode,
+      referenceCode,
     };
   } catch (error) {
     if (sourceMutationApplied) {

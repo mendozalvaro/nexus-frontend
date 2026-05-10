@@ -40,7 +40,8 @@ const formInitialValue = computed(() => {
   <UModal
     :open="props.open"
     :title="props.initialValue ? 'Editar servicio' : 'Nuevo servicio'"
-    :description="props.initialValue ? 'Actualiza informacion comercial del servicio.' : 'Crea un servicio sin mezclar aun su cobertura operativa.'"
+    :description="props.initialValue ? 'Actualiza información comercial del servicio.' : 'Crea un servicio sin mezclar aún su cobertura operativa.'"
+    :ui="{ content: 'max-w-4xl' }"
     @update:open="emits('update:open', $event)"
   >
     <template #body>

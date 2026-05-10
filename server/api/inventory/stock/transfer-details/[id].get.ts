@@ -33,7 +33,7 @@ export default defineEventHandler(async (event) => {
       requested_at: string | null;
       received_by: string | null;
       received_at: string | null;
-      internal_note: string | null;
+      reference_code: string | null;
       observations: string | null;
     }>();
 
@@ -102,7 +102,7 @@ export default defineEventHandler(async (event) => {
         id: batchTransfer.id,
         isBatch: true,
         status,
-        internalNote: batchTransfer.internal_note,
+        referenceCode: batchTransfer.reference_code,
         observations: batchTransfer.observations,
         origin: {
           branchId: batchTransfer.source_branch_id,
@@ -197,7 +197,7 @@ export default defineEventHandler(async (event) => {
       id: transfer.id,
       isBatch: false,
       status,
-      internalNote: transfer.internal_note,
+      referenceCode: transfer.reference_code,
       observations: transfer.observations,
       origin: {
         branchId: transfer.source_branch_id,

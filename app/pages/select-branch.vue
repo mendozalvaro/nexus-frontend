@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { sanitizeInternalRedirect } from "@/utils/redirect";
+
 definePageMeta({
   layout: "default",
   middleware: ["permissions"],
@@ -15,12 +17,7 @@ const branches = ref<Awaited<ReturnType<typeof getAccessibleBranches>>>([]);
 const loading = ref(false);
 
 const redirectTarget = computed(() => {
-  const redirect = typeof route.query.redirect === "string" ? route.query.redirect : "/dashboard";
-  if (!redirect.startsWith("/") || redirect.startsWith("//")) {
-    return "/dashboard";
-  }
-
-  return redirect;
+  return sanitizeInternalRedirect(route.query.redirect) ?? "/dashboard";
 });
 
 const selectBranch = async (branchId = selectedBranchId.value) => {

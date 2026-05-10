@@ -80,7 +80,7 @@
   }
 
   .admin-input-shell {
-    @apply rounded-2xl border border-slate-200/85 bg-white/95 text-slate-700 shadow-sm shadow-slate-900/5 transition-[color,background-color,border-color,box-shadow,transform,opacity] duration-200 ease-out motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/85 focus-visible:ring-offset-2 focus-visible:ring-offset-white hover:border-slate-300 dark:border-slate-700/80 dark:bg-slate-950/90 dark:text-slate-100 dark:hover:border-slate-600 dark:focus-visible:ring-primary-400 dark:focus-visible:ring-offset-slate-950;
+    @apply min-h-11 rounded-2xl border border-slate-200/85 bg-white/95 text-base text-slate-700 shadow-sm shadow-slate-900/5 transition-[color,background-color,border-color,box-shadow,transform,opacity] duration-200 ease-out motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/85 focus-visible:ring-offset-2 focus-visible:ring-offset-white hover:border-slate-300 dark:border-slate-700/80 dark:bg-slate-950/90 dark:text-slate-100 dark:hover:border-slate-600 dark:focus-visible:ring-primary-400 dark:focus-visible:ring-offset-slate-950;
   }
 
   .admin-filter-label {

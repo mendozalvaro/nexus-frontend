@@ -49,6 +49,7 @@ export const stockAdjustmentSchema = z.object({
   quantity: z.coerce.number().int("La cantidad debe ser un entero.").positive("La cantidad debe ser mayor a cero."),
   minStockLevel: z.coerce.number().int("El mínimo debe ser un entero.").min(0, "El stock mínimo no puede ser negativo.").nullable().optional(),
   reason: z.string().trim().min(3, "Debes indicar el motivo del ajuste."),
+  referenceCode: z.string().trim().max(120, "El código de referencia no puede superar 120 caracteres.").optional().default(""),
   note: z.string().trim().max(240, "La nota no puede superar 240 caracteres.").optional().default(""),
 });
 
@@ -58,7 +59,7 @@ export const stockTransferSchema = z.object({
   productId: z.string().uuid("El producto seleccionado es inválido."),
   quantity: z.coerce.number().int("La cantidad debe ser un entero.").positive("La cantidad debe ser mayor a cero."),
   observations: z.string().trim().min(3, "Debes indicar las observaciones de la transferencia."),
-  internalNote: z.string().trim().max(240, "La nota interna no puede superar 240 caracteres.").optional().default(""),
+  referenceCode: z.string().trim().max(120, "El código de referencia no puede superar 120 caracteres.").optional().default(""),
 });
 
 const inventoryBatchLineSchema = z.object({
@@ -71,6 +72,7 @@ export const stockAdjustmentBatchSchema = z.object({
   branchId: z.string().uuid("La sucursal seleccionada es inválida."),
   mode: z.enum(["set", "add", "remove"]),
   reason: z.string().trim().min(3, "Debes indicar el motivo del ajuste."),
+  referenceCode: z.string().trim().max(120, "El código de referencia no puede superar 120 caracteres.").optional().default(""),
   note: z.string().trim().max(240, "La nota no puede superar 240 caracteres.").optional().default(""),
   lines: z.array(z.object({
     productId: z.string().uuid("El producto seleccionado es inválido."),
@@ -84,7 +86,7 @@ export const stockTransferBatchSchema = z.object({
   sourceBranchId: z.string().uuid("La sucursal origen es inválida."),
   destinationBranchId: z.string().uuid("La sucursal destino es inválida."),
   observations: z.string().trim().min(3, "Debes indicar las observaciones de la transferencia."),
-  internalNote: z.string().trim().max(240, "La nota interna no puede superar 240 caracteres.").optional().default(""),
+  referenceCode: z.string().trim().max(120, "El código de referencia no puede superar 120 caracteres.").optional().default(""),
   lines: z.array(inventoryBatchLineSchema).min(1, "Debes incluir al menos un producto.").max(50, "Solo se permiten hasta 50 líneas por operación."),
 });
 
@@ -977,6 +979,7 @@ export const runInventoryAdjustBatchExecute = async (
     branchId: string;
     mode: "set" | "add" | "remove";
     reason: string;
+    referenceCode: string;
     note: string;
     lines: Array<{ productId: string; quantity: number; minStockLevel?: number | null }>;
   },
@@ -988,6 +991,7 @@ export const runInventoryAdjustBatchExecute = async (
     p_branch_id: payload.branchId,
     p_mode: payload.mode,
     p_reason: payload.reason,
+    p_reference_code: payload.referenceCode,
     p_note: payload.note,
     p_lines: payload.lines.map((line) => ({
       product_id: line.productId,
@@ -1062,7 +1066,7 @@ export const runInventoryTransferBatchCreate = async (
     sourceBranchId: string;
     destinationBranchId: string;
     observations: string;
-    internalNote: string;
+    referenceCode: string;
     lines: Array<{ productId: string; quantity: number }>;
   },
 ): Promise<InventoryBatchExecutionResult> => {
@@ -1073,7 +1077,7 @@ export const runInventoryTransferBatchCreate = async (
     p_source_branch_id: payload.sourceBranchId,
     p_destination_branch_id: payload.destinationBranchId,
     p_observations: payload.observations,
-    p_internal_note: payload.internalNote,
+    p_reference_code: payload.referenceCode,
     p_lines: payload.lines.map((line) => ({ product_id: line.productId, quantity: line.quantity })),
   } as never);
 

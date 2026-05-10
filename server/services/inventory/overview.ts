@@ -73,6 +73,7 @@ interface InventoryMovementRowView {
   quantity: number;
   previousQuantity: number;
   newQuantity: number;
+  referenceCode: string | null;
   reason: string | null;
   note: string | null;
   referenceType: string | null;
@@ -169,11 +170,12 @@ export const getInventoryOverview = async (context: InventoryContext): Promise<I
   const categoryMap = new Map(categoriesResult.map((c) => [c.id, c]));
 
   let stockData: InventoryStockWithProduct[] = [];
-  if (branchIds && branchIds.length > 0) {
+  const stockBranchIds = branchIds ?? branches.map((b) => b.id);
+  if (stockBranchIds.length > 0) {
     const stockResult = await context.adminClient
       .from("inventory_stock")
       .select("id, branch_id, product_id, quantity, reserved_quantity, min_stock_level, updated_at")
-      .in("branch_id", branchIds);
+      .in("branch_id", stockBranchIds);
     
     if (stockResult.error) {
       throw createError({ statusCode: 500, statusMessage: stockResult.error.message });
@@ -300,6 +302,7 @@ export const getInventoryOverview = async (context: InventoryContext): Promise<I
     quantity: m.quantity,
     previousQuantity: m.previousQuantity,
     newQuantity: m.newQuantity,
+    referenceCode: m.referenceCode,
     reason: m.reason,
     note: m.note,
     referenceType: m.referenceType,

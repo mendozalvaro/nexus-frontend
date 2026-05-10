@@ -15,7 +15,7 @@ type TransferBatchRow = {
   source_branch_id: string;
   destination_branch_id: string;
   status: "pending" | "received" | "cancelled";
-  internal_note: string | null;
+  reference_code: string | null;
   observations: string | null;
 };
 
@@ -170,7 +170,7 @@ export const cancelInventoryTransfer = async (
     previous_quantity: sourceRevert.previousQuantity,
     new_quantity: sourceRevert.newQuantity,
     reason: `Transferencia rechazada: ${transfer.observations ?? "sin observaciones"}`,
-    note: transfer.internal_note,
+    note: transfer.reference_code,
     reference_type: "branch_transfer_cancelled",
     reference_id: transfer.id,
     source_branch_id: transfer.source_branch_id,
@@ -196,7 +196,7 @@ export const cancelInventoryTransfer = async (
       product_name: product.name,
       quantity: transfer.quantity,
       observations: transfer.observations,
-      internal_note: transfer.internal_note,
+      reference_code: transfer.reference_code,
     },
   });
 
@@ -213,7 +213,7 @@ export const cancelInventoryTransferBatch = async (
 ) => {
   const { data: batch, error: batchError } = await context.adminClient
     .from("inventory_transfer_batches" as never)
-    .select("id, source_branch_id, destination_branch_id, status, internal_note, observations")
+    .select("id, source_branch_id, destination_branch_id, status, reference_code, observations")
     .eq("id", batchId)
     .eq("organization_id", context.organizationId)
     .maybeSingle<TransferBatchRow>();
@@ -415,7 +415,7 @@ export const cancelInventoryTransferBatch = async (
       previous_quantity: movement.previousQuantity,
       new_quantity: movement.newQuantity,
       reason: `Transferencia en lote rechazada: ${batch.observations ?? "sin observaciones"}`,
-      note: batch.internal_note,
+      note: batch.reference_code,
       reference_type: "branch_transfer_batch_cancelled",
       reference_id: batch.id,
       source_branch_id: batch.source_branch_id,
@@ -438,7 +438,7 @@ export const cancelInventoryTransferBatch = async (
     extraContext: {
       sourceBranchId: batch.source_branch_id,
       destinationBranchId: batch.destination_branch_id,
-      internal_note: batch.internal_note,
+      reference_code: batch.reference_code,
       observations: batch.observations,
     },
   });
@@ -599,7 +599,7 @@ export const receiveInventoryTransfer = async (
     previous_quantity: destinationMutation.previousQuantity,
     new_quantity: destinationMutation.newQuantity,
     reason: transfer.observations,
-    note: transfer.internal_note,
+    note: transfer.reference_code,
     reference_type: "branch_transfer_reception",
     reference_id: transfer.id,
     source_branch_id: transfer.source_branch_id,
@@ -625,7 +625,7 @@ export const receiveInventoryTransfer = async (
       product_name: product.name,
       quantity: transfer.quantity,
       observations: transfer.observations,
-      internal_note: transfer.internal_note,
+      reference_code: transfer.reference_code,
     },
   });
 

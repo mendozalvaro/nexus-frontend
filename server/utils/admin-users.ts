@@ -17,7 +17,7 @@ import {
 type UserRole = Database["public"]["Enums"]["user_role"];
 export type InternalRole = Exclude<UserRole, "client">;
 
-interface AdminContext {
+export interface AdminContext {
   adminClient: ReturnType<typeof createClient<Database>>;
   organizationId: string;
   userId: string;

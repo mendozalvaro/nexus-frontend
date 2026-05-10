@@ -1,6 +1,11 @@
 <script setup lang="ts">
 import { z } from "zod";
 
+import AdminFieldGroup from "@/components/ui/forms/AdminFieldGroup.vue";
+import AdminFormActions from "@/components/ui/forms/AdminFormActions.vue";
+import AdminFormSection from "@/components/ui/forms/AdminFormSection.vue";
+import { ADMIN_FIELD_UI } from "@/utils/ui/forms";
+
 import type {
   BranchBusinessHours,
   BranchMutationPayload,
@@ -132,34 +137,35 @@ const resolvedSubmitLabel = computed(() => {
     />
 
     <UForm :schema="schema" :state="state" class="space-y-5" @submit="emits('submit', state)">
-      <div class="grid gap-4 md:grid-cols-2">
-        <UFormField label="Nombre" name="name">
-          <UInput v-model="state.name" placeholder="Ej. Casa Matriz Centro" :disabled="loading" />
-        </UFormField>
+      <AdminFormSection
+        title="Datos de la sucursal"
+        description="Define identidad operativa, código corto y datos de contacto."
+        :columns="2"
+      >
+        <AdminFieldGroup :columns="2" class="sm:col-span-2">
+          <UFormField label="Nombre" name="name">
+            <UInput v-model="state.name" placeholder="Ej. Casa Matriz Centro" :disabled="loading" :ui="ADMIN_FIELD_UI" />
+          </UFormField>
 
-        <UFormField label="Código" name="code">
-          <UInput v-model="state.code" placeholder="Ej. CTR-01" :disabled="loading" />
-        </UFormField>
+          <UFormField label="Código" name="code">
+            <UInput v-model="state.code" placeholder="Ej. CTR-01" :disabled="loading" :ui="ADMIN_FIELD_UI" />
+          </UFormField>
 
-        <UFormField label="Dirección" name="address" class="md:col-span-2">
-          <UInput v-model="state.address" placeholder="Dirección o referencia de la sucursal" :disabled="loading" />
-        </UFormField>
+          <UFormField label="Dirección" name="address" class="sm:col-span-2">
+            <UInput v-model="state.address" placeholder="Dirección o referencia de la sucursal" :disabled="loading" :ui="ADMIN_FIELD_UI" />
+          </UFormField>
 
-        <UFormField label="Teléfono" name="phone">
-          <UInput v-model="state.phone" placeholder="+591 70000000" :disabled="loading" />
-        </UFormField>
-      </div>
+          <UFormField label="Teléfono" name="phone">
+            <UInput v-model="state.phone" placeholder="+591 70000000" :disabled="loading" :ui="ADMIN_FIELD_UI" />
+          </UFormField>
+        </AdminFieldGroup>
+      </AdminFormSection>
 
-      <div class="rounded-[1.5rem] border border-slate-200 p-4 dark:border-slate-800">
-        <div class="mb-4">
-          <p class="text-sm font-semibold text-slate-950 dark:text-white">
-            Horarios de atención
-          </p>
-          <p class="text-sm text-slate-500 dark:text-slate-400">
-            Se almacenan dentro de <code>branches.settings.businessHours</code>.
-          </p>
-        </div>
-
+      <AdminFormSection
+        title="Horarios de atención"
+        description="Configura la apertura semanal que se guardará en la configuración de la sucursal."
+        :columns="1"
+      >
         <div class="space-y-3">
           <div
             v-for="day in weekdayOrder"
@@ -180,25 +186,27 @@ const resolvedSubmitLabel = computed(() => {
               v-model="state.settings.businessHours[day].open"
               type="time"
               :disabled="loading || !state.settings.businessHours[day].isOpen"
+              :ui="ADMIN_FIELD_UI"
             />
 
             <UInput
               v-model="state.settings.businessHours[day].close"
               type="time"
               :disabled="loading || !state.settings.businessHours[day].isOpen"
+              :ui="ADMIN_FIELD_UI"
             />
           </div>
         </div>
-      </div>
+      </AdminFormSection>
 
-      <div class="flex flex-wrap justify-end gap-3">
+      <AdminFormActions>
         <UButton color="neutral" variant="ghost" :disabled="loading" @click="emits('cancel')">
           {{ cancelLabel }}
         </UButton>
         <UButton type="submit" color="primary" :loading="loading" :disabled="Boolean(limitMessage) && mode === 'create'">
           {{ resolvedSubmitLabel }}
         </UButton>
-      </div>
+      </AdminFormActions>
     </UForm>
   </div>
 </template>

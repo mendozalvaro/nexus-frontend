@@ -1,6 +1,6 @@
 import type { User } from "@supabase/supabase-js";
 
-import type { Profile, UserRole } from "@/types/auth";
+import type { AuthBootstrapState, Profile, UserRole } from "@/types/auth";
 import type { PermissionGrant } from "@/types/permissions";
 
 const PROFILE_CACHE_TTL_MS = 30_000;
@@ -39,13 +39,14 @@ export interface EnsureUserContextOptions {
 
 export const useUserContext = () => {
   const session = useSupabaseSession();
-  const { resolveUser } = useSessionAccess();
+  const { resolveUser, authBootstrapState } = useSessionAccess();
 
   const user = useState<User | null>("user-context:user", () => null);
   const profile = useState<Profile | null>("auth:profile", () => null);
   const profileLoading = useState<boolean>("user-context:profile-loading", () => false);
   const profileFetchedForUserId = useState<string | null>("auth:profile:fetched-user-id", () => null);
   const profileFetchedAt = useState<number>("auth:profile:fetched-at", () => 0);
+  const contextBootstrapState = useState<AuthBootstrapState>("user-context:bootstrap-state", () => "idle");
 
   const roleState = useState<UserRole | null>("user-context:role", () => null);
   const organizationIdState = useState<string | null>("user-context:organization-id", () => null);
@@ -89,6 +90,7 @@ export const useUserContext = () => {
       organizationIdState.value = null;
       activeOrganizationIdState.value = null;
       activeOrganizationSlugState.value = null;
+      contextBootstrapState.value = authBootstrapState.value === "resolving" ? "resolving" : "unauthenticated";
       return;
     }
 
@@ -98,6 +100,7 @@ export const useUserContext = () => {
       if (!activeOrganizationIdState.value) {
         activeOrganizationIdState.value = profile.value.organization_id;
       }
+      contextBootstrapState.value = "authenticated";
       return;
     }
 
@@ -106,6 +109,7 @@ export const useUserContext = () => {
     if (!activeOrganizationIdState.value) {
       activeOrganizationIdState.value = organizationIdState.value;
     }
+    contextBootstrapState.value = "resolving";
   };
 
   const resetContext = (options: { preserveUser?: boolean } = {}) => {
@@ -127,6 +131,7 @@ export const useUserContext = () => {
     permissionsRevision.value += 1;
     accountStatus.value = DEFAULT_ACCOUNT_STATUS;
     paymentRequired.value = false;
+    contextBootstrapState.value = preserveUser ? "resolving" : "unauthenticated";
   };
 
   const refreshPermissions = async () => {
@@ -163,6 +168,7 @@ export const useUserContext = () => {
     }
 
     syncFromCurrentUser(currentUser);
+    contextBootstrapState.value = "resolving";
     const forceRefresh = options.force === true;
     const cacheIsFresh =
       profileFetchedForUserId.value === currentUser.id
@@ -203,13 +209,19 @@ export const useUserContext = () => {
         activeOrganizationIdState.value = organizationIdState.value;
       }
 
+      contextBootstrapState.value = data ? "authenticated" : "profile_incomplete";
+
       return profile.value;
-    } catch {
+    } catch (error) {
       profile.value = null;
       profileFetchedForUserId.value = null;
       profileFetchedAt.value = 0;
       roleState.value = getMetadataRole(currentUser);
       organizationIdState.value = getMetadataOrganizationId(currentUser);
+      const statusCode = typeof error === "object" && error && "statusCode" in error
+        ? Number((error as { statusCode?: unknown }).statusCode)
+        : NaN;
+      contextBootstrapState.value = statusCode === 403 ? "profile_incomplete" : "unauthenticated";
       return null;
     } finally {
       profileLoading.value = false;
@@ -292,6 +304,7 @@ export const useUserContext = () => {
     selectedBranchId,
     accountStatus,
     paymentRequired,
+    contextBootstrapState,
     permissionGrants,
     permissionsRevision,
     isAdmin,

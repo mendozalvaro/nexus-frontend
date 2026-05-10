@@ -1,6 +1,10 @@
 <script setup lang="ts">
 import { z } from "zod";
 
+import AdminFormActions from "@/components/ui/forms/AdminFormActions.vue";
+import AdminFormSection from "@/components/ui/forms/AdminFormSection.vue";
+import { ADMIN_FIELD_UI } from "@/utils/ui/forms";
+
 import type { BranchInventoryItem, BranchOption, BranchTransferPayload } from "@/composables/useBranches";
 
 const props = withDefaults(defineProps<{
@@ -56,8 +60,8 @@ const selectedInventory = computed(() => {
 
 const schema = computed(() =>
   z.object({
-    destinationBranchId: z.string().uuid("Selecciona una sucursal destino valida."),
-    productId: z.string().uuid("Selecciona un producto valido."),
+    destinationBranchId: z.string().uuid("Selecciona una sucursal destino válida."),
+    productId: z.string().uuid("Selecciona un producto válido."),
     quantity: z.number().int("Ingresa una cantidad entera.").positive("La cantidad debe ser mayor a cero."),
     note: z.string().trim().max(240, "La nota no puede superar 240 caracteres.").optional(),
   }).superRefine((value, context) => {
@@ -100,6 +104,7 @@ const submit = () => {
     :open="open"
     title="Transferir stock"
     :description="`Mueve inventario disponible desde ${sourceBranchName} hacia otra sucursal activa.`"
+    :ui="{ content: 'max-w-4xl' }"
     @update:open="emits('update:open', $event)"
   >
     <template #body>
@@ -114,53 +119,62 @@ const submit = () => {
         />
 
         <UForm :schema="schema" :state="state" class="space-y-4 md:space-y-5" @submit="submit">
-          <UFormField label="Sucursal destino" name="destinationBranchId">
-            <div class="rounded-xl border border-slate-200 bg-white px-3 dark:border-slate-800 dark:bg-slate-950">
-              <select v-model="state.destinationBranchId" class="min-h-10 w-full bg-transparent text-sm outline-none" :disabled="loading || Boolean(upgradeMessage)">
-                <option value="">Selecciona una sucursal</option>
-                <option v-for="branch in destinationBranches" :key="branch.value" :value="branch.value">
-                  {{ branch.label }}
-                </option>
-              </select>
-            </div>
-          </UFormField>
+          <AdminFormSection
+            title="Transferencia"
+            description="Selecciona sucursal destino, producto y cantidad a mover."
+            :columns="2"
+          >
+            <UFormField label="Sucursal destino" name="destinationBranchId">
+              <USelect
+                v-model="state.destinationBranchId"
+                :items="destinationBranches"
+                label-key="label"
+                value-key="value"
+                placeholder="Selecciona una sucursal"
+                class="w-full"
+                :disabled="loading || Boolean(upgradeMessage)"
+                :ui="ADMIN_FIELD_UI"
+              />
+            </UFormField>
 
-          <UFormField label="Producto" name="productId">
-            <div class="rounded-xl border border-slate-200 bg-white px-3 dark:border-slate-800 dark:bg-slate-950">
-              <select v-model="state.productId" class="min-h-10 w-full bg-transparent text-sm outline-none" :disabled="loading || Boolean(upgradeMessage)">
-                <option value="">Selecciona un producto</option>
-                <option
-                  v-for="item in inventoryItems"
-                  :key="item.productId"
-                  :value="item.productId"
-                  :disabled="item.availableQuantity <= 0"
-                >
-                  {{ item.productName }}{{ item.sku ? ` (${item.sku})` : "" }} · Disponible: {{ item.availableQuantity }}
-                </option>
-              </select>
-            </div>
-          </UFormField>
+            <UFormField label="Producto" name="productId">
+              <USelect
+                v-model="state.productId"
+                :items="inventoryItems.map((item) => ({
+                  label: `${item.productName}${item.sku ? ` (${item.sku})` : ''} · Disponible: ${item.availableQuantity}`,
+                  value: item.productId,
+                  disabled: item.availableQuantity <= 0,
+                }))"
+                label-key="label"
+                value-key="value"
+                placeholder="Selecciona un producto"
+                class="w-full"
+                :disabled="loading || Boolean(upgradeMessage)"
+                :ui="ADMIN_FIELD_UI"
+              />
+            </UFormField>
 
-          <UFormField label="Cantidad" name="quantity">
-            <UInput
-              v-model.number="state.quantity"
-              type="number"
-              min="1"
-              :max="selectedInventory?.availableQuantity ?? 1"
-              :disabled="loading || Boolean(upgradeMessage)"
-              :ui="{ base: 'min-h-11 text-base' }"
-            />
-          </UFormField>
+            <UFormField label="Cantidad" name="quantity">
+              <UInput
+                v-model.number="state.quantity"
+                type="number"
+                min="1"
+                :max="selectedInventory?.availableQuantity ?? 1"
+                :disabled="loading || Boolean(upgradeMessage)"
+                :ui="ADMIN_FIELD_UI"
+              />
+            </UFormField>
 
-          <UFormField label="Nota interna" name="note">
-            <UTextarea
-              v-model="state.note"
-              :rows="3"
-              placeholder="Opcional: motivo o referencia de la transferencia"
-              :disabled="loading || Boolean(upgradeMessage)"
-              :ui="{ base: 'text-base' }"
-            />
-          </UFormField>
+            <UFormField label="Observaciones" name="note">
+              <UTextarea
+                v-model="state.note"
+                :rows="3"
+                placeholder="Opcional: motivo o referencia de la transferencia"
+                :disabled="loading || Boolean(upgradeMessage)"
+                :ui="ADMIN_FIELD_UI"
+              />
+            </UFormField>
+          </AdminFormSection>
 
           <div
             v-if="selectedInventory"
@@ -174,14 +188,14 @@ const submit = () => {
             </p>
           </div>
 
-          <UiResponsiveModalActions>
+          <AdminFormActions>
             <UButton color="neutral" variant="ghost" block class="min-h-11 sm:w-auto" :disabled="loading" @click="emits('update:open', false)">
               Cancelar
             </UButton>
             <UButton type="submit" color="primary" icon="i-lucide-send" block class="min-h-11 sm:w-auto" :loading="loading" :disabled="Boolean(upgradeMessage)">
               Confirmar transferencia
             </UButton>
-          </UiResponsiveModalActions>
+          </AdminFormActions>
         </UForm>
       </div>
     </template>

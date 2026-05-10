@@ -57,10 +57,10 @@ const columns = computed(() => {
 
   return [
     {
-      accessorKey: "note",
+      accessorKey: "referenceCode",
       header: "Codigo",
       cell: ({ row }: { row: { original: InventoryMovementRowView } }) =>
-        h("span", { class: "text-xs text-slate-700 dark:text-slate-300" }, row.original.note ?? "--"),
+        h("span", { class: "text-xs text-slate-700 dark:text-slate-300" }, row.original.referenceCode ?? row.original.note ?? "--"),
     },
     {
       accessorKey: "createdAt",

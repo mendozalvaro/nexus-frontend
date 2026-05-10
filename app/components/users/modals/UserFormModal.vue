@@ -2,6 +2,10 @@
 import { z } from "zod";
 
 import type { UserBranchOption } from "@/composables/useUsers";
+import AdminFieldGroup from "@/components/ui/forms/AdminFieldGroup.vue";
+import AdminFormActions from "@/components/ui/forms/AdminFormActions.vue";
+import AdminFormSection from "@/components/ui/forms/AdminFormSection.vue";
+import { ADMIN_FIELD_UI } from "@/utils/ui/forms";
 
 type FormRole = "manager" | "employee";
 
@@ -155,7 +159,7 @@ const description = computed(() =>
 </script>
 
 <template>
-  <UModal :open="open" :title="title" :description="description" @update:open="emits('update:open', $event)">
+  <UModal :open="open" :title="title" :description="description" :ui="{ content: 'max-w-2xl' }" @update:open="emits('update:open', $event)">
     <template #body>
       <div class="space-y-4">
         <UAlert
@@ -168,47 +172,57 @@ const description = computed(() =>
         />
 
         <UForm :schema="schema" :state="state" class="space-y-4" @submit="emits('submit', state)">
-          <UFormField label="Nombre completo" name="fullName">
-            <UInput v-model="state.fullName" placeholder="Ej. Maria Perez" :disabled="loading" />
-          </UFormField>
+          <AdminFormSection
+            title="Datos del usuario"
+            description="Define identidad, acceso y sucursal principal para este miembro del equipo."
+            :columns="1"
+          >
+            <AdminFieldGroup :columns="2">
+              <UFormField label="Nombre completo" name="fullName">
+                <UInput v-model="state.fullName" placeholder="Ej. Maria Perez" :disabled="loading" :ui="ADMIN_FIELD_UI" class="w-full"/>
+              </UFormField>
 
-          <UFormField label="Email" name="email">
-            <UInput v-model="state.email" type="email" placeholder="equipo@nexuspos.com" :disabled="loading" />
-          </UFormField>
+              <UFormField label="Email" name="email">
+                <UInput v-model="state.email" type="email" placeholder="equipo@nexuspos.com" :disabled="loading" :ui="ADMIN_FIELD_UI" class="w-full"/>
+              </UFormField>
 
-          <UFormField v-if="mode === 'create'" label="Contrasena temporal" name="password">
-            <UInput v-model="state.password" type="password" placeholder="Minimo 8 caracteres" :disabled="loading" />
-          </UFormField>
+              <UFormField v-if="mode === 'create'" label="Contrasena temporal" name="password">
+                <UInput v-model="state.password" type="password" placeholder="Minimo 8 caracteres" :disabled="loading" :ui="ADMIN_FIELD_UI" class="w-full"/>
+              </UFormField>
 
-          <UFormField label="Rol" name="role">
-            <USelect
-              v-model="state.role"
-              :items="roleOptions"
-              label-key="label"
-              value-key="value"
-              class="w-full"
-            />
-          </UFormField>
+              <UFormField label="Rol" name="role">
+                <USelect
+                  v-model="state.role"
+                  :items="roleOptions"
+                  label-key="label"
+                  value-key="value"
+                  class="w-full"
+                  :ui="ADMIN_FIELD_UI"
+                />
+              </UFormField>
 
-          <UFormField label="Sucursal principal" name="branchId">
-            <USelect
-              v-model="branchModel"
-              :items="branchOptions"
-              label-key="label"
-              value-key="value"
-              placeholder="Selecciona una sucursal"
-              class="w-full"
-            />
-          </UFormField>
+              <UFormField label="Sucursal principal" name="branchId">
+                <USelect
+                  v-model="branchModel"
+                  :items="branchOptions"
+                  label-key="label"
+                  value-key="value"
+                  placeholder="Selecciona una sucursal"
+                  class="w-full"
+                  :ui="ADMIN_FIELD_UI"
+                />
+              </UFormField>
+            </AdminFieldGroup>
+          </AdminFormSection>
 
-          <div class="flex justify-end gap-3 pt-2">
+          <AdminFormActions>
             <UButton color="neutral" variant="ghost" :disabled="loading" @click="emits('update:open', false)">
               Cancelar
             </UButton>
             <UButton type="submit" color="primary" :loading="loading" :disabled="Boolean(limitMessage) && mode === 'create'">
               {{ mode === "create" ? "Crear usuario" : "Guardar cambios" }}
             </UButton>
-          </div>
+          </AdminFormActions>
         </UForm>
       </div>
     </template>

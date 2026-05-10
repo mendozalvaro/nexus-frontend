@@ -1,6 +1,7 @@
 import type { User } from "@supabase/supabase-js";
 
 import type { Database } from "@/types/database.types";
+import type { AuthBootstrapState } from "@/types/auth";
 
 const USER_VALIDATION_TTL_MS = 30_000;
 let pendingUserPromise: Promise<User | null> | null = null;
@@ -21,6 +22,7 @@ export const useSessionAccess = () => {
     () => null,
   );
   const validatedAt = useState<number>("session-access:validated-at", () => 0);
+  const authBootstrapState = useState<AuthBootstrapState>("session-access:bootstrap-state", () => "idle");
 
   const resolveAccessToken = async (): Promise<string | null> => {
     const reactiveToken = session.value?.access_token ?? null;
@@ -48,6 +50,7 @@ export const useSessionAccess = () => {
       authenticatedUser.value = null;
       validatedAccessToken.value = null;
       validatedAt.value = 0;
+      authBootstrapState.value = "unauthenticated";
       return null;
     }
 
@@ -72,11 +75,13 @@ export const useSessionAccess = () => {
     }
 
     const loader = (async (): Promise<User | null> => {
+      authBootstrapState.value = "resolving";
       const { data: userData, error: userError } = await supabase.auth.getUser();
       if (!userError && userData.user) {
         authenticatedUser.value = userData.user;
         validatedAccessToken.value = token;
         validatedAt.value = Date.now();
+        authBootstrapState.value = "authenticated";
         return userData.user;
       }
 
@@ -87,6 +92,7 @@ export const useSessionAccess = () => {
       authenticatedUser.value = null;
       validatedAccessToken.value = null;
       validatedAt.value = 0;
+      authBootstrapState.value = "unauthenticated";
       return null;
     })();
 
@@ -106,6 +112,7 @@ export const useSessionAccess = () => {
   return {
     session,
     authenticatedUser,
+    authBootstrapState,
     resolveUser,
     resolveAccessToken,
   };

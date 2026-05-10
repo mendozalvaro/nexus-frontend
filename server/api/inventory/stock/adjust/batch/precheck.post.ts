@@ -34,6 +34,7 @@ export default defineEventHandler(async (event) => {
     isValid: rows.every((row) => row.isValid),
     errors: rows.filter((row) => !row.isValid),
     rows,
+    requestedReferenceCode: body.referenceCode.trim() || null,
     normalization,
     warnings: getInventoryBatchNormalizationWarnings(normalization),
   };

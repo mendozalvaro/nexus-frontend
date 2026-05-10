@@ -513,6 +513,7 @@ export type Database = {
           previous_quantity: number
           product_id: string
           quantity: number
+          reference_code: string | null
           reason: string | null
           reference_id: string | null
           reference_type: string | null
@@ -531,6 +532,7 @@ export type Database = {
           previous_quantity: number
           product_id: string
           quantity: number
+          reference_code?: string | null
           reason?: string | null
           reference_id?: string | null
           reference_type?: string | null
@@ -549,6 +551,7 @@ export type Database = {
           previous_quantity?: number
           product_id?: string
           quantity?: number
+          reference_code?: string | null
           reason?: string | null
           reference_id?: string | null
           reference_type?: string | null
@@ -730,9 +733,9 @@ export type Database = {
           destination_branch_id: string
           id: string
           idempotency_key: string
-          internal_note: string | null
           observations: string | null
           organization_id: string
+          reference_code: string | null
           received_at: string | null
           received_by: string | null
           requested_at: string
@@ -748,9 +751,9 @@ export type Database = {
           destination_branch_id: string
           id?: string
           idempotency_key: string
-          internal_note?: string | null
           observations?: string | null
           organization_id: string
+          reference_code?: string | null
           received_at?: string | null
           received_by?: string | null
           requested_at?: string
@@ -766,9 +769,9 @@ export type Database = {
           destination_branch_id?: string
           id?: string
           idempotency_key?: string
-          internal_note?: string | null
           observations?: string | null
           organization_id?: string
+          reference_code?: string | null
           received_at?: string | null
           received_by?: string | null
           requested_at?: string
@@ -824,11 +827,11 @@ export type Database = {
           created_at: string
           destination_branch_id: string
           id: string
-          internal_note: string | null
           observations: string | null
           organization_id: string
           product_id: string
           quantity: number
+          reference_code: string | null
           received_at: string | null
           received_by: string | null
           requested_at: string
@@ -843,11 +846,11 @@ export type Database = {
           created_at?: string
           destination_branch_id: string
           id?: string
-          internal_note?: string | null
           observations?: string | null
           organization_id: string
           product_id: string
           quantity: number
+          reference_code?: string | null
           received_at?: string | null
           received_by?: string | null
           requested_at?: string
@@ -862,11 +865,11 @@ export type Database = {
           created_at?: string
           destination_branch_id?: string
           id?: string
-          internal_note?: string | null
           observations?: string | null
           organization_id?: string
           product_id?: string
           quantity?: number
+          reference_code?: string | null
           received_at?: string | null
           received_by?: string | null
           requested_at?: string
@@ -1938,17 +1941,18 @@ export type Database = {
         Args: never
         Returns: Database["public"]["Enums"]["user_role"]
       }
-      inventory_adjust_batch_execute: {
-        Args: {
-          p_branch_id: string
-          p_idempotency_key: string
-          p_lines: Json
-          p_mode: string
-          p_note: string
-          p_organization_id: string
-          p_reason: string
-          p_user_id: string
-        }
+        inventory_adjust_batch_execute: {
+          Args: {
+            p_branch_id: string
+            p_idempotency_key: string
+            p_lines: Json
+            p_mode: string
+            p_note: string
+            p_organization_id: string
+            p_reference_code: string
+            p_reason: string
+            p_user_id: string
+          }
         Returns: {
           batch_id: string
           idempotent: boolean
@@ -1977,10 +1981,10 @@ export type Database = {
         Args: {
           p_destination_branch_id: string
           p_idempotency_key: string
-          p_internal_note: string
           p_lines: Json
           p_observations: string
           p_organization_id: string
+          p_reference_code: string
           p_source_branch_id: string
           p_user_id: string
         }

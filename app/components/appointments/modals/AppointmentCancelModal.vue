@@ -1,6 +1,10 @@
 <script setup lang="ts">
 import { z } from "zod";
 
+import AdminFormActions from "@/components/ui/forms/AdminFormActions.vue";
+import AdminFormSection from "@/components/ui/forms/AdminFormSection.vue";
+import { ADMIN_FIELD_UI } from "@/utils/ui/forms";
+
 const props = withDefaults(defineProps<{
   open: boolean;
   loading?: boolean;
@@ -29,7 +33,7 @@ watch(
 );
 
 const schema = z.object({
-  reason: z.string().trim().min(4, "Debes indicar el motivo de la cancelacion.").max(280, "El motivo no puede superar 280 caracteres."),
+  reason: z.string().trim().min(4, "Debes indicar el motivo de la cancelación.").max(280, "El motivo no puede superar 280 caracteres."),
 });
 
 const submit = () => {
@@ -41,7 +45,8 @@ const submit = () => {
   <UModal
     :open="open"
     title="Cancelar cita"
-    description="Esta accion conserva el historial y registra el motivo para auditoria."
+    description="Esta acción conserva el historial y registra el motivo para auditoría."
+    :ui="{ content: 'max-w-xl' }"
     @update:open="emits('update:open', $event)"
   >
     <template #body>
@@ -51,24 +56,30 @@ const submit = () => {
         </p>
 
         <UForm :schema="schema" :state="state" class="space-y-4" @submit="submit">
-          <UFormField label="Motivo" name="reason">
-            <UTextarea
-              v-model="state.reason"
-              :rows="4"
-              placeholder="Ej. Cliente solicito reagendar, ausencia, incidencia operativa."
-              :disabled="loading"
-              :ui="{ base: 'text-base' }"
-            />
-          </UFormField>
+          <AdminFormSection
+            title="Motivo de cancelación"
+            description="Explica la razón operativa o del cliente para conservar la trazabilidad."
+            :columns="1"
+          >
+            <UFormField label="Motivo" name="reason">
+              <UTextarea
+                v-model="state.reason"
+                :rows="4"
+                placeholder="Ej. Cliente solicitó reagendar, ausencia, incidencia operativa."
+                :disabled="loading"
+                :ui="ADMIN_FIELD_UI"
+              />
+            </UFormField>
+          </AdminFormSection>
 
-          <UiResponsiveModalActions>
+          <AdminFormActions>
             <UButton color="neutral" variant="ghost" block class="min-h-11 sm:w-auto" :disabled="loading" @click="emits('update:open', false)">
               Volver
             </UButton>
             <UButton type="submit" color="error" block class="min-h-11 sm:w-auto" :loading="loading">
-              Confirmar cancelacion
+              Confirmar cancelación
             </UButton>
-          </UiResponsiveModalActions>
+          </AdminFormActions>
         </UForm>
       </div>
     </template>

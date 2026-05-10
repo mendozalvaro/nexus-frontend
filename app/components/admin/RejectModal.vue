@@ -1,4 +1,10 @@
 <script setup lang="ts">
+import { z } from "zod";
+
+import AdminFormActions from "@/components/ui/forms/AdminFormActions.vue";
+import AdminFormSection from "@/components/ui/forms/AdminFormSection.vue";
+import { ADMIN_FIELD_UI } from "@/utils/ui/forms";
+
 import type { PaymentValidationListRow } from "@/composables/usePaymentSystem";
 
 const props = defineProps<{
@@ -20,21 +26,36 @@ const reasonOptions = [
   "Otro",
 ] as const;
 
-const selectedReason = ref<(typeof reasonOptions)[number]>("Datos incorrectos");
-const customReason = ref("");
+const state = reactive({
+  selectedReason: "Datos incorrectos" as (typeof reasonOptions)[number],
+  customReason: "",
+});
+
+const schema = z.object({
+  selectedReason: z.enum(reasonOptions),
+  customReason: z.string(),
+}).superRefine((value, context) => {
+  if (value.selectedReason === "Otro" && value.customReason.trim().length < 4) {
+    context.addIssue({
+      code: "custom",
+      path: ["customReason"],
+      message: "Explica el motivo con al menos 4 caracteres.",
+    });
+  }
+});
 
 watch(
   () => props.open,
   (isOpen) => {
     if (!isOpen) {
-      selectedReason.value = "Datos incorrectos";
-      customReason.value = "";
+      state.selectedReason = "Datos incorrectos";
+      state.customReason = "";
     }
   },
 );
 
 const canSubmit = computed(() =>
-  selectedReason.value !== "Otro" || customReason.value.trim().length >= 4,
+  state.selectedReason !== "Otro" || state.customReason.trim().length >= 4,
 );
 
 const handleSubmit = () => {
@@ -42,9 +63,9 @@ const handleSubmit = () => {
     return;
   }
 
-  const finalReason = selectedReason.value === "Otro"
-    ? customReason.value.trim()
-    : selectedReason.value;
+  const finalReason = state.selectedReason === "Otro"
+    ? state.customReason.trim()
+    : state.selectedReason;
 
   emit("submit", finalReason);
 };
@@ -55,64 +76,52 @@ const handleSubmit = () => {
     :open="open"
     title="Rechazar comprobante"
     :description="validation ? `Indica el motivo para ${validation.organizationName}.` : 'Selecciona un motivo de rechazo.'"
+    :ui="{ content: 'max-w-xl' }"
     @update:open="emit('update:open', $event)"
   >
     <template #body>
-      <div class="space-y-4">
-        <div class="space-y-2">
-          <label class="text-sm font-medium text-slate-700 dark:text-slate-200">
-            Motivo
-          </label>
+      <UForm :schema="schema" :state="state" class="space-y-4" @submit="handleSubmit">
+        <AdminFormSection
+          title="Motivo del rechazo"
+          description="Selecciona la razón principal y agrega detalle si el caso no encaja en los motivos comunes."
+          :columns="1"
+        >
           <div class="grid gap-2">
             <button
               v-for="option in reasonOptions"
               :key="option"
               type="button"
               class="rounded-xl border px-3 py-2 text-left text-sm transition"
-              :class="selectedReason === option
+              :class="state.selectedReason === option
                 ? 'border-error-400 bg-error-50 text-error-700 dark:border-error-700 dark:bg-error-950/30 dark:text-error-300'
                 : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-900'"
-              @click="selectedReason = option"
+              @click="state.selectedReason = option"
             >
               {{ option }}
             </button>
           </div>
-        </div>
 
-        <div v-if="selectedReason === 'Otro'" class="space-y-2">
-          <label class="text-sm font-medium text-slate-700 dark:text-slate-200">
-            Detalle adicional
-          </label>
-          <textarea
-            v-model="customReason"
-            rows="4"
-            class="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none ring-0 transition focus:border-error-400 dark:border-slate-800 dark:bg-slate-950"
-            placeholder="Explica por que se rechaza el comprobante."
-          />
-        </div>
-      </div>
+          <UFormField v-if="state.selectedReason === 'Otro'" label="Detalle adicional" name="customReason">
+            <UTextarea
+              v-model="state.customReason"
+              :rows="4"
+              placeholder="Explica por qué se rechaza el comprobante."
+              :ui="ADMIN_FIELD_UI"
+            />
+          </UFormField>
+        </AdminFormSection>
+      </UForm>
     </template>
 
     <template #footer>
-      <div class="flex gap-3">
-        <UButton
-          color="neutral"
-          variant="soft"
-          block
-          @click="emit('update:open', false)"
-        >
+      <AdminFormActions>
+        <UButton color="neutral" variant="soft" block @click="emit('update:open', false)">
           Cancelar
         </UButton>
-        <UButton
-          color="error"
-          block
-          :loading="submitting"
-          :disabled="!canSubmit"
-          @click="handleSubmit"
-        >
+        <UButton color="error" block :loading="submitting" :disabled="!canSubmit" @click="handleSubmit">
           Confirmar rechazo
         </UButton>
-      </div>
+      </AdminFormActions>
     </template>
   </UModal>
 </template>

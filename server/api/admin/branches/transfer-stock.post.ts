@@ -79,7 +79,7 @@ export default defineEventHandler(async (event) => {
       sourceBranchId: body.sourceBranchId,
       destinationBranchId: body.destinationBranchId,
       observations,
-      internalNote: movementCode,
+      referenceCode: movementCode,
       lines: [{ productId: body.productId, quantity: body.quantity }],
     },
   );
