@@ -9,6 +9,20 @@ dist/
 .nuxtignore
 .nuxtrc
 
+# Build & Deployment
+.wrangler/
+
+# Local development & IDE
+.cursor/
+.opencode/
+.ai/
+.codex/
+.qwen/
+.github
+127.0.0.1/
+query_temp.sql
+snapshot_register.json
+
 # Environment
 .env
 .env.*
@@ -33,6 +47,11 @@ yarn-error.log*
 
 # Supabase CLI (local development only)
 supabase/
+!supabase/
+supabase/*
+!supabase/migrations/
+supabase/migrations/*
+!supabase/migrations/20260514_clients_global_billing_per_org.sql
 !.supabase/wrappers/
 
 # Types (regenerable)

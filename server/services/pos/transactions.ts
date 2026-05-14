@@ -7,6 +7,7 @@ import type { H3Event } from "h3";
 type TransactionRow = Database["public"]["Tables"]["transactions"]["Row"];
 type TransactionItemRow = Database["public"]["Tables"]["transaction_items"]["Row"];
 type ProfileRow = Database["public"]["Tables"]["profiles"]["Row"];
+type ClientRow = Database["public"]["Tables"]["clients"]["Row"];
 type BranchRow = Database["public"]["Tables"]["branches"]["Row"];
 
 export interface POSTransactionHistoryItem {
@@ -97,11 +98,11 @@ export async function getPOSTransactions(
       : Promise.resolve({ data: [] as Array<Pick<ProfileRow, "id" | "full_name">>, error: null }),
     customerIds.length > 0
       ? context.adminClient
-        .from("profiles")
-        .select("id, full_name, phone, email")
+        .from("clients")
+        .select("id, first_name, last_name, phone, email")
         .in("id", customerIds)
-        .returns<Array<Pick<ProfileRow, "id" | "full_name" | "phone" | "email">>>()
-      : Promise.resolve({ data: [] as Array<Pick<ProfileRow, "id" | "full_name" | "phone" | "email">>, error: null }),
+        .returns<Array<Pick<ClientRow, "id" | "first_name" | "last_name" | "phone" | "email">>>()
+      : Promise.resolve({ data: [] as Array<Pick<ClientRow, "id" | "first_name" | "last_name" | "phone" | "email">>, error: null }),
     branchIds.length > 0
       ? context.adminClient
         .from("branches")
@@ -161,7 +162,7 @@ export async function getPOSTransactions(
         branchName: branchMap.get(transaction.branch_id) ?? "Sucursal",
         employeeId: transaction.employee_id,
         employeeName: employeeMap.get(transaction.employee_id) ?? "Equipo",
-        customerName: linkedCustomer?.full_name ?? snapshotCustomer?.fullName ?? "Cliente walk-in",
+        customerName: (linkedCustomer ? [linkedCustomer.first_name, linkedCustomer.last_name].filter(Boolean).join(" ").trim() : "") || snapshotCustomer?.fullName || "Cliente walk-in",
         customerPhone: linkedCustomer?.phone ?? snapshotCustomer?.phone ?? null,
         finalAmount: Number(transaction.final_amount),
         paymentMethod: transaction.payment_method ?? "cash",

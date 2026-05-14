@@ -5,9 +5,10 @@ import {
   assertRoleAccess,
   buildAppointmentWindow,
   createAppointmentSchema,
-  createAppointmentGuestCustomer,
+  createAppointmentWalkInCustomer,
   getAppointmentBranchOrThrow,
   getAppointmentEmployeeOrThrow,
+  resolveClientIdByUserOrThrow,
   getAppointmentServiceOrThrow,
   insertAuditLog,
   mapAppointmentMutationError,
@@ -46,13 +47,14 @@ export default defineEventHandler(async (event) => {
   let guestCustomerId: string | null = null;
 
   if (context.role === "client") {
-    customerId = context.userId;
+    customerId = await resolveClientIdByUserOrThrow(context, context.userId);
     customerName = context.profile.full_name;
     customerPhone = context.profile.phone;
   } else if (body.walkIn) {
-    const guest = await createAppointmentGuestCustomer(context, body.walkIn, branch.id);
+    const guest = await createAppointmentWalkInCustomer(context, body.walkIn);
+    customerId = guest.id;
     guestCustomerId = guest.id;
-    customerName = guest.full_name;
+    customerName = [guest.first_name, guest.last_name].filter(Boolean).join(" ").trim() || body.walkIn.fullName.trim();
     customerPhone = guest.phone;
   }
 

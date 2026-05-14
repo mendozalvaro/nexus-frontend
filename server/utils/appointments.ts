@@ -9,10 +9,10 @@ import type { Database, Json } from "@/types/database.types";
 type UserRole = Database["public"]["Enums"]["user_role"];
 type AppointmentStatus = Database["public"]["Enums"]["appointment_status"];
 type ProfileRow = Database["public"]["Tables"]["profiles"]["Row"];
+type ClientRow = Database["public"]["Tables"]["clients"]["Row"];
 type BranchRow = Database["public"]["Tables"]["branches"]["Row"];
 type ServiceRow = Database["public"]["Tables"]["services"]["Row"];
 type AppointmentRow = Database["public"]["Tables"]["appointments"]["Row"];
-type GuestCustomerRow = Database["public"]["Tables"]["guest_customers"]["Row"];
 type AssignmentRow = Database["public"]["Tables"]["employee_branch_assignments"]["Row"];
 
 const ACTIVE_APPOINTMENT_STATUSES: AppointmentStatus[] = ["pending", "confirmed", "in_progress"];
@@ -56,6 +56,26 @@ export interface AppointmentContext {
   profile: ProfileRow;
   organizationId: string;
 }
+
+export const resolveClientIdByUserOrThrow = async (
+  context: AppointmentContext,
+  userId: string,
+): Promise<string> => {
+  const { data, error } = await context.adminClient
+    .from("clients")
+    .select("id")
+    .eq("user_id", userId)
+    .maybeSingle<Pick<ClientRow, "id">>();
+
+  if (error || !data) {
+    throw createError({
+      statusCode: 403,
+      statusMessage: "No se pudo resolver el cliente asociado al usuario autenticado.",
+    });
+  }
+
+  return data.id;
+};
 
 export const resolveOrganizationIdForAppointmentProfile = (
   profile: Pick<ProfileRow, "organization_id">,
@@ -430,12 +450,13 @@ export const assertEmployeeSelectionAllowed = (
 export const assertClientMutationAllowed = (
   context: AppointmentContext,
   appointment: AppointmentRow | null,
+  currentClientId?: string | null,
 ) => {
   if (context.role !== "client") {
     return;
   }
 
-  if (appointment && appointment.customer_id !== context.userId) {
+  if (appointment && appointment.customer_id !== currentClientId) {
     throw createError({
       statusCode: 403,
       statusMessage: "Solo puedes gestionar tus propias citas.",
@@ -480,32 +501,67 @@ export const validateEmployeeAvailability = async (
   }
 };
 
-export const createAppointmentGuestCustomer = async (
+export const createAppointmentWalkInCustomer = async (
   context: AppointmentContext,
   payload: z.output<typeof guestWalkInSchema>,
-  branchId: string,
-): Promise<GuestCustomerRow> => {
-  const { data, error } = await context.adminClient
-    .from("guest_customers")
-    .insert({
-      organization_id: context.organizationId,
-      branch_id: branchId,
-      created_by: context.userId,
-      full_name: payload.fullName.trim(),
-      phone: sanitizeNullableString(payload.phone),
-      notes: sanitizeNullableString(payload.notes),
-    })
-    .select("*")
-    .single<GuestCustomerRow>();
+): Promise<ClientRow> => {
+  const [firstName, ...lastNames] = payload.fullName.trim().split(/\s+/).filter(Boolean);
+  const phone = sanitizeNullableString(payload.phone);
 
-  if (error || !data) {
+  let client: ClientRow | null = null;
+
+  if (phone) {
+    const { data } = await context.adminClient
+      .from("clients")
+      .select("*")
+      .eq("phone", phone)
+      .maybeSingle<ClientRow>();
+    client = data ?? null;
+  }
+
+  if (!client) {
+    const { data, error } = await context.adminClient
+      .from("clients")
+      .insert({
+        user_id: null,
+        first_name: firstName || "Cliente",
+        last_name: lastNames.join(" ") || null,
+        phone,
+        email: null,
+        billing_data: {},
+        preferences: {},
+      })
+      .select("*")
+      .single<ClientRow>();
+
+    if (error || !data) {
+      throw createError({
+        statusCode: 500,
+        statusMessage: "No se pudo registrar el cliente temporal del walk-in.",
+      });
+    }
+    client = data;
+  }
+
+  const { error: linkError } = await context.adminClient
+    .from("client_org")
+    .upsert([{
+      client_id: client.id,
+      organization_id: context.organizationId,
+      status: "active",
+      billing_data: {},
+    }], { onConflict: "client_id,organization_id" })
+    .select("client_id")
+    .maybeSingle();
+
+  if (linkError) {
     throw createError({
       statusCode: 500,
-      statusMessage: "No se pudo registrar el cliente temporal del walk-in.",
+      statusMessage: "No se pudo vincular el cliente walk-in a la organización.",
     });
   }
 
-  return data;
+  return client;
 };
 
 export const getAppointmentOrThrow = async (

@@ -13,7 +13,7 @@ import {
   buildTransactionInsert,
   checkoutSchema,
   computeDiscountAmount,
-  createPOSGuestCustomer,
+  createPOSWalkInCustomer,
   getCategoriesMap,
   getCustomerOrThrow,
   getInventoryForBranch,
@@ -63,7 +63,6 @@ export async function processPOSCheckout(
   let customerSnapshot: {
     mode: "existing" | "walk_in";
     customerId: string | null;
-    guestCustomerId?: string | null;
     fullName: string;
     phone: string | null;
     email?: string | null;
@@ -75,17 +74,17 @@ export async function processPOSCheckout(
     customerSnapshot = {
       mode: "existing",
       customerId: customer.id,
-      fullName: customer.full_name,
+      fullName: [customer.first_name, customer.last_name].filter(Boolean).join(" ").trim() || "Cliente",
       phone: customer.phone,
       email: customer.email,
     };
   } else {
-    const guestCustomer = await createPOSGuestCustomer(context, branch.id, body.customer);
+    const guestCustomer = await createPOSWalkInCustomer(context, body.customer);
+    customerId = guestCustomer.id;
     customerSnapshot = {
       mode: "walk_in",
-      customerId: null,
-      guestCustomerId: guestCustomer.id,
-      fullName: guestCustomer.full_name,
+      customerId: guestCustomer.id,
+      fullName: [guestCustomer.first_name, guestCustomer.last_name].filter(Boolean).join(" ").trim() || body.customer.fullName.trim(),
       phone: guestCustomer.phone,
       email: null,
     };

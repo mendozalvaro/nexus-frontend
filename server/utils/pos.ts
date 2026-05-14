@@ -13,10 +13,10 @@ type CategoryRow = Database["public"]["Tables"]["categories"]["Row"];
 type ProductRow = Database["public"]["Tables"]["products"]["Row"];
 type ServiceRow = Database["public"]["Tables"]["services"]["Row"];
 type ProfileRow = Database["public"]["Tables"]["profiles"]["Row"];
+type ClientRow = Database["public"]["Tables"]["clients"]["Row"];
 type InventoryStockRow = Database["public"]["Tables"]["inventory_stock"]["Row"];
 type AssignmentRow = Database["public"]["Tables"]["employee_branch_assignments"]["Row"];
 type AppointmentRow = Database["public"]["Tables"]["appointments"]["Row"];
-type GuestCustomerRow = Database["public"]["Tables"]["guest_customers"]["Row"];
 type TransactionInsert = Database["public"]["Tables"]["transactions"]["Insert"];
 
 type AdminClient = ReturnType<typeof createClient<Database>>;
@@ -92,7 +92,6 @@ export interface POSContext {
 export interface CustomerSnapshot {
   mode: "existing" | "walk_in";
   customerId: string | null;
-  guestCustomerId?: string | null;
   fullName: string;
   phone: string | null;
   email?: string | null;
@@ -511,15 +510,14 @@ export const validateServiceAvailability = async (
 export const getCustomerOrThrow = async (
   context: POSContext,
   customerId: string,
-): Promise<ProfileRow> => {
+): Promise<ClientRow> => {
   const { data, error } = await context.adminClient
-    .from("profiles")
-    .select("*")
-    .eq("id", customerId)
-    .eq("role", "client")
-    .eq("is_active", true)
-    .or(`organization_id.eq.${context.organizationId},organization_id.is.null`)
-    .maybeSingle<ProfileRow>();
+    .from("client_org")
+    .select("client_id, status, clients!inner(*)")
+    .eq("organization_id", context.organizationId)
+    .eq("client_id", customerId)
+    .eq("status", "active")
+    .maybeSingle();
 
   if (error) {
     throw createError({
@@ -528,42 +526,79 @@ export const getCustomerOrThrow = async (
     });
   }
 
-  if (!data) {
+  const row = data as unknown as { clients: ClientRow | null } | null;
+  if (!row?.clients) {
     throw createError({
       statusCode: 404,
       statusMessage: "El cliente seleccionado no está disponible para la venta.",
     });
   }
 
-  return data;
+  return row.clients;
 };
 
-export const createPOSGuestCustomer = async (
+export const createPOSWalkInCustomer = async (
   context: POSContext,
-  branchId: string,
   payload: z.output<typeof walkInCustomerSchema>,
-): Promise<GuestCustomerRow> => {
-  const { data, error } = await context.adminClient
-    .from("guest_customers")
-    .insert({
-      organization_id: context.organizationId,
-      branch_id: branchId,
-      created_by: context.userId,
-      full_name: payload.fullName.trim(),
-      phone: sanitizeNullableString(payload.phone),
-      notes: null,
-    })
-    .select("*")
-    .single<GuestCustomerRow>();
+): Promise<ClientRow> => {
+  const phone = sanitizeNullableString(payload.phone);
+  const fullName = payload.fullName.trim();
+  const [firstName, ...lastNames] = fullName.split(/\s+/).filter(Boolean);
+  const lastName = lastNames.join(" ") || null;
 
-  if (error || !data) {
+  let existingClient: ClientRow | null = null;
+
+  if (phone) {
+    const { data } = await context.adminClient
+      .from("clients")
+      .select("*")
+      .eq("phone", phone)
+      .maybeSingle<ClientRow>();
+    existingClient = data ?? null;
+  }
+
+  if (!existingClient) {
+    const { data, error } = await context.adminClient
+      .from("clients")
+      .insert({
+        user_id: null,
+        first_name: firstName || "Cliente",
+        last_name: lastName,
+        phone,
+        email: null,
+        billing_data: {},
+        preferences: {},
+      })
+      .select("*")
+      .single<ClientRow>();
+
+    if (error || !data) {
+      throw createError({
+        statusCode: 500,
+        statusMessage: "No se pudo registrar el cliente walk-in para la venta.",
+      });
+    }
+
+    existingClient = data;
+  }
+
+  const { error: linkError } = await context.adminClient
+    .from("client_org")
+    .upsert([{
+      client_id: existingClient.id,
+      organization_id: context.organizationId,
+      status: "active",
+      billing_data: {},
+    }], { onConflict: "client_id,organization_id" });
+
+  if (linkError) {
     throw createError({
       statusCode: 500,
-      statusMessage: "No se pudo registrar el cliente walk-in para la venta.",
+      statusMessage: "No se pudo vincular el cliente walk-in a la organización.",
     });
   }
 
-  return data;
+  return existingClient;
 };
 
 export const getInventoryForBranch = async (
@@ -670,10 +705,10 @@ export const buildReceiptFromTransaction = async (
       .maybeSingle<Pick<ProfileRow, "id" | "full_name">>(),
     transaction.customer_id
       ? context.adminClient
-        .from("profiles")
-        .select("id, full_name, phone, email")
+        .from("clients")
+        .select("id, first_name, last_name, phone, email")
         .eq("id", transaction.customer_id)
-        .maybeSingle<Pick<ProfileRow, "id" | "full_name" | "phone" | "email">>()
+        .maybeSingle<Pick<ClientRow, "id" | "first_name" | "last_name" | "phone" | "email">>()
       : Promise.resolve({ data: null, error: null }),
   ]);
 
@@ -700,7 +735,6 @@ export const buildReceiptFromTransaction = async (
     return {
       mode: customerRecord.mode === "walk_in" ? "walk_in" : "existing",
       customerId: typeof customerRecord.customerId === "string" ? customerRecord.customerId : null,
-      guestCustomerId: typeof customerRecord.guestCustomerId === "string" ? customerRecord.guestCustomerId : null,
       fullName: typeof customerRecord.fullName === "string" ? customerRecord.fullName : "Cliente",
       phone: typeof customerRecord.phone === "string" ? customerRecord.phone : null,
       email: typeof customerRecord.email === "string" ? customerRecord.email : null,
@@ -711,7 +745,7 @@ export const buildReceiptFromTransaction = async (
     ? {
         mode: "existing",
         customerId: customer.id,
-        fullName: customer.full_name,
+        fullName: [customer.first_name, customer.last_name].filter(Boolean).join(" ").trim() || "Cliente",
         phone: customer.phone,
         email: customer.email,
       }

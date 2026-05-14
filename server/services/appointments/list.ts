@@ -5,7 +5,7 @@ import type { Database } from "@/types/database.types";
 import type { H3Event } from "h3";
 
 type AppointmentRow = Database["public"]["Tables"]["appointments"]["Row"];
-type ProfileRow = Database["public"]["Tables"]["profiles"]["Row"];
+type ClientRow = Database["public"]["Tables"]["clients"]["Row"];
 type AppointmentStatus = Database["public"]["Enums"]["appointment_status"];
 
 export interface AppointmentListItem {
@@ -143,7 +143,20 @@ export async function getAppointmentsList(
   }
 
   if (filters.scopeRole === "client") {
-    query = query.eq("customer_id", filters.currentProfileId);
+    const { data: myClient, error: myClientError } = await context.adminClient
+      .from("clients")
+      .select("id")
+      .eq("user_id", filters.currentProfileId)
+      .maybeSingle<Pick<ClientRow, "id">>();
+
+    if (myClientError) {
+      throw createError({
+        statusCode: 500,
+        statusMessage: myClientError.message,
+      });
+    }
+
+    query = query.eq("customer_id", myClient?.id ?? "00000000-0000-0000-0000-000000000000");
   }
 
   const { data: appointments, error: appointmentsError } = await query.returns<AppointmentRow[]>();
@@ -161,14 +174,14 @@ export async function getAppointmentsList(
   const employeeMap = new Map(catalog.employees.map((employee) => [employee.id, employee.fullName]));
 
   const customerIds = Array.from(new Set(rows.map((row) => row.customer_id).filter((value): value is string => Boolean(value))));
-  const customerLookup = new Map<string, Pick<ProfileRow, "id" | "full_name" | "phone">>();
+  const customerLookup = new Map<string, { id: string; fullName: string; phone: string | null }>();
 
   if (customerIds.length > 0) {
     const { data: customers, error: customersError } = await context.adminClient
-      .from("profiles")
-      .select("id, full_name, phone")
+      .from("clients")
+      .select("id, first_name, last_name, phone")
       .in("id", customerIds)
-      .returns<Array<Pick<ProfileRow, "id" | "full_name" | "phone">>>();
+      .returns<Array<Pick<ClientRow, "id" | "first_name" | "last_name" | "phone">>>();
 
     if (customersError) {
       throw createError({
@@ -178,7 +191,11 @@ export async function getAppointmentsList(
     }
 
     for (const customer of customers ?? []) {
-      customerLookup.set(customer.id, customer);
+      customerLookup.set(customer.id, {
+        id: customer.id,
+        fullName: [customer.first_name, customer.last_name].filter(Boolean).join(" ").trim() || "Cliente",
+        phone: customer.phone,
+      });
     }
   }
 
@@ -196,7 +213,7 @@ export async function getAppointmentsList(
         serviceId: row.service_id,
         serviceName: serviceMap.get(row.service_id) ?? "Servicio",
         customerId: row.customer_id,
-        customerName: customer?.full_name ?? row.customer_name ?? "Cliente temporal",
+        customerName: customer?.fullName ?? row.customer_name ?? "Cliente temporal",
         customerPhone: customer?.phone ?? row.customer_phone,
         isWalkIn: !row.customer_id && Boolean(row.customer_name),
         startTime: row.start_time,

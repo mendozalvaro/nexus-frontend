@@ -1,4 +1,4 @@
-﻿export type Json =
+export type Json =
   | string
   | number
   | boolean
@@ -11,6 +11,31 @@ export type Database = {
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
     PostgrestVersion: "14.5"
+  }
+  graphql_public: {
+    Tables: {
+      [_ in never]: never
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      graphql: {
+        Args: {
+          extensions?: Json
+          operationName?: string
+          query?: string
+          variables?: Json
+        }
+        Returns: Json
+      }
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
   }
   public: {
     Tables: {
@@ -29,7 +54,7 @@ export type Database = {
           notes: string | null
           organization_id: string
           service_id: string
-          source: "manual" | "pos_checkout" | "client_booking" | null
+          source: Database["public"]["Enums"]["appointment_source"]
           start_time: string
           status: Database["public"]["Enums"]["appointment_status"] | null
           transaction_id: string | null
@@ -49,7 +74,7 @@ export type Database = {
           notes?: string | null
           organization_id: string
           service_id: string
-          source?: "manual" | "pos_checkout" | "client_booking" | null
+          source?: Database["public"]["Enums"]["appointment_source"]
           start_time: string
           status?: Database["public"]["Enums"]["appointment_status"] | null
           transaction_id?: string | null
@@ -69,7 +94,7 @@ export type Database = {
           notes?: string | null
           organization_id?: string
           service_id?: string
-          source?: "manual" | "pos_checkout" | "client_booking" | null
+          source?: Database["public"]["Enums"]["appointment_source"]
           start_time?: string
           status?: Database["public"]["Enums"]["appointment_status"] | null
           transaction_id?: string | null
@@ -94,7 +119,7 @@ export type Database = {
             foreignKeyName: "appointments_customer_id_fkey"
             columns: ["customer_id"]
             isOneToOne: false
-            referencedRelation: "profiles"
+            referencedRelation: "clients"
             referencedColumns: ["id"]
           },
           {
@@ -264,24 +289,42 @@ export type Database = {
       client_org: {
         Row: {
           billing_data: Json
+          billing_email: string | null
+          billing_name: string | null
+          billing_phone: string | null
           client_id: string
           created_at: string
+          document_number: string | null
+          document_type: string | null
+          is_anonymous_template: boolean
           organization_id: string
           status: string
           updated_at: string
         }
         Insert: {
           billing_data?: Json
+          billing_email?: string | null
+          billing_name?: string | null
+          billing_phone?: string | null
           client_id: string
           created_at?: string
+          document_number?: string | null
+          document_type?: string | null
+          is_anonymous_template?: boolean
           organization_id: string
           status?: string
           updated_at?: string
         }
         Update: {
           billing_data?: Json
+          billing_email?: string | null
+          billing_name?: string | null
+          billing_phone?: string | null
           client_id?: string
           created_at?: string
+          document_number?: string | null
+          document_type?: string | null
+          is_anonymous_template?: boolean
           organization_id?: string
           status?: string
           updated_at?: string
@@ -296,6 +339,76 @@ export type Database = {
           },
           {
             foreignKeyName: "client_org_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      client_org_billing_history: {
+        Row: {
+          billing_email: string | null
+          billing_name: string | null
+          billing_phone: string | null
+          change_reason: string | null
+          changed_at: string
+          changed_by: string | null
+          client_id: string
+          created_at: string
+          document_number: string | null
+          document_type: string
+          id: string
+          is_active_version: boolean
+          organization_id: string
+        }
+        Insert: {
+          billing_email?: string | null
+          billing_name?: string | null
+          billing_phone?: string | null
+          change_reason?: string | null
+          changed_at?: string
+          changed_by?: string | null
+          client_id: string
+          created_at?: string
+          document_number?: string | null
+          document_type: string
+          id?: string
+          is_active_version?: boolean
+          organization_id: string
+        }
+        Update: {
+          billing_email?: string | null
+          billing_name?: string | null
+          billing_phone?: string | null
+          change_reason?: string | null
+          changed_at?: string
+          changed_by?: string | null
+          client_id?: string
+          created_at?: string
+          document_number?: string | null
+          document_type?: string
+          id?: string
+          is_active_version?: boolean
+          organization_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "client_org_billing_history_changed_by_fkey"
+            columns: ["changed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "client_org_billing_history_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "client_org_billing_history_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: false
             referencedRelation: "organizations"
@@ -512,6 +625,38 @@ export type Database = {
           },
         ]
       }
+      inventory_document_sequences: {
+        Row: {
+          doc_type: string
+          last_value: number
+          organization_id: string
+          seq_year: number
+          updated_at: string
+        }
+        Insert: {
+          doc_type: string
+          last_value?: number
+          organization_id: string
+          seq_year: number
+          updated_at?: string
+        }
+        Update: {
+          doc_type?: string
+          last_value?: number
+          organization_id?: string
+          seq_year?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "inventory_document_sequences_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       inventory_movements: {
         Row: {
           branch_id: string
@@ -526,8 +671,8 @@ export type Database = {
           previous_quantity: number
           product_id: string
           quantity: number
-          reference_code: string | null
           reason: string | null
+          reference_code: string | null
           reference_id: string | null
           reference_type: string | null
           source_branch_id: string | null
@@ -545,8 +690,8 @@ export type Database = {
           previous_quantity: number
           product_id: string
           quantity: number
-          reference_code?: string | null
           reason?: string | null
+          reference_code?: string | null
           reference_id?: string | null
           reference_type?: string | null
           source_branch_id?: string | null
@@ -564,8 +709,8 @@ export type Database = {
           previous_quantity?: number
           product_id?: string
           quantity?: number
-          reference_code?: string | null
           reason?: string | null
+          reference_code?: string | null
           reference_id?: string | null
           reference_type?: string | null
           source_branch_id?: string | null
@@ -748,9 +893,9 @@ export type Database = {
           idempotency_key: string
           observations: string | null
           organization_id: string
-          reference_code: string | null
           received_at: string | null
           received_by: string | null
+          reference_code: string | null
           requested_at: string
           requested_by: string | null
           source_branch_id: string
@@ -766,9 +911,9 @@ export type Database = {
           idempotency_key: string
           observations?: string | null
           organization_id: string
-          reference_code?: string | null
           received_at?: string | null
           received_by?: string | null
+          reference_code?: string | null
           requested_at?: string
           requested_by?: string | null
           source_branch_id: string
@@ -784,9 +929,9 @@ export type Database = {
           idempotency_key?: string
           observations?: string | null
           organization_id?: string
-          reference_code?: string | null
           received_at?: string | null
           received_by?: string | null
+          reference_code?: string | null
           requested_at?: string
           requested_by?: string | null
           source_branch_id?: string
@@ -844,9 +989,9 @@ export type Database = {
           organization_id: string
           product_id: string
           quantity: number
-          reference_code: string | null
           received_at: string | null
           received_by: string | null
+          reference_code: string | null
           requested_at: string
           requested_by: string
           source_branch_id: string
@@ -863,9 +1008,9 @@ export type Database = {
           organization_id: string
           product_id: string
           quantity: number
-          reference_code?: string | null
           received_at?: string | null
           received_by?: string | null
+          reference_code?: string | null
           requested_at?: string
           requested_by: string
           source_branch_id: string
@@ -882,9 +1027,9 @@ export type Database = {
           organization_id?: string
           product_id?: string
           quantity?: number
-          reference_code?: string | null
           received_at?: string | null
           received_by?: string | null
+          reference_code?: string | null
           requested_at?: string
           requested_by?: string
           source_branch_id?: string
@@ -1240,6 +1385,39 @@ export type Database = {
             columns: ["organization_id"]
             isOneToOne: false
             referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      profile_client_map: {
+        Row: {
+          client_id: string
+          created_at: string
+          profile_id: string
+        }
+        Insert: {
+          client_id: string
+          created_at?: string
+          profile_id: string
+        }
+        Update: {
+          client_id?: string
+          created_at?: string
+          profile_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "profile_client_map_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "profile_client_map_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: true
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
         ]
@@ -1720,7 +1898,7 @@ export type Database = {
             foreignKeyName: "transactions_customer_id_fkey"
             columns: ["customer_id"]
             isOneToOne: false
-            referencedRelation: "profiles"
+            referencedRelation: "clients"
             referencedColumns: ["id"]
           },
           {
@@ -1934,19 +2112,19 @@ export type Database = {
             }
             Returns: string
           }
-      get_organization_capabilities: {
-        Args: { input_org_id: string }
-        Returns: Json
-      }
       get_account_status_snapshot: {
         Args: { p_organization_id: string }
         Returns: {
-          is_trial: boolean | null
-          latest_validation_status: string | null
-          organization_status: string | null
-          subscription_status: Database["public"]["Enums"]["sub_status"] | null
-          trial_ends_at: string | null
+          is_trial: boolean
+          latest_validation_status: string
+          organization_status: string
+          subscription_status: Database["public"]["Enums"]["sub_status"]
+          trial_ends_at: string
         }[]
+      }
+      get_organization_capabilities: {
+        Args: { input_org_id: string }
+        Returns: Json
       }
       get_user_branch_id: { Args: never; Returns: string }
       get_user_organization_id: { Args: never; Returns: string }
@@ -1954,18 +2132,18 @@ export type Database = {
         Args: never
         Returns: Database["public"]["Enums"]["user_role"]
       }
-        inventory_adjust_batch_execute: {
-          Args: {
-            p_branch_id: string
-            p_idempotency_key: string
-            p_lines: Json
-            p_mode: string
-            p_note: string
-            p_organization_id: string
-            p_reference_code: string
-            p_reason: string
-            p_user_id: string
-          }
+      inventory_adjust_batch_execute: {
+        Args: {
+          p_branch_id: string
+          p_idempotency_key: string
+          p_lines: Json
+          p_mode: string
+          p_note: string
+          p_organization_id: string
+          p_reason: string
+          p_reference_code: string
+          p_user_id: string
+        }
         Returns: {
           batch_id: string
           idempotent: boolean
@@ -2046,12 +2224,22 @@ export type Database = {
         Args: { target_branch_id: string }
         Returns: boolean
       }
+      next_inventory_document_code: {
+        Args: {
+          p_doc_type: string
+          p_organization_id: string
+          p_prefix?: string
+          p_year?: number
+        }
+        Returns: string
+      }
       plan_billing_mode_enabled: {
         Args: { p_available_billing_modes: Json; p_billing_mode: string }
         Returns: boolean
       }
     }
     Enums: {
+      appointment_source: "manual" | "pos_checkout" | "client_booking"
       appointment_status:
         | "pending"
         | "confirmed"
@@ -2195,8 +2383,12 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
+  graphql_public: {
+    Enums: {},
+  },
   public: {
     Enums: {
+      appointment_source: ["manual", "pos_checkout", "client_booking"],
       appointment_status: [
         "pending",
         "confirmed",
