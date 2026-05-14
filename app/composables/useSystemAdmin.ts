@@ -1,9 +1,6 @@
 import type { Database, Json } from "@/types/database.types";
 
 export type SystemUserRow = Database["public"]["Tables"]["system_users"]["Row"];
-export type SystemUserTable = Database["public"]["Tables"]["system_users"];
-type StatsRpcRow =
-  Database["public"]["Functions"]["admin_payment_validation_stats"]["Returns"][number];
 
 export interface OrganizationUser {
   id: string;
@@ -93,10 +90,6 @@ const createDefaultStats = (): SystemDashboardStats => ({
 const createDefaultAlerts = (): SystemDashboardAlert[] => [];
 
 export const useSystemAdmin = () => {
-  const supabase = useSupabaseClient<Database>();
-  const systemUsersTable = supabase.from<"system_users", SystemUserTable>(
-    "system_users",
-  );
   const session = useSupabaseSession();
 
   const stats = useState<SystemDashboardStats>(
@@ -185,6 +178,7 @@ export const useSystemAdmin = () => {
   };
 
   const getSystemRequestHeaders = async () => {
+    const supabase = useSupabaseClient<Database>();
     let token = session.value?.access_token;
 
     if (!token) {
@@ -202,66 +196,6 @@ export const useSystemAdmin = () => {
 
     return {
       Authorization: `Bearer ${token}`,
-    };
-  };
-
-  const loadPaymentStats = async (): Promise<void> => {
-    const { data, error: statsError } = await supabase.rpc(
-      "admin_payment_validation_stats",
-    );
-
-    if (statsError) {
-      throw statsError;
-    }
-
-    const row: StatsRpcRow | null = Array.isArray(data)
-      ? (data[0] ?? null)
-      : null;
-
-    stats.value = {
-      pendingValidations: row?.pending_count ?? 0,
-      approvedToday: row?.approved_today ?? 0,
-      rejectedToday: row?.rejected_today ?? 0,
-      totalSystemUsers: stats.value.totalSystemUsers,
-      activeSystemUsers: stats.value.activeSystemUsers,
-      totalOrganizations: stats.value.totalOrganizations,
-    };
-  };
-
-  const loadSystemUserCounts = async (): Promise<void> => {
-    const [
-      { count: totalCount, error: totalError },
-      { count: activeCount, error: activeError },
-    ] = await Promise.all([
-      systemUsersTable.select("user_id", { count: "exact", head: true }),
-      systemUsersTable
-        .select("user_id", { count: "exact", head: true })
-        .eq("is_active", true),
-    ]);
-
-    if (totalError || activeError) {
-      throw totalError ?? activeError;
-    }
-
-    stats.value = {
-      ...stats.value,
-      totalSystemUsers: Number(totalCount ?? 0),
-      activeSystemUsers: Number(activeCount ?? 0),
-    };
-  };
-
-  const loadOrganizationCount = async (): Promise<void> => {
-    const { count, error: orgError } = await supabase
-      .from("organizations")
-      .select("id", { count: "exact", head: true });
-
-    if (orgError) {
-      throw orgError;
-    }
-
-    stats.value = {
-      ...stats.value,
-      totalOrganizations: Number(count ?? 0),
     };
   };
 
@@ -326,11 +260,8 @@ export const useSystemAdmin = () => {
     error.value = null;
 
     try {
-      await Promise.all([
-        loadPaymentStats(),
-        loadSystemUserCounts(),
-        loadOrganizationCount(),
-      ]);
+      const response = await $fetch<{ stats: SystemDashboardStats }>("/api/system/stats");
+      stats.value = response.stats;
       buildAlerts();
     } catch (loadError) {
       error.value = getReadableErrorMessage(

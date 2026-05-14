@@ -1,11 +1,7 @@
-import type { Database } from "@/types/database.types";
 import type { OrganizationDraft } from "@/types/registration";
 import {
   ORGANIZATION_STORAGE_KEY,
   MAX_LOGO_SIZE_BYTES,
-  buildOrganizationLogoStoragePath,
-  sanitizeText,
-  sanitizeNullableText,
   ORGANIZATION_SCHEMA,
   asJsonObject,
 } from "@/utils/onboarding";
@@ -23,7 +19,6 @@ const createOrganizationDraft = (): OrganizationDraft => ({
 });
 
 export const useOrganization = () => {
-  const supabase = useSupabaseClient<Database>();
   const { resolveUser } = useSessionAccess();
   const { fetchProfile } = useAuth();
 
@@ -45,9 +40,7 @@ export const useOrganization = () => {
 
   const hydrateDraft = async () => {
     try {
-      if (!import.meta.client) {
-        return;
-      }
+      if (!import.meta.client) return;
 
       const rawValue = localStorage.getItem(ORGANIZATION_STORAGE_KEY);
       if (rawValue) {
@@ -71,20 +64,6 @@ export const useOrganization = () => {
     }
   };
 
-  const uploadLogo = async (userId: string, organizationId: string, file: File): Promise<string | null> => {
-    validateLogoFile(file);
-    const storagePath = buildOrganizationLogoStoragePath(userId, organizationId, file.type);
-
-    const { error: uploadError } = await supabase.storage
-      .from("organization-assets")
-      .upload(storagePath, file, { upsert: true, contentType: file.type });
-
-    if (uploadError) throw uploadError;
-
-    const { data } = supabase.storage.from("organization-assets").getPublicUrl(storagePath);
-    return data.publicUrl;
-  };
-
   const clearLogo = () => {
     logoError.value = null;
     if (draft.value.logoPreviewUrl && import.meta.client) URL.revokeObjectURL(draft.value.logoPreviewUrl);
@@ -104,61 +83,52 @@ export const useOrganization = () => {
       if (profile?.organization_id) return profile.organization_id;
 
       const userMetadata = (user.user_metadata as Record<string, unknown> | undefined) ?? {};
-      const metadataFullName = typeof userMetadata.full_name === "string" ? sanitizeText(userMetadata.full_name) : "";
-      const metadataPhone = typeof userMetadata.phone === "string" ? sanitizeNullableText(userMetadata.phone) : null;
-      const nextFullName = sanitizeText(profile?.full_name || metadataFullName) || "Administrador NexusPOS";
-      const nextEmail = sanitizeText(profile?.email ?? user.email ?? "");
+      const metadataFullName = typeof userMetadata.full_name === "string" ? userMetadata.full_name.trim() : "";
+      const metadataPhone = typeof userMetadata.phone === "string" ? userMetadata.phone.trim() || null : null;
+      const nextFullName = profile?.full_name?.trim() || metadataFullName || "Administrador NexusPOS";
+      const nextEmail = profile?.email?.trim() ?? user.email?.trim() ?? "";
 
-      const { data: organizationId, error: createError } = await supabase.rpc(
-        "create_onboarding_organization",
-        {
-          p_name: sanitizeText(parsed.organizationName),
-          p_business_type: parsed.businessType,
-          p_country: parsed.country,
-          p_currency: parsed.currency,
-          p_timezone: parsed.timezone,
-          p_billing_mode: parsed.billingMode,
-          p_slug: null as unknown as string,
-          p_address: null as unknown as string,
-          p_billing_data: null,
-          p_full_name: nextFullName,
-          p_email: nextEmail,
-          p_phone: metadataPhone ?? undefined,
-        },
-      );
-
-      if (createError || !organizationId) {
-        throw createError ?? new Error("No se pudo crear la organizacion.");
+      let logoData: { dataBase64: string; name: string; type: string } | null = null;
+      if (logoFile) {
+        validateLogoFile(logoFile);
+        const base64 = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result as string);
+          reader.onerror = reject;
+          reader.readAsDataURL(logoFile);
+        });
+        logoData = { dataBase64: base64, name: logoFile.name, type: logoFile.type };
       }
+
+      const result = await $fetch<{ organizationId: string }>("/api/onboarding/organization", {
+        method: "POST",
+        body: {
+          organizationName: parsed.organizationName,
+          businessType: parsed.businessType,
+          country: parsed.country,
+          currency: parsed.currency,
+          timezone: parsed.timezone,
+          billingMode: parsed.billingMode,
+          fullName: nextFullName,
+          email: nextEmail,
+          phone: metadataPhone,
+          logo: logoData,
+        },
+      });
 
       await fetchProfile();
 
-      let logoUrl: string | null = null;
-      if (logoFile) {
-        logoUrl = await uploadLogo(user.id, organizationId, logoFile);
-      }
-
-      if (logoUrl) {
-        const { error: logoUpdateError } = await supabase
-          .from("organizations")
-          .update({ logo_url: logoUrl })
-          .eq("id", organizationId);
-        if (logoUpdateError) throw logoUpdateError;
-      }
-
-      const user2 = await resolveUser();
-      if (user2) {
-        await supabase.from("onboarding_progress").upsert({
-          user_id: user2.id,
-          organization_id: organizationId,
-          current_step: "payment",
-          progress_data: asJsonObject({ organizationId, organizationDraft: { ...draft.value, logoPreviewUrl: null } }),
-          updated_at: new Date().toISOString(),
-        }, { onConflict: "user_id" });
-      }
+      await $fetch("/api/auth/onboarding-progress", {
+        method: "POST",
+        body: {
+          organizationId: result.organizationId,
+          currentStep: "payment",
+          progressData: asJsonObject({ organizationId: result.organizationId, organizationDraft: { ...draft.value, logoPreviewUrl: null } }),
+        },
+      });
 
       if (import.meta.client) localStorage.removeItem(ORGANIZATION_STORAGE_KEY);
-      return organizationId;
+      return result.organizationId;
     } catch (organizationError) {
       const message = organizationError instanceof Error ? organizationError.message : "No se pudo crear la organizacion.";
       if (organizationError instanceof Error && organizationError.message.toLowerCase().includes("logo")) {

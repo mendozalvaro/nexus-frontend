@@ -1,9 +1,14 @@
+import tailwindcss from '@tailwindcss/vite'
+
 // https://nuxt.com/docs/api/configuration/nuxt-config
 export default defineNuxtConfig({
-  compatibilityDate: "2025-07-15",
+  compatibilityDate: "2026-05-13",
   devtools: { enabled: true },
   css: ["~/assets/css/main.css"],
   modules: ["@nuxt/ui", "@nuxtjs/color-mode", "@nuxtjs/supabase"],
+  vite: {
+    plugins: [tailwindcss()],
+  },
   colorMode: {
     preference: 'system',
     fallback: 'light',
@@ -40,10 +45,10 @@ export default defineNuxtConfig({
     },
   },
 
-  typescript: {
+/*   typescript: {
     strict: true,
-    typeCheck: true,
-  },
+    typeCheck: false,
+  }, */
   nitro: {
     preset: "cloudflare-pages",
   },

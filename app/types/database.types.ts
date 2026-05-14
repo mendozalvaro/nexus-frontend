@@ -29,8 +29,10 @@ export type Database = {
           notes: string | null
           organization_id: string
           service_id: string
+          source: "manual" | "pos_checkout" | "client_booking" | null
           start_time: string
           status: Database["public"]["Enums"]["appointment_status"] | null
+          transaction_id: string | null
           updated_at: string | null
         }
         Insert: {
@@ -47,8 +49,10 @@ export type Database = {
           notes?: string | null
           organization_id: string
           service_id: string
+          source?: "manual" | "pos_checkout" | "client_booking" | null
           start_time: string
           status?: Database["public"]["Enums"]["appointment_status"] | null
+          transaction_id?: string | null
           updated_at?: string | null
         }
         Update: {
@@ -65,8 +69,10 @@ export type Database = {
           notes?: string | null
           organization_id?: string
           service_id?: string
+          source?: "manual" | "pos_checkout" | "client_booking" | null
           start_time?: string
           status?: Database["public"]["Enums"]["appointment_status"] | null
+          transaction_id?: string | null
           updated_at?: string | null
         }
         Relationships: [
@@ -110,6 +116,13 @@ export type Database = {
             columns: ["service_id"]
             isOneToOne: false
             referencedRelation: "services"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "appointments_transaction_id_fkey"
+            columns: ["transaction_id"]
+            isOneToOne: false
+            referencedRelation: "transactions"
             referencedColumns: ["id"]
           },
         ]
@@ -1577,6 +1590,7 @@ export type Database = {
       }
       transaction_items: {
         Row: {
+          appointment_id: string | null
           id: string
           item_type: string
           product_id: string | null
@@ -1588,6 +1602,7 @@ export type Database = {
           unit_price: number
         }
         Insert: {
+          appointment_id?: string | null
           id?: string
           item_type: string
           product_id?: string | null
@@ -1599,6 +1614,7 @@ export type Database = {
           unit_price: number
         }
         Update: {
+          appointment_id?: string | null
           id?: string
           item_type?: string
           product_id?: string | null
@@ -1610,6 +1626,13 @@ export type Database = {
           unit_price?: number
         }
         Relationships: [
+          {
+            foreignKeyName: "transaction_items_appointment_id_fkey"
+            columns: ["appointment_id"]
+            isOneToOne: false
+            referencedRelation: "appointments"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "transaction_items_product_id_fkey"
             columns: ["product_id"]
@@ -1646,7 +1669,6 @@ export type Database = {
           organization_id: string
           payment_method: Database["public"]["Enums"]["payment_method"] | null
           refund_reason: string | null
-          related_appointment_id: string | null
           status: string | null
           tax_amount: number | null
           total_amount: number
@@ -1664,7 +1686,6 @@ export type Database = {
           organization_id: string
           payment_method?: Database["public"]["Enums"]["payment_method"] | null
           refund_reason?: string | null
-          related_appointment_id?: string | null
           status?: string | null
           tax_amount?: number | null
           total_amount: number
@@ -1682,7 +1703,6 @@ export type Database = {
           organization_id?: string
           payment_method?: Database["public"]["Enums"]["payment_method"] | null
           refund_reason?: string | null
-          related_appointment_id?: string | null
           status?: string | null
           tax_amount?: number | null
           total_amount?: number
@@ -1715,13 +1735,6 @@ export type Database = {
             columns: ["organization_id"]
             isOneToOne: false
             referencedRelation: "organizations"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "transactions_related_appointment_id_fkey"
-            columns: ["related_appointment_id"]
-            isOneToOne: false
-            referencedRelation: "appointments"
             referencedColumns: ["id"]
           },
         ]

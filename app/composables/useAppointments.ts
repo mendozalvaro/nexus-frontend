@@ -1,6 +1,5 @@
 import type { Database } from "@/types/database.types";
 
-type AppointmentRow = Database["public"]["Tables"]["appointments"]["Row"];
 type BranchRow = Database["public"]["Tables"]["branches"]["Row"];
 type ServiceRow = Database["public"]["Tables"]["services"]["Row"];
 type ProfileRow = Database["public"]["Tables"]["profiles"]["Row"];
@@ -51,6 +50,7 @@ export interface AppointmentListItem {
   status: AppointmentStatus;
   notes: string | null;
   cancellationReason: string | null;
+  transactionId: string | null;
 }
 
 export interface AppointmentCatalog {
@@ -87,7 +87,7 @@ export interface AppointmentMutationPayload {
 }
 
 export interface AppointmentStatusPayload {
-  status: "in_progress" | "completed";
+  status: "in_progress" | "completed" | "no_show";
 }
 
 export interface AppointmentRange {
@@ -169,8 +169,6 @@ const toDateInput = (value: Date): string => {
   return `${year}-${month}-${day}`;
 };
 
-const readStatus = (value: AppointmentRow["status"]): AppointmentStatus => value ?? "pending";
-
 const toAppointmentBranchOption = (branch: BranchRow): AppointmentBranchOption => ({
   label: branch.name,
   value: branch.id,
@@ -192,7 +190,7 @@ const toAppointmentEmployeeOption = (
     serviceIdsByBranch?: Record<string, string[]>;
   },
 ): AppointmentEmployeeOption => ({
-  label: profile.full_name,
+  label: ("fullName" in profile ? (profile as any).fullName : profile.full_name) ?? "Sin nombre",
   value: profile.id,
   branchId: profile.primaryBranchId ?? profile.assignedBranchIds?.[0] ?? null,
   assignedBranchIds: profile.assignedBranchIds ?? [],
@@ -202,20 +200,11 @@ const toAppointmentEmployeeOption = (
   role: profile.role ?? "employee",
 });
 
-const parseServiceSkills = (value: unknown): string[] => {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-
-  return value.filter((item): item is string => typeof item === "string");
-};
-
 const toAuthHeaders = (accessToken: string) => ({
   Authorization: `Bearer ${accessToken}`,
 });
 
 export const useAppointments = () => {
-  const supabase = useSupabaseClient<Database>();
   const { resolveAccessToken } = useSessionAccess();
   const { profile, fetchProfile } = useAuth();
 
@@ -334,88 +323,26 @@ export const useAppointments = () => {
     if (!currentProfile.organization_id) {
       throw createError({
         statusCode: 403,
-        statusMessage: "No se encontró la organización asociada a tu perfil.",
+        statusMessage: "No se encontro la organizacion asociada a tu perfil.",
       });
     }
 
-    const organizationId = currentProfile.organization_id;
+    const response = await $fetch<AppointmentCatalogResponse>("/api/appointments", {
+      headers: toAuthHeaders(await getAccessToken()),
+      query: {
+        scopeRole,
+        currentProfileId: currentProfile.id,
+      },
+    });
 
-    const [{ data: branches, error: branchesError }, { data: services, error: servicesError }, { data: employees, error: employeesError }, { data: assignments, error: assignmentsError }] = await Promise.all([
-      supabase
-        .from("branches")
-        .select("*")
-        .eq("organization_id", organizationId)
-        .eq("is_active", true)
-        .order("name", { ascending: true }),
-      supabase
-        .from("services")
-        .select("*")
-        .eq("organization_id", organizationId)
-        .eq("is_active", true)
-        .order("name", { ascending: true }),
-      supabase
-        .from("profiles")
-        .select("*")
-        .eq("organization_id", organizationId)
-        .eq("is_active", true)
-        .in("role", ["admin", "manager", "employee"])
-        .order("full_name", { ascending: true }),
-      supabase
-        .from("employee_branch_assignments")
-        .select("user_id, branch_id, is_primary, skills"),
-    ]);
-
-    const firstError = branchesError ?? servicesError ?? employeesError ?? assignmentsError;
-    if (firstError) {
-      throw createError({
-        statusCode: 500,
-        statusMessage: firstError.message,
-      });
-    }
-
-    const branchOptions = (branches ?? []).map(toAppointmentBranchOption);
-    const assignmentsByEmployee = new Map<string, string[]>();
-    const primaryBranchByEmployee = new Map<string, string | null>();
-    const serviceCoverageByEmployee = new Map<string, Record<string, string[]>>();
-    for (const assignment of assignments ?? []) {
-      const current = assignmentsByEmployee.get(assignment.user_id) ?? [];
-      current.push(assignment.branch_id);
-      assignmentsByEmployee.set(assignment.user_id, current);
-
-      if (assignment.is_primary) {
-        primaryBranchByEmployee.set(assignment.user_id, assignment.branch_id);
-      } else if (!primaryBranchByEmployee.has(assignment.user_id)) {
-        primaryBranchByEmployee.set(assignment.user_id, assignment.branch_id);
-      }
-
-      const currentCoverage = serviceCoverageByEmployee.get(assignment.user_id) ?? {};
-      currentCoverage[assignment.branch_id] = parseServiceSkills(assignment.skills);
-      serviceCoverageByEmployee.set(assignment.user_id, currentCoverage);
-    }
-
-    const employeeOptions = (employees ?? []).map((employee) => toAppointmentEmployeeOption({
-      ...employee,
-      primaryBranchId: primaryBranchByEmployee.get(employee.id) ?? null,
-      assignedBranchIds: Array.from(new Set(assignmentsByEmployee.get(employee.id) ?? [])),
-      serviceIdsByBranch: serviceCoverageByEmployee.get(employee.id) ?? {},
-    }));
-
-    const managerBranchId = primaryBranchByEmployee.get(currentProfile.id) ?? null;
-    const filteredBranches = scopeRole === "manager" && managerBranchId
-      ? branchOptions.filter((branch) => branch.value === managerBranchId)
-      : branchOptions;
-
-    const filteredEmployees = scopeRole === "manager" && managerBranchId
-      ? employeeOptions.filter((employee) => employee.branchId === managerBranchId || employee.assignedBranchIds.includes(managerBranchId))
-      : scopeRole === "employee"
-        ? employeeOptions.filter((employee) => employee.value === currentProfile.id)
-        : employeeOptions;
+    const branchOptions = response.branches.map(toAppointmentBranchOption);
+    const employeeOptions = response.employees.map(toAppointmentEmployeeOption);
 
     return {
-      organizationId,
-      branches: filteredBranches,
-      services: (services ?? []).map(toAppointmentServiceOption),
-      employees: filteredEmployees,
+      organizationId: response.organizationId,
+      branches: branchOptions,
+      services: response.services.map(toAppointmentServiceOption),
+      employees: employeeOptions,
     };
   };
 
@@ -432,107 +359,28 @@ export const useAppointments = () => {
     }
 
     const catalog = await loadCatalog(scopeRole);
-    const { startIso, endIso } = getDateRange(filters.view, filters.anchorDate);
+    const managerBranchId = scopeRole === "manager" && catalog.branches.length > 0
+      ? catalog.branches[0]?.value ?? null
+      : null;
 
-    let query = supabase
-      .from("appointments")
-      .select("*")
-      .eq("organization_id", catalog.organizationId)
-      .gte("start_time", startIso)
-      .lte("start_time", endIso)
-      .order("start_time", { ascending: true });
-
-    if (filters.branchId) {
-      query = query.eq("branch_id", filters.branchId);
-    }
-
-    if (filters.employeeId) {
-      query = query.eq("employee_id", filters.employeeId);
-    }
-
-    if (filters.serviceId) {
-      query = query.eq("service_id", filters.serviceId);
-    }
-
-    if (filters.status !== "all") {
-      query = query.eq("status", filters.status);
-    }
-
-    if (scopeRole === "manager" && catalog.branches.length > 0) {
-      const managerBranchId = catalog.branches[0]?.value ?? null;
-      if (managerBranchId) {
-        query = query.eq("branch_id", managerBranchId);
-      }
-    }
-
-    if (scopeRole === "employee") {
-      query = query.eq("employee_id", currentProfile.id);
-    }
-
-    if (scopeRole === "client") {
-      query = query.eq("customer_id", currentProfile.id);
-    }
-
-    const { data: appointments, error: appointmentsError } = await query.returns<AppointmentRow[]>();
-
-    if (appointmentsError) {
-      throw createError({
-        statusCode: 500,
-        statusMessage: appointmentsError.message,
-      });
-    }
-
-    const rows = appointments ?? [];
-    const branchMap = new Map(catalog.branches.map((branch) => [branch.value, branch]));
-    const serviceMap = new Map(catalog.services.map((service) => [service.value, service]));
-    const employeeMap = new Map(catalog.employees.map((employee) => [employee.value, employee]));
-
-    const customerIds = Array.from(new Set(rows.map((row) => row.customer_id).filter((value): value is string => Boolean(value))));
-    const customerLookup = new Map<string, Pick<ProfileRow, "id" | "full_name" | "phone">>();
-
-    if (customerIds.length > 0) {
-      const { data: customers, error: customersError } = await supabase
-        .from("profiles")
-        .select("id, full_name, phone")
-        .in("id", customerIds);
-
-      if (customersError) {
-        throw createError({
-          statusCode: 500,
-          statusMessage: customersError.message,
-        });
-      }
-
-      for (const customer of customers ?? []) {
-        customerLookup.set(customer.id, customer);
-      }
-    }
+    const response = await $fetch<{ appointments: AppointmentListItem[] }>("/api/appointments/list", {
+      headers: toAuthHeaders(await getAccessToken()),
+      query: {
+        view: filters.view,
+        anchorDate: filters.anchorDate,
+        branchId: filters.branchId ?? "",
+        employeeId: filters.employeeId ?? "",
+        serviceId: filters.serviceId ?? "",
+        status: filters.status,
+        scopeRole,
+        currentProfileId: currentProfile.id,
+        managerBranchId: managerBranchId ?? "",
+      },
+    });
 
     return {
       catalog,
-      appointments: rows.map((row) => {
-        const customer = row.customer_id ? customerLookup.get(row.customer_id) : null;
-
-        return {
-          id: row.id,
-          organizationId: row.organization_id,
-          branchId: row.branch_id,
-          branchName: branchMap.get(row.branch_id)?.label ?? "Sucursal",
-          employeeId: row.employee_id,
-          employeeName: employeeMap.get(row.employee_id)?.label ?? "Equipo",
-          serviceId: row.service_id,
-          serviceName: serviceMap.get(row.service_id)?.label ?? "Servicio",
-          customerId: row.customer_id,
-          customerName: customer?.full_name ?? row.customer_name ?? "Cliente temporal",
-          customerPhone: customer?.phone ?? row.customer_phone,
-          isWalkIn: !row.customer_id && Boolean(row.customer_name),
-          startTime: row.start_time,
-          endTime: row.end_time,
-          status: readStatus(row.status),
-          notes: row.notes,
-          cancellationReason: row.cancellation_reason,
-        };
-      }),
+      appointments: response.appointments,
     };
   };
 

@@ -1,4 +1,4 @@
-Ôªøimport { createClient } from "@supabase/supabase-js";
+import { createClient } from "@supabase/supabase-js";
 import { createError, getHeader, readBody } from "h3";
 import { z } from "zod";
 
@@ -25,12 +25,12 @@ type AdminClient = ReturnType<typeof createClient<Database>>;
 
 type StaffRole = Extract<UserRole, "admin" | "manager">;
 
-const numericField = z.coerce.number().finite("Ingresa un valor num√©rico v√°lido.");
+const numericField = z.coerce.number().finite("Ingresa un valor numÈrico v·lido.");
 
 export const productSchema = z.object({
   name: z.string().trim().min(3, "El nombre del producto es obligatorio."),
   sku: z.string().trim().max(64, "El SKU no puede superar 64 caracteres.").optional().default(""),
-  description: z.string().trim().max(240, "La descripci√≥n no puede superar 240 caracteres.").optional().default(""),
+  description: z.string().trim().max(240, "La descripciÛn no puede superar 240 caracteres.").optional().default(""),
   costPrice: numericField.min(0, "El precio costo no puede ser negativo."),
   salePrice: numericField.min(0, "El precio venta no puede ser negativo."),
   categoryId: z.string().uuid().nullable(),
@@ -38,56 +38,56 @@ export const productSchema = z.object({
 });
 
 export const categorySchema = z.object({
-  name: z.string().trim().min(2, "El nombre de la categor√≠a es obligatorio."),
+  name: z.string().trim().min(2, "El nombre de la categorÌa es obligatorio."),
   parentId: z.string().uuid().nullable().default(null),
 });
 
 export const stockAdjustmentSchema = z.object({
-  branchId: z.string().uuid("La sucursal seleccionada es inv√°lida."),
-  productId: z.string().uuid("El producto seleccionado es inv√°lido."),
+  branchId: z.string().uuid("La sucursal seleccionada es inv·lida."),
+  productId: z.string().uuid("El producto seleccionado es inv·lido."),
   mode: z.enum(["set", "add", "remove"]),
   quantity: z.coerce.number().int("La cantidad debe ser un entero.").positive("La cantidad debe ser mayor a cero."),
-  minStockLevel: z.coerce.number().int("El m√≠nimo debe ser un entero.").min(0, "El stock m√≠nimo no puede ser negativo.").nullable().optional(),
+  minStockLevel: z.coerce.number().int("El mÌnimo debe ser un entero.").min(0, "El stock mÌnimo no puede ser negativo.").nullable().optional(),
   reason: z.string().trim().min(3, "Debes indicar el motivo del ajuste."),
-  referenceCode: z.string().trim().max(120, "El c√≥digo de referencia no puede superar 120 caracteres.").optional().default(""),
+  referenceCode: z.string().trim().max(120, "El cÛdigo de referencia no puede superar 120 caracteres.").optional().default(""),
   note: z.string().trim().max(240, "La nota no puede superar 240 caracteres.").optional().default(""),
 });
 
 export const stockTransferSchema = z.object({
-  sourceBranchId: z.string().uuid("La sucursal origen es inv√°lida."),
-  destinationBranchId: z.string().uuid("La sucursal destino es inv√°lida."),
-  productId: z.string().uuid("El producto seleccionado es inv√°lido."),
+  sourceBranchId: z.string().uuid("La sucursal origen es inv·lida."),
+  destinationBranchId: z.string().uuid("La sucursal destino es inv·lida."),
+  productId: z.string().uuid("El producto seleccionado es inv·lido."),
   quantity: z.coerce.number().int("La cantidad debe ser un entero.").positive("La cantidad debe ser mayor a cero."),
   observations: z.string().trim().min(3, "Debes indicar las observaciones de la transferencia."),
-  referenceCode: z.string().trim().max(120, "El c√≥digo de referencia no puede superar 120 caracteres.").optional().default(""),
+  referenceCode: z.string().trim().max(120, "El cÛdigo de referencia no puede superar 120 caracteres.").optional().default(""),
 });
 
 const inventoryBatchLineSchema = z.object({
-  productId: z.string().uuid("El producto seleccionado es inv√°lido."),
+  productId: z.string().uuid("El producto seleccionado es inv·lido."),
   quantity: z.coerce.number().int("La cantidad debe ser un entero.").positive("La cantidad debe ser mayor a cero."),
 });
 
 export const stockAdjustmentBatchSchema = z.object({
   idempotencyKey: z.string().trim().min(8, "La llave de idempotencia es requerida.").max(120, "La llave de idempotencia es demasiado larga."),
-  branchId: z.string().uuid("La sucursal seleccionada es inv√°lida."),
+  branchId: z.string().uuid("La sucursal seleccionada es inv·lida."),
   mode: z.enum(["set", "add", "remove"]),
   reason: z.string().trim().min(3, "Debes indicar el motivo del ajuste."),
-  referenceCode: z.string().trim().max(120, "El c√≥digo de referencia no puede superar 120 caracteres.").optional().default(""),
+  referenceCode: z.string().trim().max(120, "El cÛdigo de referencia no puede superar 120 caracteres.").optional().default(""),
   note: z.string().trim().max(240, "La nota no puede superar 240 caracteres.").optional().default(""),
   lines: z.array(z.object({
-    productId: z.string().uuid("El producto seleccionado es inv√°lido."),
+    productId: z.string().uuid("El producto seleccionado es inv·lido."),
     quantity: z.coerce.number().int("La cantidad debe ser un entero.").positive("La cantidad debe ser mayor a cero."),
-    minStockLevel: z.coerce.number().int("El m√≠nimo debe ser un entero.").min(0, "El stock m√≠nimo no puede ser negativo.").nullable().optional(),
-  })).min(1, "Debes incluir al menos un producto.").max(50, "Solo se permiten hasta 50 l√≠neas por operaci√≥n."),
+    minStockLevel: z.coerce.number().int("El mÌnimo debe ser un entero.").min(0, "El stock mÌnimo no puede ser negativo.").nullable().optional(),
+  })).min(1, "Debes incluir al menos un producto.").max(50, "Solo se permiten hasta 50 lÌneas por operaciÛn."),
 });
 
 export const stockTransferBatchSchema = z.object({
   idempotencyKey: z.string().trim().min(8, "La llave de idempotencia es requerida.").max(120, "La llave de idempotencia es demasiado larga."),
-  sourceBranchId: z.string().uuid("La sucursal origen es inv√°lida."),
-  destinationBranchId: z.string().uuid("La sucursal destino es inv√°lida."),
+  sourceBranchId: z.string().uuid("La sucursal origen es inv·lida."),
+  destinationBranchId: z.string().uuid("La sucursal destino es inv·lida."),
   observations: z.string().trim().min(3, "Debes indicar las observaciones de la transferencia."),
-  referenceCode: z.string().trim().max(120, "El c√≥digo de referencia no puede superar 120 caracteres.").optional().default(""),
-  lines: z.array(inventoryBatchLineSchema).min(1, "Debes incluir al menos un producto.").max(50, "Solo se permiten hasta 50 l√≠neas por operaci√≥n."),
+  referenceCode: z.string().trim().max(120, "El cÛdigo de referencia no puede superar 120 caracteres.").optional().default(""),
+  lines: z.array(inventoryBatchLineSchema).min(1, "Debes incluir al menos un producto.").max(50, "Solo se permiten hasta 50 lÌneas por operaciÛn."),
 });
 
 export const inventoryTransferFiltersSchema = z.object({
@@ -174,7 +174,7 @@ const buildBatchNormalizationWarnings = (
   }
 
   return [
-    `Se consolidaron ${originalLines - normalizedLines} l√≠nea(s) repetidas en ${mergedProducts} producto(s).`,
+    `Se consolidaron ${originalLines - normalizedLines} lÌnea(s) repetidas en ${mergedProducts} producto(s).`,
   ];
 };
 
@@ -316,7 +316,7 @@ const getBearerToken = (event: H3Event): string => {
   if (!header?.startsWith("Bearer ")) {
     throw createError({
       statusCode: 401,
-      statusMessage: "No se recibi√≥ un token de autenticaci√≥n v√°lido.",
+      statusMessage: "No se recibiÛ un token de autenticaciÛn v·lido.",
     });
   }
 
@@ -327,12 +327,12 @@ const getSupabaseServerConfig = (event: H3Event) => {
   const config = useRuntimeConfig(event);
   const url = process.env.NUXT_PUBLIC_SUPABASE_URL;
   const anonKey = process.env.NUXT_PUBLIC_SUPABASE_ANON_KEY;
-  const serviceRoleKey = config.supabaseServiceRoleKey;
+  const serviceRoleKey = config.supabaseServiceRoleKey as string | undefined;
 
   if (!url || !anonKey) {
     throw createError({
       statusCode: 500,
-      statusMessage: "La configuraci√≥n p√∫blica de Supabase est√° incompleta.",
+      statusMessage: "La configuraciÛn p˙blica de Supabase est· incompleta.",
     });
   }
 
@@ -402,7 +402,7 @@ export const requireInventoryContext = async (event: H3Event): Promise<Inventory
   const { url, anonKey, serviceRoleKey } = getSupabaseServerConfig(event);
   const token = getBearerToken(event);
 
-  const authClient = createClient<Database>(url, anonKey, {
+  const authClient = createClient<Database, "public">(url, anonKey, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 
@@ -410,11 +410,11 @@ export const requireInventoryContext = async (event: H3Event): Promise<Inventory
   if (authError || !authData.user) {
     throw createError({
       statusCode: 401,
-      statusMessage: "No se pudo validar la sesi√≥n del usuario.",
+      statusMessage: "No se pudo validar la sesiÛn del usuario.",
     });
   }
 
-  const adminClient = createClient<Database>(url, serviceRoleKey, {
+  const adminClient = createClient<Database, "public">(url, serviceRoleKey, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 
@@ -494,7 +494,7 @@ export const readValidatedInventoryBody = async <T>(event: H3Event, schema: z.Zo
   if (!parsed.success) {
     throw createError({
       statusCode: 400,
-      statusMessage: parsed.error.issues[0]?.message ?? "Payload inv√°lido.",
+      statusMessage: parsed.error.issues[0]?.message ?? "Payload inv·lido.",
     });
   }
 
@@ -612,7 +612,7 @@ export const getInventoryBranchOrThrow = async (
   if (!data) {
     throw createError({
       statusCode: 404,
-      statusMessage: "La sucursal seleccionada no existe en tu organizaci√≥n.",
+      statusMessage: "La sucursal seleccionada no existe en tu organizaciÛn.",
     });
   }
 
@@ -647,7 +647,7 @@ export const getInventoryProductOrThrow = async (
   if (!data) {
     throw createError({
       statusCode: 404,
-      statusMessage: "El producto seleccionado no existe en tu organizaci√≥n.",
+      statusMessage: "El producto seleccionado no existe en tu organizaciÛn.",
     });
   }
 
@@ -669,14 +669,14 @@ export const getProductCategoryOrThrow = async (
   if (error) {
     throw createError({
       statusCode: 500,
-      statusMessage: "No se pudo validar la categor√≠a seleccionada.",
+      statusMessage: "No se pudo validar la categorÌa seleccionada.",
     });
   }
 
   if (!data) {
     throw createError({
       statusCode: 404,
-      statusMessage: "La categor√≠a seleccionada no existe o no pertenece a productos.",
+      statusMessage: "La categorÌa seleccionada no existe o no pertenece a productos.",
     });
   }
 
@@ -737,7 +737,7 @@ export const assertUniqueSKU = async (
   if ((data ?? []).length > 0) {
     throw createError({
       statusCode: 409,
-      statusMessage: "Ya existe un producto con ese SKU dentro de tu organizaci√≥n.",
+      statusMessage: "Ya existe un producto con ese SKU dentro de tu organizaciÛn.",
     });
   }
 };
@@ -764,14 +764,14 @@ export const assertUniqueProductCategoryName = async (
   if (error) {
     throw createError({
       statusCode: 500,
-      statusMessage: "No se pudo validar la unicidad de la categor√≠a.",
+      statusMessage: "No se pudo validar la unicidad de la categorÌa.",
     });
   }
 
   if ((data ?? []).length > 0) {
     throw createError({
       statusCode: 409,
-      statusMessage: "Ya existe una categor√≠a de productos con ese nombre.",
+      statusMessage: "Ya existe una categorÌa de productos con ese nombre.",
     });
   }
 };
@@ -856,14 +856,14 @@ export const applyInventoryStockMutation = async (
     if (message.includes("INSUFFICIENT_AVAILABLE_STOCK")) {
       throw createError({
         statusCode: 409,
-        statusMessage: "No hay stock disponible suficiente para completar la operaci√≥n.",
+        statusMessage: "No hay stock disponible suficiente para completar la operaciÛn.",
       });
     }
 
     if (message.includes("INSUFFICIENT_STOCK") || message.includes("NEGATIVE_STOCK_NOT_ALLOWED")) {
       throw createError({
         statusCode: 409,
-        statusMessage: "La operaci√≥n deja el stock en negativo, lo cual no est√° permitido.",
+        statusMessage: "La operaciÛn deja el stock en negativo, lo cual no est· permitido.",
       });
     }
 
@@ -884,7 +884,7 @@ export const applyInventoryStockMutation = async (
   if (!row) {
     throw createError({
       statusCode: 500,
-      statusMessage: "La operaci√≥n de inventario no devolvi√≥ un resultado v√°lido.",
+      statusMessage: "La operaciÛn de inventario no devolviÛ un resultado v·lido.",
     });
   }
 
@@ -901,14 +901,14 @@ const normalizeInventoryMutationError = (message: string): never => {
   if (message.includes("INSUFFICIENT_AVAILABLE_STOCK")) {
     throw createError({
       statusCode: 409,
-      statusMessage: "No hay stock disponible suficiente para completar la operaci√≥n.",
+      statusMessage: "No hay stock disponible suficiente para completar la operaciÛn.",
     });
   }
 
   if (message.includes("INSUFFICIENT_STOCK") || message.includes("NEGATIVE_STOCK_NOT_ALLOWED")) {
     throw createError({
       statusCode: 409,
-      statusMessage: "La operaci√≥n deja el stock en negativo, lo cual no est√° permitido.",
+      statusMessage: "La operaciÛn deja el stock en negativo, lo cual no est· permitido.",
     });
   }
 
@@ -922,7 +922,7 @@ const normalizeInventoryMutationError = (message: string): never => {
   if (message.includes("INVALID_BATCH_LINES")) {
     throw createError({
       statusCode: 400,
-      statusMessage: "Debes enviar entre 1 y 50 l√≠neas v√°lidas.",
+      statusMessage: "Debes enviar entre 1 y 50 lÌneas v·lidas.",
     });
   }
 
@@ -1008,7 +1008,7 @@ export const runInventoryAdjustBatchExecute = async (
   if (!row) {
     throw createError({
       statusCode: 500,
-      statusMessage: "No se recibi√≥ respuesta v√°lida del lote de ajustes.",
+      statusMessage: "No se recibiÛ respuesta v·lida del lote de ajustes.",
     });
   }
 
@@ -1089,7 +1089,7 @@ export const runInventoryTransferBatchCreate = async (
   if (!row) {
     throw createError({
       statusCode: 500,
-      statusMessage: "No se recibi√≥ respuesta v√°lida del lote de transferencias.",
+      statusMessage: "No se recibiÛ respuesta v·lida del lote de transferencias.",
     });
   }
 
@@ -1118,7 +1118,7 @@ export const runInventoryTransferBatchReceive = async (
   if (!row) {
     throw createError({
       statusCode: 500,
-      statusMessage: "No se recibi√≥ respuesta v√°lida de la recepci√≥n del lote.",
+      statusMessage: "No se recibiÛ respuesta v·lida de la recepciÛn del lote.",
     });
   }
 
@@ -1201,3 +1201,4 @@ export const mapInventoryError = (error: unknown, fallbackMessage: string): neve
     statusMessage: message,
   });
 };
+

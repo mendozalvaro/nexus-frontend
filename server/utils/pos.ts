@@ -73,6 +73,8 @@ export const checkoutSchema = z.object({
   discount: discountSchema,
   note: z.string().trim().max(240, "La nota no puede superar 240 caracteres.").optional().default(""),
   items: z.array(z.union([productItemSchema, serviceItemSchema])).min(1, "Debes agregar al menos un producto o servicio al carrito."),
+  createAppointments: z.boolean().optional().default(true),
+  appointmentId: z.string().uuid().optional().nullable(),
 });
 
 export interface POSContext {
@@ -144,7 +146,7 @@ const getSupabaseServerConfig = (event: H3Event) => {
   const config = useRuntimeConfig(event);
   const url = process.env.NUXT_PUBLIC_SUPABASE_URL;
   const anonKey = process.env.NUXT_PUBLIC_SUPABASE_ANON_KEY;
-  const serviceRoleKey = config.supabaseServiceRoleKey;
+  const serviceRoleKey = config.supabaseServiceRoleKey as string | undefined;
 
   if (!url || !anonKey) {
     throw createError({
@@ -203,7 +205,7 @@ export const requirePOSContext = async (event: H3Event): Promise<POSContext> => 
   const { url, anonKey, serviceRoleKey } = getSupabaseServerConfig(event);
   const token = getBearerToken(event);
 
-  const authClient = createClient<Database>(url, anonKey, {
+  const authClient = createClient<Database, "public">(url, anonKey, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 
@@ -215,7 +217,7 @@ export const requirePOSContext = async (event: H3Event): Promise<POSContext> => 
     });
   }
 
-  const adminClient = createClient<Database>(url, serviceRoleKey, {
+  const adminClient = createClient<Database, "public">(url, serviceRoleKey, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 
@@ -344,7 +346,7 @@ export const getPOSEmployeeOrThrow = async (
     .select("*")
     .eq("organization_id", context.organizationId)
     .eq("id", employeeId)
-    .in("role", ["manager", "employee"] satisfies UserRole[])
+    .in("role", ["admin", "manager", "employee"] satisfies UserRole[])
     .eq("is_active", true)
     .maybeSingle<ProfileRow>();
 
@@ -476,6 +478,7 @@ export const validateServiceAvailability = async (
   employeeId: string,
   startIso: string,
   endIso: string,
+  excludeAppointmentId?: string | null,
 ) => {
   const { data, error } = await context.adminClient
     .from("appointments")
@@ -495,7 +498,9 @@ export const validateServiceAvailability = async (
     });
   }
 
-  if ((data ?? []).length > 0) {
+  const conflicts = (data ?? []).filter((apt) => apt.id !== excludeAppointmentId);
+
+  if (conflicts.length > 0) {
     throw createError({
       statusCode: 409,
       statusMessage: "El colaborador ya tiene una cita asignada que se solapa con ese horario.",
@@ -808,6 +813,32 @@ export const buildTransactionInsert = (
   status: "completed",
 });
 
+export const buildAppointmentInsert = (
+  context: POSContext,
+  branchId: string,
+  customerId: string | null,
+  customerName: string | null,
+  customerPhone: string | null,
+  employeeId: string,
+  serviceId: string,
+  startIso: string,
+  endIso: string,
+  notes?: string,
+): Database["public"]["Tables"]["appointments"]["Insert"] => ({
+  organization_id: context.organizationId,
+  branch_id: branchId,
+  customer_id: customerId,
+  customer_name: customerName,
+  customer_phone: customerPhone,
+  employee_id: employeeId,
+  service_id: serviceId,
+  start_time: startIso,
+  end_time: endIso,
+  status: "confirmed",
+  source: "pos_checkout",
+  notes: notes ?? null,
+});
+
 export const withTitleAndSubtitle = (
   itemType: "product" | "service",
   values: {
@@ -823,3 +854,4 @@ export const withTitleAndSubtitle = (
   customer: values.customer as unknown as Json,
   ...values.extra,
 });
+

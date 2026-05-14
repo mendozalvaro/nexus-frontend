@@ -38,7 +38,7 @@ const getSupabaseServerConfig = (event: H3Event) => {
   const config = useRuntimeConfig(event);
   const url = process.env.NUXT_PUBLIC_SUPABASE_URL;
   const anonKey = process.env.NUXT_PUBLIC_SUPABASE_ANON_KEY;
-  const serviceRoleKey = config.supabaseServiceRoleKey;
+  const serviceRoleKey = config.supabaseServiceRoleKey as string | undefined;
 
   if (!url || !anonKey) {
     throw createError({
@@ -77,7 +77,7 @@ export const requireSystemAdminContext = async (
   const { url, anonKey, serviceRoleKey } = getSupabaseServerConfig(event);
   const token = getBearerToken(event);
 
-  const authClient = createClient<Database>(url, anonKey, {
+  const authClient = createClient<Database, "public">(url, anonKey, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 
@@ -89,7 +89,7 @@ export const requireSystemAdminContext = async (
     });
   }
 
-  const adminClient = createClient<Database>(url, serviceRoleKey, {
+  const adminClient = createClient<Database, "public">(url, serviceRoleKey, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 
@@ -147,3 +147,4 @@ export const assertSystemModuleAccess = async (
     statusMessage: "No tienes permisos para este modulo.",
   });
 };
+

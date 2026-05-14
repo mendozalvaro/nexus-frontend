@@ -41,7 +41,7 @@ const formInitialValue = computed(() => {
     :open="props.open"
     :title="props.initialValue ? 'Editar servicio' : 'Nuevo servicio'"
     :description="props.initialValue ? 'Actualiza información comercial del servicio.' : 'Crea un servicio sin mezclar aún su cobertura operativa.'"
-    :ui="{ content: 'max-w-4xl' }"
+    :ui="{ content: 'max-w-2xl' }"
     @update:open="emits('update:open', $event)"
   >
     <template #body>

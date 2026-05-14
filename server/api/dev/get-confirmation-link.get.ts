@@ -13,12 +13,12 @@ export default defineEventHandler(async (event: H3Event) => {
   }
 
   const config = useRuntimeConfig(event);
-  const devAdminKey = config.devAdminKey;
+  const devAdminKey = config.devAdminKey as string | undefined;
   const requestKey = getHeader(event, "x-dev-admin-key");
   assertValidDevAdminKey(requestKey ?? undefined, devAdminKey);
 
   const url = process.env.NUXT_PUBLIC_SUPABASE_URL;
-  const serviceRoleKey = config.supabaseServiceRoleKey;
+  const serviceRoleKey = config.supabaseServiceRoleKey as string | undefined;
 
   if (!url || !serviceRoleKey) {
     throw createError({
@@ -27,7 +27,7 @@ export default defineEventHandler(async (event: H3Event) => {
     });
   }
 
-  const adminClient = createClient<Database>(url, serviceRoleKey, {
+  const adminClient = createClient<Database, "public">(url, serviceRoleKey, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 
@@ -117,3 +117,4 @@ export default defineEventHandler(async (event: H3Event) => {
     });
   }
 });
+

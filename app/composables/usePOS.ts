@@ -126,6 +126,8 @@ export interface POSCheckoutPayload {
   paymentMethod: PaymentMethod;
   discount: POSDiscountInput;
   note: string;
+  createAppointments?: boolean;
+  appointmentId?: string | null;
 }
 
 export interface POSReceiptLineItem {
@@ -208,13 +210,25 @@ const parseSkills = (value: Json | null): string[] => {
 };
 
 export const usePOS = () => {
-  const supabase = useSupabaseClient<Database>();
   const { resolveAccessToken } = useSessionAccess();
   const { profile, fetchProfile } = useAuth();
 
   const cart = useState<POSCartItem[]>("pos:cart", () => []);
   const hydrated = useState<boolean>("pos:hydrated", () => false);
   const lastCatalog = useState<POSCatalog | null>("pos:catalog", () => null);
+  const appointmentContext = useState<{
+    appointmentId: string | null;
+    customerName: string | null;
+    serviceName: string | null;
+    employeeName: string | null;
+    dateTime: string | null;
+  }>("pos:appointmentContext", () => ({
+    appointmentId: null,
+    customerName: null,
+    serviceName: null,
+    employeeName: null,
+    dateTime: null,
+  }));
 
   const getAuthHeaders = async () => {
     const token = await resolveAccessToken();
@@ -520,11 +534,13 @@ export const usePOS = () => {
   const checkout = async (payload: POSCheckoutPayload): Promise<POSReceipt> => {
     await ensureProfile();
 
-    const response = await $fetch<{ receipt: POSReceipt; transactionId: string }>("/api/pos/checkout", {
+    const response = await $fetch<{ receipt: POSReceipt; transactionId: string; createdAppointments: Array<{ id: string; serviceId: string; employeeId: string }> }>("/api/pos/checkout", {
       method: "POST",
       headers: await getAuthHeaders(),
       body: {
         ...payload,
+        createAppointments: payload.createAppointments ?? true,
+        appointmentId: payload.appointmentId ?? null,
         items: cart.value.map((item) => {
           if (item.itemType === "product") {
             return {
@@ -577,6 +593,78 @@ export const usePOS = () => {
     return response.receipt;
   };
 
+  const loadAppointmentForPOS = async (appointmentId: string) => {
+    await ensureProfile();
+
+    const response = await $fetch<{
+      appointment: {
+        id: string;
+        branchId: string;
+        branchName: string;
+        employeeId: string;
+        employeeName: string;
+        serviceId: string;
+        serviceName: string;
+        serviceDurationMinutes: number;
+        servicePrice: number;
+        customerId: string | null;
+        customerName: string;
+        customerPhone: string | null;
+        isWalkIn: boolean;
+        startTime: string;
+        endTime: string;
+        status: string;
+        notes: string | null;
+      };
+    }>(`/api/appointments/${appointmentId}`, {
+      headers: await getAuthHeaders(),
+    });
+
+    const apt = response.appointment;
+    const startDateTime = new Date(apt.startTime);
+    const dateStr = startDateTime.toISOString().slice(0, 10);
+    const timeStr = startDateTime.toLocaleTimeString("en-GB", {
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    });
+
+    appointmentContext.value = {
+      appointmentId: apt.id,
+      customerName: apt.customerName,
+      serviceName: apt.serviceName,
+      employeeName: apt.employeeName,
+      dateTime: apt.startTime,
+    };
+
+    cart.value = [
+      {
+        id: createCartItemId(),
+        itemType: "service",
+        serviceId: apt.serviceId,
+        name: apt.serviceName,
+        quantity: 1,
+        unitPrice: apt.servicePrice,
+        subtotal: roundCurrency(apt.servicePrice),
+        branchId: apt.branchId,
+        employeeId: apt.employeeId,
+        employeeName: apt.employeeName,
+        scheduledDate: dateStr,
+        scheduledTime: timeStr,
+        durationMinutes: apt.serviceDurationMinutes,
+        categoryName: null,
+      },
+    ];
+
+    return {
+      branchId: apt.branchId,
+      customerId: apt.customerId,
+      customerName: apt.customerName,
+      customerPhone: apt.customerPhone,
+      isWalkIn: apt.isWalkIn,
+    };
+  };
+
   const canEmployeeDeliverService = (
     employee: POSEmployeeItem,
     serviceId: string,
@@ -595,9 +683,9 @@ export const usePOS = () => {
   };
 
   return {
-    supabase,
     cart,
     lastCatalog,
+    appointmentContext,
     hydrateCart,
     loadCatalog,
     searchCustomers,
@@ -612,6 +700,7 @@ export const usePOS = () => {
     checkout,
     loadTransactions,
     loadReceipt,
+    loadAppointmentForPOS,
     canEmployeeDeliverService,
   };
 };

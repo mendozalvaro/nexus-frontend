@@ -77,7 +77,7 @@ const getSupabaseServerConfig = (event: H3Event) => {
   const config = useRuntimeConfig(event);
   const url = process.env.NUXT_PUBLIC_SUPABASE_URL;
   const anonKey = process.env.NUXT_PUBLIC_SUPABASE_ANON_KEY;
-  const serviceRoleKey = config.supabaseServiceRoleKey;
+  const serviceRoleKey = config.supabaseServiceRoleKey as string | undefined;
 
   if (!url || !anonKey) {
     throw createError({
@@ -111,7 +111,7 @@ export const requireCatalogContext = async (event: H3Event): Promise<CatalogCont
   const { url, anonKey, serviceRoleKey } = getSupabaseServerConfig(event);
   const token = getBearerToken(event);
 
-  const authClient = createClient<Database>(url, anonKey, {
+  const authClient = createClient<Database, "public">(url, anonKey, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 
@@ -123,7 +123,7 @@ export const requireCatalogContext = async (event: H3Event): Promise<CatalogCont
     });
   }
 
-  const adminClient = createClient<Database>(url, serviceRoleKey, {
+  const adminClient = createClient<Database, "public">(url, serviceRoleKey, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 
@@ -349,3 +349,4 @@ export const assertCatalogUniqueCategoryName = async (
     throw createError({ statusCode: 409, statusMessage: "Ya existe una categoria con ese nombre para este tipo." });
   }
 };
+

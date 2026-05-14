@@ -144,20 +144,21 @@ const resolvedSubmitLabel = computed(() => {
       >
         <AdminFieldGroup :columns="2" class="sm:col-span-2">
           <UFormField label="Nombre" name="name">
-            <UInput v-model="state.name" placeholder="Ej. Casa Matriz Centro" :disabled="loading" :ui="ADMIN_FIELD_UI" />
+            <UInput v-model="state.name" placeholder="Ej. Casa Matriz Centro" :disabled="loading" :ui="ADMIN_FIELD_UI" class="w-full"/>
           </UFormField>
 
           <UFormField label="Código" name="code">
-            <UInput v-model="state.code" placeholder="Ej. CTR-01" :disabled="loading" :ui="ADMIN_FIELD_UI" />
-          </UFormField>
-
-          <UFormField label="Dirección" name="address" class="sm:col-span-2">
-            <UInput v-model="state.address" placeholder="Dirección o referencia de la sucursal" :disabled="loading" :ui="ADMIN_FIELD_UI" />
+            <UInput v-model="state.code" placeholder="Ej. CTR-01" :disabled="loading" :ui="ADMIN_FIELD_UI" class="w-full"/>
           </UFormField>
 
           <UFormField label="Teléfono" name="phone">
-            <UInput v-model="state.phone" placeholder="+591 70000000" :disabled="loading" :ui="ADMIN_FIELD_UI" />
+            <UInput v-model="state.phone" placeholder="+591 70000000" :disabled="loading" :ui="ADMIN_FIELD_UI" class="w-full"/>
           </UFormField>
+
+          <UFormField label="Dirección" name="address" class="sm:col-span-2">
+            <UTextarea :rows="3" v-model="state.address" placeholder="Dirección o referencia de la sucursal" :disabled="loading" :ui="ADMIN_FIELD_UI" class="w-full"/>
+          </UFormField>
+
         </AdminFieldGroup>
       </AdminFormSection>
 

@@ -6,6 +6,9 @@ import type {
   AppointmentMutationPayload,
   AppointmentScopeRole,
 } from "@/composables/useAppointments";
+import AppointmentCalendar from "./AppointmentCalendar.vue";
+import AppointmentForm from "./forms/AppointmentForm.vue";
+import AppointmentCancelModal from "./modals/AppointmentCancelModal.vue";
 
 const props = defineProps<{
   scopeRole: AppointmentScopeRole;

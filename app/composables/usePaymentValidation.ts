@@ -1,4 +1,3 @@
-import type { Database } from "@/types/database.types";
 import type {
   PaymentPageState,
   PaymentStatusSummary,
@@ -10,11 +9,13 @@ import {
   ERROR_MESSAGES,
   MAX_RECEIPT_SIZE_BYTES,
   PAYMENT_SCHEMA,
-  buildReceiptStoragePath,
+  PAYMENT_STORAGE_KEY,
   getPlanBillingAmount,
   isReceiptMimeTypeAllowed,
   sanitizeFilename,
+  getPlanBySlug,
 } from "@/utils/onboarding";
+import { asJsonObject } from "@/utils/onboarding";
 
 interface PaymentDraft {
   transactionRef: string;
@@ -29,8 +30,6 @@ const createPaymentDraft = (): PaymentDraft => ({
 });
 
 export const usePaymentValidation = () => {
-  const supabase = useSupabaseClient<Database>();
-  const session = useSupabaseSession();
   const { saveOnboardingProgress } = useRegistration();
   const { sendPaymentReceivedEmail } = useNotifications();
 
@@ -46,9 +45,7 @@ export const usePaymentValidation = () => {
   const error = useState<string | null>("onboarding:payment:error", () => null);
 
   const hydrateDraft = () => {
-    if (!import.meta.client) {
-      return;
-    }
+    if (!import.meta.client) return;
 
     try {
       const rawValue = localStorage.getItem(PAYMENT_STORAGE_KEY);
@@ -62,16 +59,11 @@ export const usePaymentValidation = () => {
   };
 
   const persistDraft = () => {
-    if (!import.meta.client) {
-      return;
-    }
+    if (!import.meta.client) return;
 
     localStorage.setItem(PAYMENT_STORAGE_KEY, JSON.stringify(draft.value));
   };
 
-  /**
-   * Persiste el estado parcial del paso de pago para retomarlo despues.
-   */
   const savePaymentProgress = async (
     organizationId: string,
     status: PaymentPageState = "upload",
@@ -101,9 +93,6 @@ export const usePaymentValidation = () => {
     }
   };
 
-  /**
-   * Valida y arma la previsualizacion del comprobante seleccionado.
-   */
   const buildReceiptPreview = (file: File): ReceiptPreview => {
     if (file.size > MAX_RECEIPT_SIZE_BYTES) {
       throw new Error(ERROR_MESSAGES.FILE_TOO_LARGE);
@@ -123,40 +112,20 @@ export const usePaymentValidation = () => {
     };
   };
 
-  /**
-   * Obtiene el ultimo estado de validacion de pago de la organizacion.
-   */
   const getPaymentStatus = async (
     organizationId: string,
   ): Promise<PaymentStatusSummary> => {
-    const { data, error: queryError } = await supabase
-      .from("payment_validations")
-      .select("*")
-      .eq("organization_id", organizationId)
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    if (queryError) {
-      throw queryError;
-    }
+    const data = await $fetch<PaymentStatusSummary>("/api/onboarding/payment-status", {
+      query: { organizationId },
+    });
 
     if (!data) {
-      return {
-        status: "missing",
-        latestValidation: null,
-      };
+      return { status: "missing", latestValidation: null };
     }
 
-    return {
-      status: (data.status ?? "pending") as PaymentStatusSummary["status"],
-      latestValidation: data,
-    };
+    return data;
   };
 
-  /**
-   * Sube el comprobante y registra la validacion manual pendiente.
-   */
   const uploadReceipt = async (payload: PaymentUploadPayload) => {
     loading.value = true;
     uploadProgress.value = 12;
@@ -166,22 +135,6 @@ export const usePaymentValidation = () => {
       buildReceiptPreview(payload.file);
 
       const safeFilename = sanitizeFilename(payload.file.name);
-      const storagePath = buildReceiptStoragePath(
-        payload.userId,
-        payload.organizationId,
-        safeFilename,
-      );
-
-      const { error: uploadError } = await supabase.storage
-        .from("receipts")
-        .upload(storagePath, payload.file, {
-          upsert: false,
-          contentType: payload.file.type,
-        });
-
-      if (uploadError) {
-        throw uploadError;
-      }
 
       uploadProgress.value = 58;
 
@@ -191,27 +144,29 @@ export const usePaymentValidation = () => {
         confirmTransfer: payload.confirmTransfer,
       });
 
-      const { data: validation, error: insertError } = await supabase
-        .from("payment_validations")
-        .insert({
-          organization_id: payload.organizationId,
-          user_id: payload.userId,
-          amount: payload.amount,
-          payment_method: validatedPayload.paymentMethod,
-          transaction_ref: sanitizeNullableText(
-            validatedPayload.transactionRef,
-          ),
-          receipt_storage_path: storagePath,
-          receipt_filename: safeFilename,
-          receipt_mime_type: payload.file.type,
-          status: "pending",
-        })
-        .select()
-        .single();
+      const base64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = reject;
+        reader.readAsDataURL(payload.file);
+      });
 
-      if (insertError) {
-        throw insertError;
-      }
+      uploadProgress.value = 70;
+
+      const result = await $fetch<{ validation: unknown }>("/api/onboarding/receipt", {
+        method: "POST",
+        body: {
+          organizationId: payload.organizationId,
+          amount: payload.amount,
+          paymentMethod: validatedPayload.paymentMethod,
+          transactionRef: validatedPayload.transactionRef,
+          file: {
+            dataBase64: base64,
+            name: safeFilename,
+            type: payload.file.type,
+          },
+        },
+      });
 
       uploadProgress.value = 82;
 
@@ -220,24 +175,8 @@ export const usePaymentValidation = () => {
         organizationId: payload.organizationId,
         progressData: asJsonObject({
           paymentDraft: draft.value,
-          latestValidationId: validation.id,
         }),
       });
-
-      if (session.value?.user?.id) {
-        await supabase.from("audit_logs").insert({
-          action: "INSERT",
-          table_name: "payment_validations",
-          record_id: validation.id,
-          user_id: session.value.user.id,
-          context: asJsonObject({
-            event: "PAYMENT_RECEIPT_SUBMITTED",
-            organization_id: payload.organizationId,
-            receipt_storage_path: storagePath,
-            amount: payload.amount,
-          }),
-        });
-      }
 
       uploadProgress.value = 96;
 
@@ -248,7 +187,7 @@ export const usePaymentValidation = () => {
       }
 
       uploadProgress.value = 100;
-      return validation;
+      return result.validation;
     } catch (uploadReceiptError) {
       const message =
         uploadReceiptError instanceof Error

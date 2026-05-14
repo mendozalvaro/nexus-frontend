@@ -12,8 +12,8 @@
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "supabase:types": "supabase gen types typescript --project-id $SUPABASE_PROJECT_ID > types/supabase.ts",
-    "test" : "vitest",
-    "test:ui" : "vitest --ui"
+    "test": "vitest",
+    "test:ui": "vitest --ui"
   },
   "dependencies": {
     "@nuxt/ui": "^4.6.0",
@@ -23,15 +23,17 @@
     "apexcharts": "^5.10.4",
     "nuxt": "^4.4.2",
     "vue": "^3.5.31",
-    "vue-router": "^5.0.4",
     "vue3-apexcharts": "^1.11.1",
+    "h3": "^1.15.11",
     "zod": "^4.3.6"
   },
   "devDependencies": {
     "@nuxt/test-utils": "^4.0.2",
+    "@tailwindcss/vite": "^4.3.0",
     "@types/node": "^25.5.0",
     "@vue/test-utils": "^2.4.6",
     "happy-dom": "^20.9.0",
+    "tailwindcss": "^4.3.0",
     "vitest": "^4.1.4",
     "vue-tsc": "^3.2.6",
     "wrangler": "^4.81.1"

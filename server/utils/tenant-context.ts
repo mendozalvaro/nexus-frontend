@@ -55,7 +55,7 @@ const normalizeRole = (value: unknown): Database["public"]["Enums"]["user_role"]
 const buildAdminClient = (event: H3Event): AdminClient => {
   const config = useRuntimeConfig(event);
   const supabaseUrl = process.env.NUXT_PUBLIC_SUPABASE_URL;
-  const serviceRoleKey = config.supabaseServiceRoleKey;
+  const serviceRoleKey = config.supabaseServiceRoleKey as string | undefined;
 
   if (!supabaseUrl || !serviceRoleKey) {
     throw createError({
@@ -64,7 +64,7 @@ const buildAdminClient = (event: H3Event): AdminClient => {
     });
   }
 
-  return createClient<Database>(supabaseUrl, serviceRoleKey, {
+  return createClient<Database, "public">(supabaseUrl, serviceRoleKey, {
     auth: {
       persistSession: false,
       autoRefreshToken: false,
@@ -137,3 +137,4 @@ export const requireTenantContext = async (event: H3Event): Promise<TenantContex
     role: resolvedRole,
   };
 };
+

@@ -42,7 +42,7 @@ const formInitialValue = computed(() => {
     :open="props.open"
     :title="props.initialValue ? 'Editar producto' : 'Nuevo producto'"
     :description="props.initialValue ? 'Actualiza información comercial y de control de inventario.' : 'Crea un producto para el catálogo. Su stock inicial será 0.'"
-    :ui="{ content: 'max-w-4xl' }"
+    :ui="{ content: 'max-w-2xl' }"
     @update:open="emits('update:open', $event)"
   >
     <template #body>

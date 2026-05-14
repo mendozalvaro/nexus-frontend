@@ -29,7 +29,7 @@ const isEditing = computed(() => props.mode === "edit");
     :open="open"
     :title="isEditing ? 'Editar sucursal' : 'Nueva sucursal'"
     :description="isEditing ? 'Actualiza los datos de la sucursal.' : 'Crea una sucursal para tu organización.'"
-    :ui="{ content: 'max-w-4xl' }"
+    :ui="{ content: 'max-w-2xl' }"
     @update:open="emits('update:open', $event)"
   >
     <template #body>

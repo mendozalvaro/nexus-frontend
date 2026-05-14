@@ -30,7 +30,8 @@ export default defineEventHandler(async (event) => {
 
   const isValidTransition =
     ((currentStatus === "pending" || currentStatus === "confirmed") && nextStatus === "in_progress")
-    || (currentStatus === "in_progress" && nextStatus === "completed");
+    || (currentStatus === "in_progress" && nextStatus === "completed")
+    || (currentStatus === "pending" || currentStatus === "confirmed") && nextStatus === "no_show";
 
   if (!isValidTransition) {
     throw createError({

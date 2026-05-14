@@ -31,7 +31,6 @@ const {
   resolvePageState,
 } = usePaymentValidation();
 const { resolvePostAuthDestination } = useRegistration();
-const supabase = useSupabaseClient();
 
 const preview = ref<ReceiptPreview | null>(null);
 const latestStatus = ref<Awaited<ReturnType<typeof getPaymentStatus>> | null>(null);
@@ -130,12 +129,10 @@ const loadContext = async () => {
     return;
   }
 
-  const { data: organization } = await supabase
-    .from("organizations")
-    .select("slug")
-    .eq("id", currentProfile.organization_id)
-    .maybeSingle();
-  organizationSlug.value = organization?.slug ?? "mi-organizacion";
+  const { slug } = await $fetch<{ slug: string }>("/api/onboarding/organization-slug", {
+    query: { organizationId: currentProfile.organization_id },
+  });
+  organizationSlug.value = slug;
   latestStatus.value = await getPaymentStatus(currentProfile.organization_id);
   updatePageState(latestStatus.value);
 };

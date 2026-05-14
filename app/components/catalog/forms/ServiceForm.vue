@@ -139,7 +139,7 @@ onBeforeUnmount(() => {
     <AdminFormSection
       title="Informacion general"
       description="Datos comerciales del servicio."
-      :columns="2"
+      :columns="1"
     >
       <AdminFieldGroup :columns="2">
         <UFormField label="Nombre" name="name" class="sm:col-span-2">

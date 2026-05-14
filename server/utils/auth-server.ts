@@ -30,7 +30,7 @@ const resolveAuthUserId = (user: unknown): string | null => {
 export const createAdminServerClient = (event: H3Event): AdminClient => {
   const config = useRuntimeConfig(event);
   const supabaseUrl = process.env.NUXT_PUBLIC_SUPABASE_URL;
-  const serviceRoleKey = config.supabaseServiceRoleKey;
+  const serviceRoleKey = config.supabaseServiceRoleKey as string | undefined;
 
   if (!supabaseUrl || !serviceRoleKey) {
     throw createError({
@@ -39,7 +39,7 @@ export const createAdminServerClient = (event: H3Event): AdminClient => {
     });
   }
 
-  return createClient<Database>(supabaseUrl, serviceRoleKey, {
+  return createClient<Database, "public">(supabaseUrl, serviceRoleKey, {
     auth: {
       persistSession: false,
       autoRefreshToken: false,
@@ -63,3 +63,4 @@ export const requireAuthServerContext = async (event: H3Event): Promise<AuthServ
     userId,
   };
 };
+

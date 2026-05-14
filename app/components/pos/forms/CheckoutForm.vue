@@ -21,8 +21,14 @@ const props = withDefaults(defineProps<{
   discountAmount: number;
   finalAmount: number;
   customerOptions: POSCustomerOption[];
+  hasAppointmentContext?: boolean;
+  appointmentCustomerId?: string | null;
+  appointmentWalkIn?: { fullName: string; phone: string } | null;
 }>(), {
   loading: false,
+  hasAppointmentContext: false,
+  appointmentCustomerId: null,
+  appointmentWalkIn: null,
 });
 
 const emits = defineEmits<{
@@ -43,6 +49,7 @@ const state = reactive({
   discountValue: 0,
   note: "",
   customerQuery: "",
+  createAppointments: true,
 });
 
 watch(
@@ -73,6 +80,29 @@ watch(
   (value) => {
     emits("search-customers", value);
   },
+);
+
+watch(
+  () => props.appointmentCustomerId,
+  (value) => {
+    if (value) {
+      state.customerMode = "existing";
+      state.customerId = value;
+    }
+  },
+  { immediate: true },
+);
+
+watch(
+  () => props.appointmentWalkIn,
+  (value) => {
+    if (value) {
+      state.customerMode = "walk_in";
+      state.walkInFullName = value.fullName;
+      state.walkInPhone = value.phone;
+    }
+  },
+  { immediate: true },
 );
 
 const schema = z.object({
@@ -166,6 +196,7 @@ const submit = () => {
       value: state.discountValue,
     },
     note: state.note,
+    createAppointments: state.createAppointments,
   });
 };
 </script>
@@ -281,6 +312,14 @@ const submit = () => {
         <UFormField label="Nota interna" name="note" class="sm:col-span-2">
           <UTextarea v-model="state.note" :rows="4" placeholder="Referencia opcional para la venta o cobro." :disabled="loading" :ui="ADMIN_FIELD_UI" />
         </UFormField>
+
+        <div class="sm:col-span-2 flex items-center gap-2">
+          <UCheckbox
+            v-model="state.createAppointments"
+            :label="props.hasAppointmentContext ? 'Cita ya agendada (se vinculara al cobro)' : 'Agendar servicios en calendario'"
+            :disabled="loading || props.hasAppointmentContext"
+          />
+        </div>
       </AdminFieldGroup>
     </AdminFormSection>
 
