@@ -8,7 +8,7 @@ export default defineEventHandler(async (event) => {
 
   const { data, error } = await context.adminClient
     .from("organizations")
-    .select("id, name, slug, timezone, currency_code, status, logo_url, address")
+    .select("id, name, slug, timezone, currency_code, country, business_type, address, logo_url, is_active, updated_at")
     .eq("id", context.organizationId)
     .single();
 

@@ -1,8 +1,8 @@
 ﻿# Multi-Agent Workflow State
 
 ## Current State
-- **last_step**: pos_module_implemented
-- **pending**: Functional implementation for remaining stubs (settings, client/*)
+- **last_step**: pos_appointments_integration_completed
+- **pending**: P5 UX improvements (21,22,23,25) + P0-P4 critical fixes from review
 - **agent**: codex
 
 ## Refactor Waves
@@ -375,6 +375,73 @@
 - **settings**: Stub with `UiEmptyModuleState` ("Configuracion en preparacion"). No composables, no API calls. 0 supabase direct calls.
 - **profile (staff)**: Read-only display. Uses `useAuth()` which calls `GET /api/profile` (API-based). Server handlers `profile.get.ts` and `profile.patch.ts` use `requireTenantContext` utility (compliant thin pattern).
 - Both modules certified compliant.
+
+## POS-Appointments Integration Evidence (current iteration)
+- **Bidirectional link**: POS checkout auto-creates appointments; Appointments trigger POS checkout
+- **Migration applied**: `20260512_appointments_transaction_link.sql` (appointments.transaction_id, appointments.source, transaction_items.appointment_id)
+- **Migration applied**: `20260513_drop_related_appointment.sql` (removed redundant transactions.related_appointment_id)
+- **New service layer**: `server/services/appointments/detail.ts` - getAppointmentDetail() with tenant enforcement
+- **New API endpoint**: `server/api/appointments/[id].get.ts` - thin handler delegating to service
+- **Extended service**: `server/services/pos/checkout.ts` - appointment creation, stock validation, rollback, bidirectional linking
+- **Extended utility**: `server/utils/pos.ts` - buildAppointmentInsert, validateServiceAvailability (with excludeAppointmentId), buildTransactionInsert (removed relatedAppointmentId)
+- **Extended composable**: `app/composables/usePOS.ts` - loadAppointmentForPOS(), appointmentContext state
+- **Extended page**: `app/pages/pos.vue` - detects ?appointmentId, pre-fills cart, shows context banner, handles walk-in/existing customer
+- **Extended form**: `app/components/pos/forms/CheckoutForm.vue` - "Agendar servicios" checkbox, auto-selects customer from appointment context
+- **Extended kanban**: `app/components/appointments/AppointmentKanbanBoard.vue` - "Cobrar en POS" + "Ver recibo" buttons, hybrid hover/tap actions
+- **Extended appointments page**: `app/pages/appointments.vue` - ReceiptViewer modal, handleCheckout navigation, handleViewReceipt loading
+- **Type fixes**: AppointmentListItem.transactionId added (frontend + backend), AppointmentStatusPayload includes "no_show"
+- **Bug fixes**:
+  - getPOSEmployeeOrThrow now includes "admin" role (was excluding admins)
+  - validateServiceAvailability excludes current appointmentId (was self-conflicting)
+  - handleNoShow now uses "no_show" status (was incorrectly using "completed")
+  - updateAppointmentStatusSchema extended to include "no_show"
+- **Kanban hybrid actions**: [@media(hover:hover)]:group-hover for desktop, activeCard ref for touch, ring-2 visual indicator, ellipsis icon
+- **Chrome DevTools verified**: Kanban renders, actions toggle on click, "Cobrar en POS" navigates with ?appointmentId, POS pre-fills cart with service+customer, banner shows context
+
+## Acceptance Gate (pos-appointments integration)
+- [x] Service layer created (detail.ts)
+- [x] API endpoint created ([id].get.ts) - thin handler
+- [x] Checkout service extended with appointment creation + rollback
+- [x] Composable uses $fetch (no direct supabase.from())
+- [x] Page orchestrators follow 3-layer pattern
+- [x] Components organized per Rule #7
+- [x] Migration applied to Supabase
+- [x] `npm run typecheck` green
+- [x] Chrome DevTools E2E verified
+- [x] Evidence logged
+
+## Pending Improvements (from 25-item review)
+### P0 - Critical
+- [ ] Wrap appointment+transaction in atomic DB transaction (checkout.ts:197-213)
+- [ ] Add status guard to appointment updates to prevent race conditions (checkout.ts:294-309)
+- [ ] Replace string matching in mapPOSError with error codes (pos.ts:768-781)
+
+### P1 - Error Handling
+- [ ] Differentiate 404 vs 500 in getAppointmentDetail (detail.ts:44-49)
+- [ ] Log compensation rollback failures (checkout.ts:319-337)
+- [ ] Add retry logic / idempotency key to checkout (usePOS.ts:534-567)
+- [ ] Contextual error messages by statusCode (pos.vue:103-131)
+
+### P2 - Type Safety
+- [ ] Remove `as any` casts in detail.ts (detail.ts:61-67)
+- [ ] Remove `as any` in useAppointments.ts employee mapping (useAppointments.ts:193)
+- [ ] Validate snapshot_data with Zod schema (pos.ts:694-707)
+
+### P3 - Edge Cases
+- [ ] Re-validate availability inside transaction (checkout.ts:156-175)
+- [ ] Cap fixed discounts against subtotal (CheckoutForm.vue schema)
+- [ ] Handle cancelled/deleted appointments when loading context (pos.vue:163-192)
+
+### P4 - Performance
+- [ ] Cache getCategoriesMap server-side (pos.ts:610-628)
+- [ ] Batch fetch products instead of N+1 loop (checkout.ts:101)
+- [ ] Debounce localStorage cart sync (usePOS.ts:288-298)
+
+### P5 - UX
+- [ ] Replace confirm() with modal for no-show (appointments.vue:210)
+- [ ] Add 300ms debounce to customer search (CheckoutForm.vue)
+- [ ] Dynamic timeout for success messages (pos.vue:78,87)
+- [ ] Skeleton loaders instead of blocking spinner (pos.vue:226-228)
 
 ## PROJECT CLOSURE
 - 16/16 modules certified compliant with 3-layer architecture

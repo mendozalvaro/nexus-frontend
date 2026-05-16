@@ -219,7 +219,6 @@ const closeActiveCard = () => {
                 { 'opacity-100': activeCard === apt.id },
                 '[@media(hover:hover)]:group-hover:opacity-100'
               ]"
-              @click.stop
             >
               <UButton
                 title="Editar"

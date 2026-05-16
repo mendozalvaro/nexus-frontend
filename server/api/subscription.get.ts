@@ -9,7 +9,7 @@ export default defineEventHandler(async (event) => {
   const { data, error } = await context.adminClient
     .from("organization_subscriptions")
     .select(`
-      id, status, current_period_end,
+      id, status, billing_mode, payment_method, current_period_start, current_period_end, is_trial, trial_ends_at, cancel_at_period_end, updated_at,
       plan:subscription_plans(
         id, name, slug, price_monthly, price_yearly,
         max_branches, max_users,

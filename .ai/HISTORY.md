@@ -6,6 +6,9 @@
 - **2026-04-16 XX:XX**: Tarea completada - Tests unitarios implementados para usePOS, useInventory, useAppointments
 - **Agent**: codex
 - **Status**: Ready for next task assignment
+- **2026-05-14**: POS-Appointments integration completed. Bidirectional link implemented, Kanban hybrid actions, Chrome DevTools E2E verified. Pending: P5 UX improvements (4 items) + P0-P4 critical fixes (13 items from 25-item review).
+- **Agent**: codex
+- **Status**: Handoff ready. See STATE.md for pending items and acceptance gates.
 
 ## Previous Handoffs
 - (none)
