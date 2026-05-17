@@ -22,6 +22,16 @@ export const useNotifications = () => {
     });
   };
 
+  const sendAccountDeactivatedEmail = async (
+    organizationName: string,
+    email: string,
+  ) => {
+    console.log("[EMAIL] Account deactivated:", {
+      organizationName,
+      email,
+    });
+  };
+
   const sendPaymentRejectedEmail = async (
     organizationName: string,
     email: string,
@@ -38,6 +48,7 @@ export const useNotifications = () => {
     sendVerificationEmail,
     sendPaymentReceivedEmail,
     sendAccountActivatedEmail,
+    sendAccountDeactivatedEmail,
     sendPaymentRejectedEmail,
   };
 };

@@ -118,7 +118,13 @@ watch(
     slugMessage.value = "";
     if (slugDebounce) clearTimeout(slugDebounce);
     const trimmed = val.trim().toLowerCase();
+    const originalSlug = original.slug.trim().toLowerCase();
     if (!trimmed || trimmed.length < 4) return;
+    if (trimmed === originalSlug) {
+      slugAvailable.value = true;
+      slugMessage.value = "Disponible (actual)";
+      return;
+    }
     slugDebounce = setTimeout(async () => {
       slugChecking.value = true;
       try {

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { UpdateOrgPayload, UpdateSiatPayload } from "@/composables/useSettings";
+import type { UpdateOrgPayload, UpdateSiatPayload, UpdateBillingDataPayload } from "@/composables/useSettings";
 import type { SubscriptionPlanSlug } from "@/types/subscription";
 
 definePageMeta({
@@ -26,6 +26,7 @@ const {
   loadSiatConfig,
   updateOrganization,
   updateLogo,
+  updateBillingData,
   updateSiatConfig,
   deactivateOrganization,
 } = useSettings();
@@ -80,6 +81,14 @@ const handleUploadLogo = async (file: File) => {
   }
 };
 
+const handleUpdateBillingData = async (payload: UpdateBillingDataPayload) => {
+  try {
+    await updateBillingData(payload);
+  } catch {
+    // Error handled in composable
+  }
+};
+
 const handleUpdateSiat = async (payload: UpdateSiatPayload) => {
   try {
     await updateSiatConfig(payload);
@@ -91,10 +100,10 @@ const handleUpdateSiat = async (payload: UpdateSiatPayload) => {
 const handleDeactivate = async () => {
   try {
     await deactivateOrganization();
-    const { sendAccountActivatedEmail } = useNotifications();
+    const { sendAccountDeactivatedEmail } = useNotifications();
     const profileEmail = profile.value?.email;
     if (profileEmail) {
-      await sendAccountActivatedEmail(organization.value?.name ?? "Organizacion", profileEmail, "/dashboard");
+      await sendAccountDeactivatedEmail(organization.value?.name ?? "Organizacion", profileEmail);
     }
   } catch {
     // Error handled in composable
@@ -192,6 +201,7 @@ const tabs = [
         :error="billingError || error"
         :history-entries="history"
         :history-loading="historyLoading"
+        @update-billing="handleUpdateBillingData"
         @change-plan="showPlanChangeModal = true"
         @cancel="showCancelModal = true"
         @view-history="activeTab = 'billing-history'"

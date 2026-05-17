@@ -1,6 +1,8 @@
 <script setup lang="ts">
+import pkg from "../../../package.json";
+
 const currentYear = computed(() => new Date().getFullYear());
-const appVersion = "v1.0.0";
+const appVersion = `v${pkg.version}`;
 </script>
 
 <template>

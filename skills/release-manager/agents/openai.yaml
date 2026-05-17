@@ -1,0 +1,3 @@
+﻿display_name: Release Manager
+short_description: Estandariza commits convencionales y SemVer con flujo de PR de release en pnpm.
+default_prompt: Analiza el handoff y los cambios del repo para proponer/ejecutar commits convencionales, validar commitlint y preparar release SemVer (estable o prerelease beta) con rama de PR.

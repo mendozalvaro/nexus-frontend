@@ -22,6 +22,9 @@ export interface SettingsSubscription {
   current_period_start: string | null;
   current_period_end: string | null;
   cancel_at_period_end: boolean | null;
+  invoice_name: string | null;
+  doc_type: "nit" | "ci" | "pasaporte" | "cedula" | null;
+  doc_number: string | null;
   updated_at: string | null;
 }
 
@@ -38,6 +41,12 @@ export interface UpdateOrgPayload {
 export interface UpdateSubPayload {
   billing_mode?: "monthly" | "quarterly" | "annual";
   payment_method?: "tarjeta" | "efectivo" | "transferencia" | "qr";
+}
+
+export interface UpdateBillingDataPayload {
+  invoice_name?: string;
+  doc_type?: "nit" | "ci" | "pasaporte" | "cedula";
+  doc_number?: string;
 }
 
 export interface SettingsSiatConfig {
@@ -173,6 +182,26 @@ export const useSettings = () => {
     }
   };
 
+  const updateBillingData = async (payload: UpdateBillingDataPayload) => {
+    mutationLoading.value = true;
+    error.value = null;
+    try {
+      const updated = await $fetch<SettingsSubscription>("/api/subscription/billing-data", {
+        method: "PATCH",
+        body: payload,
+      });
+      if (subscription.value) {
+        subscription.value = { ...subscription.value, ...updated };
+      }
+      return updated;
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : "No se pudo actualizar los datos de facturacion.";
+      throw e;
+    } finally {
+      mutationLoading.value = false;
+    }
+  };
+
   const deactivateOrganization = async () => {
     mutationLoading.value = true;
     error.value = null;
@@ -238,6 +267,7 @@ export const useSettings = () => {
     updateOrganization,
     updateLogo,
     updateSubscription,
+    updateBillingData,
     updateSiatConfig,
     deactivateOrganization,
   };

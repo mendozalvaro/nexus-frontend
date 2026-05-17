@@ -232,3 +232,138 @@ export async function upsertClientProfile(
   return { id: clientId, role, orgStatus };
 }
 
+export interface ClientProfileUpdateInput {
+  firstName: string;
+  lastName?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  billingData?: Record<string, unknown>;
+  preferences?: Record<string, unknown>;
+}
+
+export async function updateClientProfile(
+  event: H3Event,
+  userId: string,
+  organizationId: string,
+  input: ClientProfileUpdateInput,
+): Promise<ClientProfileState> {
+  const adminClient = buildAdminClient(event);
+
+  const sanitize = (v: string | null | undefined) => {
+    const normalized = v?.trim() ?? "";
+    return normalized.length > 0 ? normalized : null;
+  };
+
+  const { data: client, error: clientError } = await adminClient
+    .from("clients")
+    .select("id, user_id, first_name, last_name, phone, email, billing_data, preferences")
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (clientError) {
+    throw createError({ statusCode: 500, statusMessage: clientError.message });
+  }
+
+  if (!client) {
+    throw createError({
+      statusCode: 404,
+      statusMessage: "No se encontro el perfil de cliente.",
+    });
+  }
+
+  const { data: clientOrg, error: clientOrgError } = await adminClient
+    .from("client_org")
+    .select("status, organization_id, billing_data")
+    .eq("client_id", client.id)
+    .eq("organization_id", organizationId)
+    .maybeSingle();
+
+  if (clientOrgError) {
+    throw createError({ statusCode: 500, statusMessage: clientOrgError.message });
+  }
+
+  if (!clientOrg) {
+    throw createError({
+      statusCode: 404,
+      statusMessage: "No se encontro la vinculacion cliente-organizacion.",
+    });
+  }
+
+  const { error: updateClientError } = await adminClient
+    .from("clients")
+    .update({
+      first_name: input.firstName,
+      last_name: sanitize(input.lastName),
+      phone: sanitize(input.phone),
+      email: sanitize(input.email),
+      billing_data: (input.billingData ?? client.billing_data ?? {}) as Json,
+      preferences: (input.preferences ?? client.preferences ?? {}) as Json,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", client.id);
+
+  if (updateClientError) {
+    throw createError({
+      statusCode: 500,
+      statusMessage: updateClientError.message,
+    });
+  }
+
+  if (input.billingData) {
+    const { error: updateOrgError } = await adminClient
+      .from("client_org")
+      .update({
+        billing_data: input.billingData as Json,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("client_id", client.id)
+      .eq("organization_id", organizationId);
+
+    if (updateOrgError) {
+      throw createError({
+        statusCode: 500,
+        statusMessage: updateOrgError.message,
+      });
+    }
+  }
+
+  const { data: refreshedClient, error: refetchError } = await adminClient
+    .from("clients")
+    .select("id, first_name, last_name, phone, email, billing_data, preferences")
+    .eq("id", client.id)
+    .maybeSingle();
+
+  if (refetchError || !refreshedClient) {
+    throw createError({
+      statusCode: 500,
+      statusMessage: refetchError?.message ?? "No se pudo refrescar el perfil.",
+    });
+  }
+
+  const { data: refreshedOrg, error: refetchOrgError } = await adminClient
+    .from("client_org")
+    .select("status, organization_id, billing_data")
+    .eq("client_id", client.id)
+    .eq("organization_id", organizationId)
+    .maybeSingle();
+
+  if (refetchOrgError || !refreshedOrg) {
+    throw createError({
+      statusCode: 500,
+      statusMessage: refetchOrgError?.message ?? "No se pudo refrescar la vinculacion.",
+    });
+  }
+
+  return {
+    clientId: refreshedClient.id,
+    organizationId: refreshedOrg.organization_id,
+    orgStatus: refreshedOrg.status as "active" | "inactive" | "blocked",
+    firstName: refreshedClient.first_name,
+    lastName: refreshedClient.last_name,
+    phone: refreshedClient.phone,
+    email: refreshedClient.email,
+    billingData: (refreshedOrg.billing_data ?? refreshedClient.billing_data ?? {}) as Record<string, unknown>,
+    preferences: (refreshedClient.preferences ?? {}) as Record<string, unknown>,
+  };
+}
+

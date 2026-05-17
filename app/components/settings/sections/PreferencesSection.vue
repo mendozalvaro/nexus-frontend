@@ -9,7 +9,28 @@ const themeOptions = [
   { value: "system" as AppTheme, label: "Sistema", icon: "i-lucide-monitor" },
 ];
 
-const notificationEnabled = ref(false);
+const STORAGE_KEY = "nexuspos:settings:notifications";
+
+const loadNotificationState = (): boolean => {
+  if (typeof window === "undefined") return false;
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY);
+    return stored !== null ? JSON.parse(stored) : false;
+  } catch {
+    return false;
+  }
+};
+
+const notificationEnabled = ref(loadNotificationState());
+
+watch(notificationEnabled, (val) => {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(val));
+  } catch {
+    // Storage full or disabled
+  }
+});
 </script>
 
 <template>
