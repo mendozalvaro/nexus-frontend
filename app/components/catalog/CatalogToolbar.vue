@@ -10,6 +10,8 @@ const props = defineProps<{
 const emits = defineEmits<{
   "update:searchQuery": [string];
   create: [];
+  import: [];
+  export: [];
 }>();
 
 const localQuery = computed({
@@ -40,11 +42,30 @@ const buttonLabel = computed(() => {
 
   return "Nueva categoria";
 });
+
+const dropdownItems = computed(() => [
+  [
+    {
+      label: "Importar datos",
+      icon: "i-lucide-upload",
+      onSelect: () => emits("import"),
+    },
+    {
+      label: "Exportar catalogo",
+      icon: "i-lucide-download",
+      onSelect: () => emits("export"),
+    },
+  ],
+]);
 </script>
 
 <template>
   <div class="space-y-4">
-    <div class="flex justify-end">
+    <div class="flex items-center justify-end gap-2">
+      <UDropdownMenu :items="dropdownItems">
+        <UButton variant="outline" color="neutral" icon="i-lucide-more-vertical" aria-label="Opciones de importacion/exportacion" />
+      </UDropdownMenu>
+
       <UButton color="primary" icon="i-lucide-plus" @click="emits('create')">
         {{ buttonLabel }}
       </UButton>

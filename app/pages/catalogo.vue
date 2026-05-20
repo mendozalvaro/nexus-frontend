@@ -8,6 +8,9 @@ import CatalogServiceModal from "@/components/catalog/CatalogServiceModal.vue";
 import CatalogSummaryPanel from "@/components/catalog/CatalogSummaryPanel.vue";
 import CatalogTabs from "@/components/catalog/CatalogTabs.vue";
 import CatalogToolbar from "@/components/catalog/CatalogToolbar.vue";
+import CatalogImportModal from "@/components/catalog/CatalogImportModal.vue";
+import CatalogImportPreview from "@/components/catalog/CatalogImportPreview.vue";
+import CatalogImportSummary from "@/components/catalog/CatalogImportSummary.vue";
 
 import type {
   CatalogCategoryItem,
@@ -52,6 +55,23 @@ const {
   updateCategoryStatus,
 } = useCatalog();
 const { ensureTenantContext, uploadCatalogImage } = useCatalogMedia();
+const {
+  step: importStep,
+  entityType: importEntityType,
+  duplicateStrategy: importDuplicateStrategy,
+  parsedData: importParsedData,
+  previewResult: importPreviewResult,
+  importSummary: importSummaryData,
+  loading: importLoading,
+  error: importError,
+  downloadTemplate: importDownloadTemplate,
+  parseExcel: importParseExcel,
+  requestPreview: importRequestPreview,
+  executeImport: importExecuteImport,
+  reset: importReset,
+} = useCatalogImport();
+
+const importModalOpen = ref(false);
 
 const { data: productsData, refresh: refreshProducts, pending: pendingProducts } = await useAsyncData(
   "catalog-products",
@@ -327,6 +347,56 @@ const handleToggleCategoryStatus = async ({ id, nextState }: { id: string; nextS
   }
 };
 
+const handleOpenImport = () => {
+  importReset();
+  importModalOpen.value = true;
+};
+
+const handleExport = async () => {
+  try {
+    const response = await $fetch("/api/catalog/export", {
+      query: { type: activeTab.value === "summary" ? "all" : activeTab.value },
+    });
+
+    const blob = new Blob([response as string], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `catalogo_${activeTab.value}_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  } catch (e) {
+    mutationError.value = e instanceof Error ? e.message : "No se pudo exportar el catalogo.";
+  }
+};
+
+const handleImportFileSelected = async (file: File) => {
+  try {
+    await importParseExcel(file);
+    await importRequestPreview();
+  } catch (e) {
+    // Error is set in composable
+  }
+};
+
+const handleImportPreviewUpdateStrategy = (strategy: "upsert" | "skip") => {
+  importDuplicateStrategy.value = strategy;
+};
+
+const handleImportConfirm = async () => {
+  await importExecuteImport();
+  if (importSummaryData.value) {
+    await refreshProducts();
+    await refreshServices();
+    await refreshCategories();
+  }
+};
+
+const handleImportClose = () => {
+  importModalOpen.value = false;
+  importReset();
+};
+
 watch(
   () => productModalOpen.value,
   (open) => {
@@ -388,6 +458,8 @@ onMounted(async () => {
         :categories-count="filteredCategories.length"
         @update:search-query="searchQuery = $event"
         @create="handleCreateForTab"
+        @import="handleOpenImport"
+        @export="handleExport"
       />
 
       <CatalogProductsTable
@@ -445,5 +517,61 @@ onMounted(async () => {
       @submit="handleCategorySubmit"
       @cancel="closeCategoryModal"
     />
+
+    <UModal v-model:open="importModalOpen" :title="'Importar datos al catalogo'" class="max-w-2xl">
+      <template #body>
+        <div class="space-y-6">
+          <CatalogImportModal
+            v-if="importStep === 'select'"
+            :entity-type="importEntityType"
+            :duplicate-strategy="importDuplicateStrategy"
+            :loading="importLoading"
+            :error="importError"
+            @update:entity-type="importEntityType = $event"
+            @update:duplicate-strategy="importDuplicateStrategy = $event"
+            @file-selected="handleImportFileSelected"
+            @download-template="importDownloadTemplate(importEntityType)"
+          />
+
+          <CatalogImportPreview
+            v-if="importStep === 'preview' && importPreviewResult"
+            :preview-result="importPreviewResult"
+            :total-rows="importParsedData?.rows.length ?? 0"
+            :duplicate-strategy="importDuplicateStrategy"
+            @update:duplicate-strategy="handleImportPreviewUpdateStrategy"
+          />
+
+          <CatalogImportSummary
+            v-if="importStep === 'summary' && importSummaryData"
+            :summary="importSummaryData"
+          />
+
+          <div class="flex justify-end gap-2 pt-2">
+            <UButton variant="ghost" color="neutral" @click="handleImportClose">
+              {{ importStep === "summary" ? "Cerrar" : "Cancelar" }}
+            </UButton>
+
+            <UButton
+              v-if="importStep === 'preview'"
+              color="primary"
+              :loading="importLoading"
+              :disabled="(importPreviewResult?.invalidRows ?? 0) > 0 && (importPreviewResult?.validRows ?? 0) === 0"
+              @click="handleImportConfirm"
+            >
+              Importar
+            </UButton>
+
+            <UButton
+              v-if="importStep === 'preview' && importPreviewResult && importPreviewResult.validRows === 0"
+              variant="ghost"
+              color="neutral"
+              @click="importReset(); importModalOpen = false;"
+            >
+              Volver a seleccionar
+            </UButton>
+          </div>
+        </div>
+      </template>
+    </UModal>
   </div>
 </template>

@@ -437,45 +437,108 @@ export const useReports = () => {
     URL.revokeObjectURL(url);
   };
 
-  const printHtml = (title: string, rows: Array<Record<string, string | number>>) => {
-    const reportWindow = window.open("", "_blank", "noopener,noreferrer,width=1100,height=720");
+  const buildReportHtml = (title: string, sections: Array<{ heading: string; headers: string[]; rows: Array<Record<string, string | number>> }>) => {
+    const now = new Intl.DateTimeFormat("es-BO", { dateStyle: "long", timeStyle: "short" }).format(new Date());
+
+    const sectionHtml = sections.map((section) => {
+      const headHtml = section.headers.map((h) => `<th>${h}</th>`).join("");
+      const bodyHtml = section.rows.map((row) => {
+        const cells = section.headers.map((h) => `<td>${String(row[h] ?? "")}</td>`).join("");
+        return `<tr>${cells}</tr>`;
+      }).join("");
+
+      return `
+        <div class="section">
+          <h2>${section.heading}</h2>
+          <table>
+            <thead><tr>${headHtml}</tr></thead>
+            <tbody>${bodyHtml || `<tr><td colspan="${section.headers.length}">Sin datos</td></tr>`}</tbody>
+          </table>
+        </div>`;
+    }).join("");
+
+    return `<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <title>${title}</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: Arial, sans-serif; margin: 0; padding: 32px; color: #0f172a; background: #fff; }
+    .header { border-bottom: 3px solid #0f766e; padding-bottom: 16px; margin-bottom: 24px; }
+    .header h1 { margin: 0; font-size: 24px; color: #0f766e; }
+    .header .subtitle { color: #64748b; margin: 4px 0 0; font-size: 13px; }
+    .kpis { display: flex; gap: 12px; margin-bottom: 24px; flex-wrap: wrap; }
+    .kpi-card { flex: 1; min-width: 140px; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 16px; background: #f8fafc; }
+    .kpi-card .label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em; color: #64748b; }
+    .kpi-card .value { font-size: 20px; font-weight: 700; color: #0f766e; margin: 4px 0; }
+    .kpi-card .meta { font-size: 11px; color: #94a3b8; }
+    .section { margin-bottom: 20px; page-break-inside: avoid; }
+    .section h2 { font-size: 16px; color: #0f766e; border-left: 4px solid #0f766e; padding-left: 10px; margin-bottom: 10px; }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    th, td { border: 1px solid #e2e8f0; padding: 6px 8px; text-align: left; }
+    th { background: #f1f5f9; font-weight: 600; color: #334155; }
+    tr:nth-child(even) { background: #f8fafc; }
+    .alert-row td { background: #fef3c7 !important; }
+    .success-row td { background: #dcfce7 !important; }
+    .footer { margin-top: 32px; padding-top: 12px; border-top: 1px solid #e2e8f0; font-size: 10px; color: #94a3b8; text-align: center; }
+    @media print {
+      body { padding: 16px; }
+      .section { page-break-inside: avoid; }
+      .footer { position: fixed; bottom: 10px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>${title}</h1>
+    <p class="subtitle">Generado el ${now} - NexusPOS</p>
+  </div>
+  ${sectionHtml}
+  <p class="footer">NexusPOS - Plataforma operativa multi-tenant - v0.1.0</p>
+</body>
+</html>`;
+  };
+
+  const printHtml = (title: string, sections: Array<{ heading: string; headers: string[]; rows: Array<Record<string, string | number>> }>) => {
+    const html = buildReportHtml(title, sections);
+    const reportWindow = window.open("", "_blank", "width=1100,height=800");
     if (!reportWindow) {
       return;
     }
-
-    const headers = Object.keys(rows[0] ?? {});
-    const headHtml = headers.map((header) => `<th>${header}</th>`).join("");
-    const bodyHtml = rows.map((row) => {
-      const cells = headers.map((header) => `<td>${String(row[header] ?? "")}</td>`).join("");
-      return `<tr>${cells}</tr>`;
-    }).join("");
-
-    reportWindow.document.write(`<!doctype html>
-      <html lang="es">
-        <head>
-          <meta charset="utf-8" />
-          <title>${title}</title>
-          <style>
-            body { font-family: Arial, sans-serif; margin: 24px; color: #0f172a; }
-            h1 { margin-bottom: 8px; }
-            p { color: #475569; margin-bottom: 24px; }
-            table { width: 100%; border-collapse: collapse; }
-            th, td { border: 1px solid #cbd5e1; padding: 8px 10px; text-align: left; }
-            th { background: #e2e8f0; }
-          </style>
-        </head>
-        <body>
-          <h1>${title}</h1>
-          <p>PDF listo para impresion.</p>
-          <table>
-            <thead><tr>${headHtml}</tr></thead>
-            <tbody>${bodyHtml || `<tr><td colspan="${headers.length || 1}">Sin datos</td></tr>`}</tbody>
-          </table>
-        </body>
-      </html>`);
+    reportWindow.document.open();
+    reportWindow.document.write(html);
     reportWindow.document.close();
-    reportWindow.focus();
-    reportWindow.print();
+    reportWindow.onload = () => {
+      setTimeout(() => {
+        reportWindow.focus();
+        reportWindow.print();
+      }, 500);
+    };
+  };
+
+  const downloadPdf = async (title: string, sections: Array<{ heading: string; headers: string[]; rows: Array<Record<string, string | number>> }>) => {
+    const html = buildReportHtml(title, sections);
+    const container = document.createElement("div");
+    container.innerHTML = html;
+    container.style.position = "absolute";
+    container.style.left = "-9999px";
+    container.style.width = "800px";
+    document.body.appendChild(container);
+
+    try {
+      const html2pdf = (await import("html2pdf.js")).default;
+      const filename = `${title.toLowerCase().replace(/\s+/g, "-")}_${new Date().toISOString().split("T")[0]}.pdf`;
+      await html2pdf().set({
+        margin: [10, 10, 10, 10],
+        filename,
+        image: { type: "jpeg", quality: 0.98 },
+        html2canvas: { scale: 2, useCORS: true },
+        jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
+      }).from(container).save();
+    } finally {
+      document.body.removeChild(container);
+    }
   };
 
   const getDefaultFilters = (context?: Pick<ReportsResolvedContext, "role" | "assignedBranchId">): ReportFilters => {
@@ -504,6 +567,7 @@ export const useReports = () => {
     formatPercent,
     downloadCsv,
     printHtml,
+    downloadPdf,
     PAYMENT_METHOD_LABELS,
   };
 };

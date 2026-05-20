@@ -283,10 +283,6 @@ if (import.meta.client) {
           <UButton variant="ghost" color="neutral" icon="i-heroicons-bars-3" aria-label="Abrir menu"
             class="shrink-0 rounded-2xl lg:hidden" @click="mobileMenuOpen = true" />
 
-          <UButton variant="ghost" color="neutral"
-            :icon="sidebarCollapsed ? 'i-heroicons-chevron-right' : 'i-heroicons-chevron-left'"
-            class="hidden lg:inline-flex" aria-label="Alternar menu lateral" @click="toggleSidebar" />
-
           <NuxtLink :to="dashboardHomePath" class="flex items-center gap-3">
             <div
               class="flex h-10 w-10 items-center justify-center rounded-2xl bg-sky-500 text-sm font-bold text-white shadow-lg shadow-sky-500/30">
@@ -339,23 +335,27 @@ if (import.meta.client) {
     </header>
 
     <div class="mx-auto flex max-w-[1600px] lg:gap-6 lg:px-8">
-      <aside class="hidden shrink-0 bg-transparent py-6 transition-[width,padding] duration-200 lg:block"
+      <aside class="relative hidden shrink-0 bg-transparent py-6 transition-[width,padding] duration-300 ease-in-out lg:block"
         :class="sidebarCollapsed ? 'w-24 px-3' : 'w-72 px-4'">
-        <div class="mb-4 flex items-center justify-between">
-          <div v-if="!sidebarCollapsed" />
-          <UButton variant="ghost" color="neutral"
-            :icon="sidebarCollapsed ? 'i-heroicons-chevron-right' : 'i-heroicons-chevron-left'"
-            aria-label="Colapsar menu lateral" @click="toggleSidebar" />
-        </div>
+        <button
+          type="button"
+          class="absolute -right-3 top-10 z-10 flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 shadow-sm transition-all duration-300 hover:bg-sky-50 hover:text-sky-600 hover:shadow-md hover:shadow-sky-500/10 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400 dark:hover:bg-slate-750 dark:hover:text-sky-400"
+          :aria-label="sidebarCollapsed ? 'Expandir menu lateral' : 'Colapsar menu lateral'"
+          @click="toggleSidebar"
+        >
+          <UIcon name="i-heroicons-chevron-left-20-solid" class="h-3.5 w-3.5 transition-transform duration-300" :class="sidebarCollapsed ? 'rotate-180' : ''" />
+        </button>
 
-        <div v-if="!sidebarCollapsed" class="mb-3">
-          <p class="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500 dark:text-slate-400">
-            Navegacion
-          </p>
-          <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">
-            Modulos disponibles para tu rol
-          </p>
-        </div>
+        <Transition name="sidebar-fade">
+          <div v-if="!sidebarCollapsed" class="mb-3">
+            <p class="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500 dark:text-slate-400">
+              Navegacion
+            </p>
+            <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">
+              Modulos disponibles para tu rol
+            </p>
+          </div>
+        </Transition>
 
         <LayoutSidebarNav :items="navigationItems" :collapsed="sidebarCollapsed" />
       </aside>
@@ -424,3 +424,16 @@ if (import.meta.client) {
     </USlideover>
   </div>
 </template>
+
+<style scoped>
+.sidebar-fade-enter-active,
+.sidebar-fade-leave-active {
+  transition: opacity 0.25s ease, transform 0.25s ease;
+}
+
+.sidebar-fade-enter-from,
+.sidebar-fade-leave-to {
+  opacity: 0;
+  transform: translateY(-4px);
+}
+</style>

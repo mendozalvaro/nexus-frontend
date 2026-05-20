@@ -172,12 +172,26 @@ export const requireCatalogContext = async (event: H3Event): Promise<CatalogCont
       });
     }
 
-    const uniqueBranchIds = new Set<string>();
-    for (const assignment of assignments ?? []) {
-      uniqueBranchIds.add(assignment.branch_id);
-    }
+    const assignmentBranchIds = Array.from(new Set((assignments ?? []).map((assignment) => assignment.branch_id)));
+    if (assignmentBranchIds.length > 0) {
+      const { data: tenantBranches, error: tenantBranchesError } = await adminClient
+        .from("branches")
+        .select("id")
+        .eq("organization_id", profile.organization_id)
+        .in("id", assignmentBranchIds)
+        .eq("is_active", true);
 
-    allowedBranchIds = Array.from(uniqueBranchIds);
+      if (tenantBranchesError) {
+        throw createError({
+          statusCode: 500,
+          statusMessage: "No se pudieron validar las sucursales asignadas del manager.",
+        });
+      }
+
+      allowedBranchIds = (tenantBranches ?? []).map((branch) => branch.id);
+    } else {
+      allowedBranchIds = [];
+    }
   }
 
   return {
