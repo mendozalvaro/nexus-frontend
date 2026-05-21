@@ -9,7 +9,7 @@ definePageMeta({
   roles: ["admin"],
 });
 
-const activeTab = ref<"organization" | "subscription" | "siat" | "preferences" | "danger" | "billing-history">("organization");
+const activeTab = ref<"organization" | "subscription" | "siat" | "preferences" | "notifications" | "danger" | "billing-history">("organization");
 
 const {
   organization,
@@ -138,6 +138,7 @@ const tabs = [
   { key: "subscription" as const, label: "Suscripcion", icon: "i-lucide-credit-card" },
   { key: "siat" as const, label: "Facturacion SIAT", icon: "i-lucide-receipt" },
   { key: "preferences" as const, label: "Preferencias", icon: "i-lucide-palette" },
+  { key: "notifications" as const, label: "Notificaciones", icon: "i-lucide-bell-ring" },
   { key: "danger" as const, label: "Zona peligrosa", icon: "i-lucide-triangle-alert" },
 ];
 </script>
@@ -219,6 +220,64 @@ const tabs = [
       <SettingsSectionsPreferencesSection
         v-else-if="activeTab === 'preferences'"
       />
+
+      <div v-else-if="activeTab === 'notifications'" class="space-y-4">
+        <div class="flex items-center justify-between">
+          <h3 class="text-lg font-semibold">Configuracion de notificaciones</h3>
+          <div class="flex gap-2">
+            <NuxtLink to="/settings/notifications/history">
+              <UButton variant="soft" icon="i-lucide-list">
+                Ver historial
+              </UButton>
+            </NuxtLink>
+            <NuxtLink to="/settings/notifications">
+              <UButton color="primary" icon="i-lucide-settings">
+                Configurar WhatsApp
+              </UButton>
+            </NuxtLink>
+          </div>
+        </div>
+
+        <UCard>
+          <p class="text-muted">
+            Configura WhatsApp Cloud API para enviar recibos de venta y recordatorios de citas automaticamente.
+          </p>
+
+          <div class="mt-4 grid gap-4 sm:grid-cols-2">
+            <div class="flex items-start gap-3 p-4 border rounded-lg">
+              <UIcon name="i-lucide-receipt" class="text-xl text-primary mt-0.5" />
+              <div>
+                <p class="font-medium">Recibos de venta</p>
+                <p class="text-sm text-muted">Envia confirmacion de compra por WhatsApp</p>
+              </div>
+            </div>
+
+            <div class="flex items-start gap-3 p-4 border rounded-lg">
+              <UIcon name="i-lucide-calendar-check" class="text-xl text-primary mt-0.5" />
+              <div>
+                <p class="font-medium">Confirmacion de citas</p>
+                <p class="text-sm text-muted">Notifica al agendar una cita</p>
+              </div>
+            </div>
+
+            <div class="flex items-start gap-3 p-4 border rounded-lg">
+              <UIcon name="i-lucide-bell" class="text-xl text-primary mt-0.5" />
+              <div>
+                <p class="font-medium">Recordatorios</p>
+                <p class="text-sm text-muted">Envia recordatorio antes de la cita</p>
+              </div>
+            </div>
+
+            <div class="flex items-start gap-3 p-4 border rounded-lg">
+              <UIcon name="i-lucide-circle-alert" class="text-xl text-primary mt-0.5" />
+              <div>
+                <p class="font-medium">Cambios de estado</p>
+                <p class="text-sm text-muted">Notifica cuando cambia el estado de una cita</p>
+              </div>
+            </div>
+          </div>
+        </UCard>
+      </div>
 
       <UCard v-else-if="activeTab === 'danger'" class="rounded-3xl">
         <SettingsSectionsDangerZoneSection

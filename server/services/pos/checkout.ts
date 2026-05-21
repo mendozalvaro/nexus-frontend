@@ -1,6 +1,7 @@
 import type { z } from "zod";
 
 import { applyInventoryStockMutation } from "../../utils/inventory";
+import { sendSaleReceiptNotification } from "../../utils/notifications";
 
 import type { Database } from "@/types/database.types";
 
@@ -13,7 +14,7 @@ import {
   buildTransactionInsert,
   checkoutSchema,
   computeDiscountAmount,
-  createPOSWalkInCustomer,
+  getPOSAnonymousTemplateCustomerOrThrow,
   getCategoriesMap,
   getCustomerOrThrow,
   getInventoryForBranch,
@@ -79,13 +80,13 @@ export async function processPOSCheckout(
       email: customer.email,
     };
   } else {
-    const guestCustomer = await createPOSWalkInCustomer(context, body.customer);
-    customerId = guestCustomer.id;
+    const anonymousTemplateCustomer = await getPOSAnonymousTemplateCustomerOrThrow(context);
+    customerId = anonymousTemplateCustomer.id;
     customerSnapshot = {
       mode: "walk_in",
-      customerId: guestCustomer.id,
-      fullName: [guestCustomer.first_name, guestCustomer.last_name].filter(Boolean).join(" ").trim() || body.customer.fullName.trim(),
-      phone: guestCustomer.phone,
+      customerId,
+      fullName: body.customer.fullName.trim(),
+      phone: body.customer.phone.trim(),
       email: null,
     };
   }
@@ -308,6 +309,22 @@ export async function processPOSCheckout(
       }
 
       const receipt = await buildReceiptFromTransaction(context, transaction.id);
+
+      // Enviar notificacion de recibo de venta por WhatsApp (no bloqueante)
+      if (customerSnapshot.phone && context.organizationId) {
+        sendSaleReceiptNotification({
+          organizationId: context.organizationId,
+          customerName: customerSnapshot.fullName,
+          customerPhone: customerSnapshot.phone,
+          branchName: branch.name,
+          ticketNumber: receipt.invoiceNumber ? `#${receipt.invoiceNumber}` : transaction.id.slice(0, 8),
+          totalAmount: String(receipt.finalAmount),
+          paymentMethod: receipt.paymentMethod ?? "cash",
+          transactionId: transaction.id,
+        }).catch((err) => {
+          console.error("[POS] WhatsApp notification failed:", err);
+        });
+      }
 
       return {
         success: true,

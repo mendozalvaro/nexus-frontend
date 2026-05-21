@@ -16,6 +16,7 @@ import {
   requireAppointmentContext,
   validateEmployeeAvailability,
 } from "../../utils/appointments";
+import { sendAppointmentConfirmationNotification } from "../../utils/notifications";
 
 export default defineEventHandler(async (event) => {
   const context = await requireAppointmentContext(event);
@@ -98,6 +99,25 @@ export default defineEventHandler(async (event) => {
         guest_customer_id: guestCustomerId,
       },
     });
+
+    // Enviar notificacion de confirmacion de cita por WhatsApp (no bloqueante)
+    if (customerPhone && context.organizationId) {
+      const dateStr = new Date(startIso).toLocaleDateString("es-BO", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+      const timeStr = new Date(startIso).toLocaleTimeString("es-BO", { hour: "2-digit", minute: "2-digit" });
+
+      sendAppointmentConfirmationNotification({
+        organizationId: context.organizationId,
+        customerName: customerName ?? "Cliente",
+        customerPhone,
+        serviceName: service.name,
+        date: dateStr,
+        time: timeStr,
+        employeeName: employee.full_name ?? "Empleado",
+        appointmentId: data.id,
+      }).catch((err) => {
+        console.error("[Appointments] WhatsApp confirmation notification failed:", err);
+      });
+    }
 
     return {
       success: true,
