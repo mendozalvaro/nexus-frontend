@@ -60,9 +60,7 @@ export const roleNavigationSeeds: Record<UserRole, RoleNavigationSeed[]> = {
     { label: "Inventario", to: "/inventory" },
     { label: "Asignacion Servicio", to: "/service-assignment" },
     { label: "Citas", to: "/appointments" },
-    { label: "Ventas", to: "/pos" },
-    { label: "Configuracion", to: "/settings" },
-    { label: "Reportes", to: "/reports" },
+    { label: "Reservas", to: "/reservations" },
   ],
   manager: [
     { label: "Dashboard", to: "/dashboard" },
@@ -71,13 +69,15 @@ export const roleNavigationSeeds: Record<UserRole, RoleNavigationSeed[]> = {
     { label: "Inventario", to: "/inventory" },
     { label: "Asignacion Servicio", to: "/service-assignment" },
     { label: "Citas", to: "/appointments" },
-    { label: "Ventas", to: "/pos" },
+    { label: "Reservas", to: "/reservations" },
+    { label: "Vender", to: "/pos/sell" },
+    { label: "Cobrar", to: "/pos/charge" },
     { label: "Reportes", to: "/reports" },
   ],
   employee: [
     { label: "Dashboard", to: "/dashboard" },
     { label: "Mi Agenda", to: "/appointments" },
-    { label: "Ventas", to: "/pos" },
+    { label: "Vender", to: "/pos/sell" },
     { label: "Configuracion", to: "/profile" },
   ],
   client: [

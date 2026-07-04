@@ -9,8 +9,14 @@ type ProfileRow = Tables<"profiles">;
 
 const buildAdminClient = (event: H3Event): AdminClient => {
   const config = useRuntimeConfig(event);
-  const supabaseUrl = process.env.NUXT_PUBLIC_SUPABASE_URL;
-  const serviceRoleKey = config.supabaseServiceRoleKey as string | undefined;
+  const supabaseUrl =
+    (config.public?.supabase as { url?: string } | undefined)?.url
+    ?? process.env.NUXT_PUBLIC_SUPABASE_URL;
+  const supabaseConfig = config.supabase as { secretKey?: string; serviceKey?: string } | undefined;
+  const serviceRoleKey =
+    config.supabaseServiceRoleKey as string | undefined
+    ?? supabaseConfig?.secretKey
+    ?? supabaseConfig?.serviceKey;
 
   if (!supabaseUrl || !serviceRoleKey) {
     throw createError({
@@ -29,6 +35,7 @@ export interface TenantProfileData {
   full_name: string;
   email: string;
   role: Database["public"]["Enums"]["user_role"];
+  role_id: string | null;
   organization_id: string | null;
   avatar_url: string | null;
   phone: string | null;
@@ -54,7 +61,7 @@ export async function getTenantProfile(
 
   const { data, error } = await adminClient
     .from("profiles")
-    .select("id, full_name, email, role, organization_id, avatar_url, phone, is_active")
+    .select("id, full_name, email, role, role_id, organization_id, avatar_url, phone, is_active")
     .eq("id", userId)
     .single<TenantProfileData>();
 
@@ -87,7 +94,7 @@ export async function updateTenantProfile(
     .update(updates)
     .eq("id", userId)
     .eq("organization_id", organizationId)
-    .select("id, full_name, email, role, organization_id, avatar_url, phone, is_active")
+    .select("id, full_name, email, role, role_id, organization_id, avatar_url, phone, is_active")
     .single<TenantProfileData>();
 
   if (error || !data) {

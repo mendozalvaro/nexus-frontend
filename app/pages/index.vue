@@ -54,7 +54,7 @@ onUnmounted(() => {
 
 useSeoMeta({
   title: "NexusPOS - Gestiona productos, servicios y citas en una sola plataforma",
-  description: "SaaS multi-sucursal para salones, tiendas y negocios hibridos. Agenda inteligente, POS hibrido, inventario y reportes en tiempo real.",
+  description: "SaaS multi-sucursal para salones, tiendas y negocios hibridos. Agenda inteligente, ventas hibridas, inventario y reportes en tiempo real.",
   ogTitle: "NexusPOS - Tu negocio, simplificado",
   ogDescription: "Gestiona todo tu negocio en una sola plataforma. Prueba gratis por 14 dias.",
   ogImage: "/og-image.jpg",

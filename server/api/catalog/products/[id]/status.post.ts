@@ -1,4 +1,5 @@
 import {
+  assertCatalogEntityAccess,
   catalogStatusSchema,
   getCatalogProductOrThrow,
   readValidatedCatalogBody,
@@ -7,6 +8,7 @@ import {
 
 export default defineEventHandler(async (event) => {
   const context = await requireCatalogContext(event);
+  await assertCatalogEntityAccess(context, "product", "can_edit");
   const productId = getRouterParam(event, "id");
 
   if (!productId) {

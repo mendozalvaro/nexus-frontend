@@ -1,25 +1,13 @@
 import type { FeatureFlag } from "@/composables/useFeatureFlags";
+import type { BusinessType, ModuleAccessKey } from "@/utils/module-access.registry";
+import { ROLE_PERMISSION_GRANTS } from "@/utils/role-permission-matrix";
 
 export type UserRole = "admin" | "manager" | "employee" | "client";
 
 export type Permission =
-  | "pos.view"
-  | "pos.create"
-  | "pos.edit"
-  | "pos.delete"
-  | "catalog.view"
-  | "catalog.edit"
-  | "inventory.view"
-  | "inventory.adjust"
-  | "inventory.transfer"
-  | "inventory.delete"
-  | "service_assignment.view"
-  | "service_assignment.edit"
-  | "appointments.view"
-  | "appointments.create"
-  | "appointments.edit"
-  | "appointments.delete"
-  | "appointments.cancel"
+  | "dashboard.view"
+  | "clients.view"
+  | "clients.edit"
   | "users.view"
   | "users.create"
   | "users.edit"
@@ -28,25 +16,67 @@ export type Permission =
   | "branches.create"
   | "branches.edit"
   | "branches.delete"
-  | "reports.view"
-  | "reports.export"
-  | "reports.advanced"
   | "settings.view"
   | "settings.edit"
   | "profile.view"
-  | "profile.edit";
+  | "profile.edit"
+  | "pos.sales.view"
+  | "pos.sales.create"
+  | "inventory.view"
+  | "inventory.adjust"
+  | "inventory.transfer"
+  | "inventory.delete"
+  | "appointments.view"
+  | "appointments.create"
+  | "appointments.edit"
+  | "appointments.delete"
+  | "appointments.cancel"
+  | "service_assignment.view"
+  | "service_assignment.edit"
+  | "reservations.view"
+  | "reservations.create"
+  | "reservations.edit"
+  | "reservations.cancel"
+  | "catalog.products.view"
+  | "catalog.products.edit"
+  | "catalog.services.view"
+  | "catalog.services.edit"
+  | "catalog.rooms.view"
+  | "catalog.rooms.edit"
+  | "catalog.categories.products.view"
+  | "catalog.categories.products.edit"
+  | "catalog.categories.services.view"
+  | "catalog.categories.services.edit"
+  | "catalog.categories.rooms.view"
+  | "catalog.categories.rooms.edit"
+  | "reports.sales.view"
+  | "reports.sales.export"
+  | "reports.services.view"
+  | "reports.services.export"
+  | "reports.lodging.view"
+  | "reports.lodging.export";
 
 export type PermissionNamespace =
-  | "pos"
-  | "catalog"
-  | "inventory"
-  | "service_assignment"
-  | "appointments"
+  | "dashboard"
+  | "clients"
   | "users"
   | "branches"
-  | "reports"
   | "settings"
-  | "profile";
+  | "profile"
+  | "pos.sales"
+  | "inventory"
+  | "appointments"
+  | "service_assignment"
+  | "reservations"
+  | "catalog.products"
+  | "catalog.services"
+  | "catalog.rooms"
+  | "catalog.categories.products"
+  | "catalog.categories.services"
+  | "catalog.categories.rooms"
+  | "reports.sales"
+  | "reports.services"
+  | "reports.lodging";
 
 export type PermissionGrant = Permission | `${PermissionNamespace}.*`;
 export type RoleFlagTemplate = Record<Permission, boolean>;
@@ -54,9 +84,13 @@ export type RoleTemplateKey = UserRole | "custom";
 
 export interface RoutePermissionMeta {
   permission?: Permission;
+  permissionsAny?: Permission[];
   roles?: UserRole[];
   featureFlag?: FeatureFlag;
   requiresBranch?: boolean;
+  moduleKey?: ModuleAccessKey;
+  moduleKeysAny?: ModuleAccessKey[];
+  requiredBusinessTypes?: BusinessType[];
 }
 
 export interface NavigationItem extends RoutePermissionMeta {
@@ -64,6 +98,7 @@ export interface NavigationItem extends RoutePermissionMeta {
   icon: string;
   to: string;
   description?: string;
+  children?: NavigationItem[];
   pendingAccess?: "allowed" | "activation";
   badge?: string;
   disabled?: boolean;
@@ -79,77 +114,16 @@ export interface AccessibleBranch {
 
 export interface RouteAccessResolution {
   allowed: boolean;
-  reason?: "role" | "feature_flag" | "permission" | "branch";
+  reason?: "role" | "feature_flag" | "permission" | "branch" | "business_type" | "module";
   context?: Record<string, unknown>;
 }
 
-export const ROLE_PERMISSIONS: Record<UserRole, PermissionGrant[]> = {
-  admin: [
-    "pos.*",
-    "catalog.*",
-    "inventory.*",
-    "service_assignment.*",
-    "appointments.*",
-    "users.*",
-    "branches.*",
-    "reports.*",
-    "settings.*",
-    "profile.*",
-  ],
-  manager: [
-    "pos.view",
-    "pos.create",
-    "catalog.view",
-    "catalog.edit",
-    "inventory.view",
-    "inventory.adjust",
-    "service_assignment.view",
-    "service_assignment.edit",
-    "appointments.view",
-    "appointments.create",
-    "appointments.edit",
-    "users.view",
-    "users.create",
-    "users.edit",
-    "reports.view",
-    "reports.export",
-    "profile.*",
-  ],
-  employee: [
-    "pos.view",
-    "pos.create",
-    "appointments.view",
-    "appointments.create",
-    "appointments.edit",
-    "profile.*",
-  ],
-  client: [
-    "appointments.view",
-    "appointments.create",
-    "appointments.cancel",
-    "reports.view",
-    "profile.*",
-  ],
-};
+export const ROLE_PERMISSIONS: Record<UserRole, PermissionGrant[]> = ROLE_PERMISSION_GRANTS;
 
 export const PERMISSION_CATALOG = [
-  "pos.view",
-  "pos.create",
-  "pos.edit",
-  "pos.delete",
-  "catalog.view",
-  "catalog.edit",
-  "inventory.view",
-  "inventory.adjust",
-  "inventory.transfer",
-  "inventory.delete",
-  "service_assignment.view",
-  "service_assignment.edit",
-  "appointments.view",
-  "appointments.create",
-  "appointments.edit",
-  "appointments.delete",
-  "appointments.cancel",
+  "dashboard.view",
+  "clients.view",
+  "clients.edit",
   "users.view",
   "users.create",
   "users.edit",
@@ -158,23 +132,58 @@ export const PERMISSION_CATALOG = [
   "branches.create",
   "branches.edit",
   "branches.delete",
-  "reports.view",
-  "reports.export",
-  "reports.advanced",
   "settings.view",
   "settings.edit",
   "profile.view",
   "profile.edit",
+  "pos.sales.view",
+  "pos.sales.create",
+  "inventory.view",
+  "inventory.adjust",
+  "inventory.transfer",
+  "inventory.delete",
+  "appointments.view",
+  "appointments.create",
+  "appointments.edit",
+  "appointments.delete",
+  "appointments.cancel",
+  "service_assignment.view",
+  "service_assignment.edit",
+  "reservations.view",
+  "reservations.create",
+  "reservations.edit",
+  "reservations.cancel",
+  "catalog.products.view",
+  "catalog.products.edit",
+  "catalog.services.view",
+  "catalog.services.edit",
+  "catalog.rooms.view",
+  "catalog.rooms.edit",
+  "catalog.categories.products.view",
+  "catalog.categories.products.edit",
+  "catalog.categories.services.view",
+  "catalog.categories.services.edit",
+  "catalog.categories.rooms.view",
+  "catalog.categories.rooms.edit",
+  "reports.sales.view",
+  "reports.sales.export",
+  "reports.services.view",
+  "reports.services.export",
+  "reports.lodging.view",
+  "reports.lodging.export",
 ] as const satisfies Permission[];
+
+const toPermissionNamespace = (permission: Permission): PermissionNamespace => {
+  const parts = permission.split(".");
+  return parts.slice(0, -1).join(".") as PermissionNamespace;
+};
 
 const buildRoleFlagTemplate = (grants: PermissionGrant[]): RoleFlagTemplate => {
   const scoped = new Set(grants);
   const template = {} as RoleFlagTemplate;
 
   for (const permission of PERMISSION_CATALOG) {
-    const [moduleNamespace] = permission.split(".");
-    const wildcard = `${moduleNamespace ?? ""}.*` as PermissionGrant;
-
+    const wildcard = `${toPermissionNamespace(permission)}.*` as PermissionGrant;
     template[permission] = scoped.has(permission) || scoped.has(wildcard);
   }
 
@@ -187,83 +196,4 @@ export const ROLE_FLAG_TEMPLATES: Record<RoleTemplateKey, RoleFlagTemplate> = {
   employee: buildRoleFlagTemplate(ROLE_PERMISSIONS.employee),
   client: buildRoleFlagTemplate(ROLE_PERMISSIONS.client),
   custom: buildRoleFlagTemplate(ROLE_PERMISSIONS.employee),
-};
-
-export const ROUTE_PERMISSIONS: Record<string, RoutePermissionMeta> = {
-  "/dashboard": {
-    permission: "profile.view",
-    roles: ["admin", "manager", "employee"],
-  },
-  "/pos": {
-    permission: "pos.view",
-    roles: ["admin", "manager", "employee"],
-    requiresBranch: true,
-  },
-  "/catalogo": {
-    permission: "catalog.view",
-    roles: ["admin", "manager"],
-  },
-  "/inventory": {
-    permission: "inventory.view",
-    roles: ["admin", "manager"],
-    featureFlag: "feature_inventory",
-    requiresBranch: true,
-  },
-  "/service-assignment": {
-    permission: "service_assignment.view",
-    roles: ["admin", "manager"],
-  },
-  "/appointments": {
-    permission: "appointments.view",
-    roles: ["admin", "manager", "employee"],
-  },
-  "/users": {
-    permission: "users.view",
-    roles: ["admin", "manager"],
-  },
-  "/branches": {
-    permission: "branches.view",
-    roles: ["admin"],
-    featureFlag: "feature_multi_branch",
-  },
-  "/reports": {
-    permission: "reports.view",
-    roles: ["admin", "manager"],
-  },
-  "/settings": {
-    permission: "settings.view",
-    roles: ["admin"],
-  },
-  "/profile": {
-    permission: "profile.view",
-    roles: ["admin", "manager", "employee"],
-  },
-  "/client/dashboard": {
-    permission: "profile.view",
-    roles: ["client"],
-  },
-  "/client/appointments": {
-    permission: "appointments.view",
-    roles: ["client"],
-  },
-  "/client/bookings": {
-    permission: "appointments.view",
-    roles: ["client"],
-  },
-  "/client/reports": {
-    permission: "reports.view",
-    roles: ["client"],
-  },
-  "/client/profile": {
-    permission: "profile.view",
-    roles: ["client"],
-  },
-  "/select-branch": {
-    permission: "profile.view",
-    roles: ["admin", "manager", "employee"],
-  },
-  "/unauthorized": {
-    permission: "profile.view",
-    roles: ["admin", "manager", "employee", "client"],
-  },
 };

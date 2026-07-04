@@ -1,6 +1,10 @@
 import { z } from "zod";
 
-import { requireCatalogContext } from "../../utils/catalog";
+import {
+  assertCatalogCategoryAccess,
+  assertCatalogEntityAccess,
+  requireCatalogContext,
+} from "../../utils/catalog";
 import { previewImport, executeImport } from "../../services/catalog/import";
 
 const importSchema = z.object({
@@ -26,6 +30,28 @@ export default defineEventHandler(async (event) => {
   }
 
   const { entityType, rows, duplicateStrategy, mode } = parsed.data;
+
+  if (entityType === "products") {
+    await assertCatalogEntityAccess(context, "product", "can_edit");
+  } else if (entityType === "services") {
+    await assertCatalogEntityAccess(context, "service", "can_edit");
+  } else {
+    const categoryTypes = new Set(
+      rows
+        .map((row) => typeof row.type === "string" ? row.type : null)
+        .filter((value): value is "product" | "service" | "lodging" =>
+          value === "product" || value === "service" || value === "lodging"),
+    );
+
+    if (categoryTypes.size === 0) {
+      await assertCatalogCategoryAccess(context, "product", "can_edit");
+      await assertCatalogCategoryAccess(context, "service", "can_edit");
+    } else {
+      for (const categoryType of categoryTypes) {
+        await assertCatalogCategoryAccess(context, categoryType, "can_edit");
+      }
+    }
+  }
 
   if (mode === "preview") {
     const preview = await previewImport(context, entityType, rows);

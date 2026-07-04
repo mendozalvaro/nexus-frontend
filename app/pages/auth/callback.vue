@@ -1,64 +1,98 @@
 <script setup lang="ts">
 import AuthLayout from "../../components/auth/AuthLayout.vue";
-import { sanitizeInternalRedirect } from "@/utils/redirect";
-
+import { sanitizeAuthAudience, sanitizeStorefrontSlug } from "@/utils/auth";
+import { buildLoginRedirectPath, sanitizeInternalRedirect } from "@/utils/redirect";
 
 definePageMeta({
   layout: false,
   title: "Procesando acceso",
+  middleware: [],
 });
 
-const session = useSupabaseSession();
+const router = useRouter();
 const route = useRoute();
-const { resolvePostAuthDestination } = useRegistration();
+const { waitForAuthenticatedUser } = useSessionAccess();
+const { resolvePostAuthDestination } = usePostAuthResolution();
 
-const statusMessage = ref("Validando autenticación...");
+const statusMessage = ref("Validando autenticacion...");
 const errorMessage = ref<string | null>(null);
 
 const featureItems = [
   {
     icon: "i-lucide-shield-check",
-    title: "Validación segura",
-    description: "Verificamos tu sesión antes de resolver permisos y navegación.",
+    title: "Validacion segura",
+    description: "Verificamos tu sesion antes de resolver permisos y navegacion.",
   },
   {
     icon: "i-lucide-arrow-right-left",
-    title: "Redirección correcta",
-    description: "Respetamos el destino original cuando el parámetro `redirect` es válido.",
+    title: "Redireccion correcta",
+    description: "Respetamos el destino original cuando el parametro `redirect` es valido.",
   },
   {
     icon: "i-lucide-mail-check",
-    title: "Confirmación centralizada",
-    description: "El mismo callback soporta confirmación de email y futuros proveedores OAuth.",
+    title: "Callback unificado",
+    description: "El mismo callback soporta confirmacion de email, recuperacion y OAuth por audiencia.",
   },
 ] as const;
 
-const handleCallback = async () => {
+const redirectParam = computed(() => {
+  const raw = route.query.redirect;
+  return typeof raw === "string" && raw.length > 0 ? raw : null;
+});
+
+const audience = computed(() => sanitizeAuthAudience(route.query.audience));
+const storefrontSlug = computed(() => sanitizeStorefrontSlug(route.query.slug));
+const fallbackPath = computed(() => {
+  if (audience.value === "client") {
+    return sanitizeInternalRedirect(redirectParam.value) ?? (storefrontSlug.value ? `/${storefrontSlug.value}` : "/");
+  }
+
+  return buildLoginRedirectPath(redirectParam.value ?? "");
+});
+const fallbackLabel = computed(() => audience.value === "client" ? "Volver a la tienda" : "Volver al login");
+
+const resolveAndRedirect = async (user: Awaited<ReturnType<typeof waitForAuthenticatedUser>>) => {
   try {
-    if (!session.value?.user) {
-      statusMessage.value = "Finalizando verificación...";
-      await navigateTo("/auth/login", { replace: true });
+    const resolution = await resolvePostAuthDestination({
+      audience: audience.value,
+      redirect: redirectParam.value,
+      slug: storefrontSlug.value,
+      user,
+    });
+
+    if (resolution.reason === "unauthorized") {
+      statusMessage.value = "Acceso rechazado para este flujo.";
+      errorMessage.value = resolution.errorMessage ?? "No pudimos completar la autenticacion.";
       return;
     }
 
-    const resolution = await resolvePostAuthDestination();
-    const redirectTarget = sanitizeInternalRedirect(route.query.redirect) ?? resolution.destination;
-
-    statusMessage.value = "Redirigiendo a tu espacio...";
-    await navigateTo(redirectTarget, { replace: true });
+    statusMessage.value = "Redirigiendo...";
+    await router.replace(resolution.destination);
   } catch {
-    errorMessage.value = "No pudimos completar la autenticación. Intenta nuevamente.";
+    errorMessage.value = "No pudimos completar la autenticacion. Intenta nuevamente.";
   }
 };
 
-await useAsyncData("auth-callback-handler", handleCallback);
+onMounted(async () => {
+  const user = await waitForAuthenticatedUser({
+    attempts: 10,
+    delayMs: 1000,
+  });
+
+  if (!user) {
+    await navigateTo(fallbackPath.value, { replace: true });
+    return;
+  }
+
+  await resolveAndRedirect(user);
+});
 </script>
 
 <template>
   <AuthLayout
     eyebrow="Callback seguro"
-    title="Estamos cerrando tu autenticación."
-    description="Unificamos confirmación de email, recuperación y futuros accesos OAuth dentro del mismo flujo controlado."
+    title="Estamos cerrando tu autenticacion."
+    description="Unificamos confirmacion de email, recuperacion y accesos OAuth dentro del mismo flujo controlado."
     :feature-items="featureItems"
   >
     <UCard class="admin-shell-panel auth-form-card auth-fade-in rounded-[2rem] p-1">
@@ -80,8 +114,8 @@ await useAsyncData("auth-callback-handler", handleCallback);
         />
 
         <div class="mt-6 text-center text-sm text-slate-600 dark:text-slate-300">
-          <NuxtLink to="/auth/login" class="auth-inline-link admin-focus-ring font-semibold text-primary-700 dark:text-primary-300">
-            Volver al login
+          <NuxtLink :to="fallbackPath" class="auth-inline-link admin-focus-ring font-semibold text-primary-700 dark:text-primary-300">
+            {{ fallbackLabel }}
           </NuxtLink>
         </div>
       </div>

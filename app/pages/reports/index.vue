@@ -17,35 +17,55 @@ import ReportAlertsCard from "@/components/reports/ReportAlertsCard.vue";
 import ReportTopSellers from "@/components/reports/ReportTopSellers.vue";
 import ReportEmployeeRanking from "@/components/reports/ReportEmployeeRanking.vue";
 import ReportPaymentMix from "@/components/reports/ReportPaymentMix.vue";
+import ReportReservation from "@/components/reports/ReportReservation.vue";
+import { getDefaultPathForRole } from "@/utils/role-access";
+import { buildLoginRedirectPath } from "@/utils/redirect";
 
 definePageMeta({
   layout: "default",
-  middleware: ["permissions"],
-  permission: "reports.view",
-  roles: ["admin", "manager"],
+  middleware: [],
 });
 
-const {
-  loadOverviewReport,
-  loadSalesReport,
-  loadProductsReport,
-  loadServicesReport,
-  loadAppointmentsReport,
-  getDefaultFilters,
-  downloadCsv,
-  printHtml,
-  downloadPdf,
-} = useReports();
-
 const { profile } = useUserContext();
-const { activeBranchId } = useActiveBranch();
+const { ensureContext } = useUserContext();
+const route = useRoute();
+const activeBranchId = useState<string | null>("active-branch-id", () => null);
+const reportsApi = import.meta.client ? useReports() : null;
+const permissionsApi = import.meta.client ? usePermissions() : null;
+const businessTypesApi = import.meta.client ? useBusinessTypes() : null;
+const subscriptionApi = import.meta.client ? useSubscription() : null;
+const clientMounted = ref(false);
+const capabilitiesResolved = ref(false);
+
+const createDefaultFilters = (): ReportFiltersType => {
+  const end = new Date();
+  const start = new Date();
+  start.setDate(start.getDate() - 29);
+  const toIsoDate = (value: Date) => value.toISOString().split("T")[0]!;
+
+  return {
+    startDate: toIsoDate(start),
+    endDate: toIsoDate(end),
+    branchIds: activeBranchId.value ? [activeBranchId.value] : [],
+    employeeId: null,
+    paymentMethod: "all",
+    categoryIds: [],
+  };
+};
+
+const canViewSalesReports = computed(() => permissionsApi?.hasModuleAccess("reports.sales") ?? false);
+const canViewServiceReports = computed(() => permissionsApi?.hasModuleAccess("reports.services") ?? false);
+const canViewLodgingReports = computed(() => permissionsApi?.hasModuleAccess("reports.lodging") ?? false);
+const showOnlyLodgingReports = computed(() =>
+  clientMounted.value
+  && capabilitiesResolved.value
+  && (businessTypesApi?.isOnlyLodging.value ?? false)
+  && canViewLodgingReports.value,
+);
+const showLodgingReports = computed(() => clientMounted.value && canViewLodgingReports.value);
 
 const selectedPeriod = ref<ReportPeriod>("month");
-
-const filters = ref<ReportFiltersType>(getDefaultFilters({
-  role: (profile.value?.role ?? "manager") as "admin" | "manager",
-  assignedBranchId: activeBranchId.value ?? null,
-}));
+const filters = ref<ReportFiltersType>(createDefaultFilters());
 
 const filterOptions = ref<ReportsFilterOptions>({
   branches: [],
@@ -107,6 +127,10 @@ const applyPeriod = (period: ReportPeriod) => {
 };
 
 const loadFilterOptions = async () => {
+  if (!import.meta.client) {
+    return;
+  }
+
   try {
     const response = await $fetch<{ filterOptions: ReportsFilterOptions }>("/api/reports/filter-support", {
       headers: {
@@ -127,14 +151,27 @@ const loadFilterOptions = async () => {
 };
 
 const loadAllReports = async () => {
+  if (!reportsApi) {
+    return;
+  }
+
+  if (businessTypesApi?.isOnlyLodging.value) {
+    overviewData.value = null;
+    salesData.value = null;
+    productsData.value = null;
+    servicesData.value = null;
+    appointmentsData.value = null;
+    return;
+  }
+
   loading.value = true;
   try {
     const [overview, sales, products, services, appointments] = await Promise.all([
-      loadOverviewReport(filters.value).catch(() => null),
-      loadSalesReport(filters.value).catch(() => null),
-      loadProductsReport(filters.value).catch(() => null),
-      loadServicesReport(filters.value).catch(() => null),
-      loadAppointmentsReport(filters.value).catch(() => null),
+      reportsApi.loadOverviewReport(filters.value).catch(() => null),
+      canViewSalesReports.value ? reportsApi.loadSalesReport(filters.value).catch(() => null) : Promise.resolve(null),
+      canViewSalesReports.value ? reportsApi.loadProductsReport(filters.value).catch(() => null) : Promise.resolve(null),
+      canViewServiceReports.value ? reportsApi.loadServicesReport(filters.value).catch(() => null) : Promise.resolve(null),
+      canViewServiceReports.value ? reportsApi.loadAppointmentsReport(filters.value).catch(() => null) : Promise.resolve(null),
     ]);
     overviewData.value = overview;
     salesData.value = sales;
@@ -153,10 +190,7 @@ const applyFilters = async () => {
 };
 
 const resetFilters = () => {
-  filters.value = getDefaultFilters({
-    role: (profile.value?.role ?? "manager") as "admin" | "manager",
-    assignedBranchId: activeBranchId.value ?? null,
-  });
+  filters.value = createDefaultFilters();
   selectedPeriod.value = "month";
 };
 
@@ -194,7 +228,7 @@ const handleExportCsv = () => {
     }
   }
 
-  downloadCsv(`reporte_${new Date().toISOString().split("T")[0]}.csv`, rows);
+  reportsApi?.downloadCsv(`reporte_${new Date().toISOString().split("T")[0]}.csv`, rows);
 };
 
 const handleExportPdf = async (download = false) => {
@@ -308,9 +342,9 @@ const handleExportPdf = async (download = false) => {
   }
 
   if (download) {
-    await downloadPdf("Reporte Ejecutivo NexusPOS", sections);
+    await reportsApi?.downloadPdf("Reporte Ejecutivo NexusPOS", sections);
   } else {
-    printHtml("Reporte Ejecutivo NexusPOS", sections);
+    reportsApi?.printHtml("Reporte Ejecutivo NexusPOS", sections);
   }
 };
 
@@ -328,11 +362,40 @@ const branchOptions = computed(() => filterOptions.value?.branches ?? []);
 const employeeOptions = computed(() => filterOptions.value?.employees ?? []);
 
 onMounted(async () => {
+  clientMounted.value = true;
   try {
+    const context = await ensureContext({ requireProfile: true, forceUserValidation: true });
+    if (!context.user) {
+      await navigateTo(buildLoginRedirectPath(route.fullPath), { replace: true });
+      return;
+    }
+
+    if (!context.profile) {
+      await navigateTo(getDefaultPathForRole(null), { replace: true });
+      return;
+    }
+
+    if (context.profile?.organization_id) {
+      await subscriptionApi?.loadCapabilities(context.profile.organization_id, { force: true });
+    }
+
+    const accessResolution = await permissionsApi?.resolveRouteAccess({
+      moduleKeysAny: ["reports.sales", "reports.services", "reports.lodging"],
+      permissionsAny: ["reports.sales.view", "reports.services.view", "reports.lodging.view"],
+      roles: ["admin", "manager"],
+    });
+
+    if (!accessResolution?.allowed) {
+      await navigateTo(getDefaultPathForRole(context.profile.role), { replace: true });
+      return;
+    }
+
+    capabilitiesResolved.value = true;
     await loadFilterOptions();
     await loadAllReports();
   } catch {
     // Silently handle mount errors
+    capabilitiesResolved.value = true;
   }
 });
 
@@ -348,67 +411,79 @@ watch(selectedPeriod, (period) => {
   <div class="space-y-6 md:space-y-8">
     <UiModuleHero
       eyebrow="Analitica"
-      title="Reportes"
-      description="Resumen ejecutivo de tu operacion. Selecciona un periodo para ver indicadores y alertas."
+      :title="showOnlyLodgingReports ? 'Reportes de hospedaje' : 'Reportes'"
+      :description="showOnlyLodgingReports ? 'Vista operativa de ingresos, permanencias y salidas del hospedaje.' : 'Resumen ejecutivo de tu operacion. Selecciona un periodo para ver indicadores y alertas.'"
       icon="i-lucide-bar-chart-3"
     />
 
-    <ReportPeriodPresets v-model="selectedPeriod" @change="applyFilters" />
-
-    <ReportFilters
-      v-if="selectedPeriod === 'custom'"
-      v-model="filters"
-      :branch-options="branchOptions"
-      :employee-options="employeeOptions"
-      :show-branches="profile?.role === 'admin'"
-      :show-employees="true"
-      :loading="loading"
-      :branch-help="branchHelp"
-      @apply="applyFilters"
-      @reset="resetFilters"
-      @export:csv="handleExportCsv"
-      @export:pdf="handleExportPdf"
-    />
-
-    <div v-else class="flex justify-end gap-2">
-      <UButton color="success" variant="soft" icon="i-lucide-file-spreadsheet" :disabled="loading" @click="handleExportCsv">
-        CSV
-      </UButton>
-      <UButton color="neutral" variant="soft" icon="i-lucide-printer" :disabled="loading" @click="handleExportPdf(false)">
-        Imprimir
-      </UButton>
-      <UButton color="primary" variant="soft" icon="i-lucide-download" :disabled="loading" @click="handleExportPdf(true)">
-        Descargar PDF
-      </UButton>
+    <div v-if="!capabilitiesResolved" class="flex justify-center py-8">
+      <UIcon name="i-lucide-loader-circle" class="h-8 w-8 animate-spin text-primary-500" />
     </div>
 
-    <ReportExecutiveDashboard
-      :overview-data="overviewData"
-      :sales-data="salesData"
-      :products-data="productsData"
-      :services-data="servicesData"
-      :loading="loading"
-    />
+    <template v-else-if="showOnlyLodgingReports">
+      <ReportReservation />
+    </template>
 
-    <div class="grid gap-6 lg:grid-cols-2">
-      <ReportTopSellers
-        :products-data="productsData"
-        :services-data="servicesData"
+    <template v-else>
+      <ReportPeriodPresets v-model="selectedPeriod" @change="applyFilters" />
+
+      <ReportFilters
+        v-if="selectedPeriod === 'custom'"
+        v-model="filters"
+        :branch-options="branchOptions"
+        :employee-options="employeeOptions"
+        :show-branches="profile?.role === 'admin'"
+        :show-employees="true"
+        :loading="loading"
+        :branch-help="branchHelp"
+        @apply="applyFilters"
+        @reset="resetFilters"
+        @export:csv="handleExportCsv"
+        @export:pdf="handleExportPdf"
       />
 
-      <ReportPaymentMix :overview-data="overviewData" />
-    </div>
+      <div v-else class="flex justify-end gap-2">
+        <UButton color="success" variant="soft" icon="i-lucide-file-spreadsheet" :disabled="loading" @click="handleExportCsv">
+          CSV
+        </UButton>
+        <UButton color="neutral" variant="soft" icon="i-lucide-printer" :disabled="loading" @click="handleExportPdf(false)">
+          Imprimir
+        </UButton>
+        <UButton color="primary" variant="soft" icon="i-lucide-download" :disabled="loading" @click="handleExportPdf(true)">
+          Descargar PDF
+        </UButton>
+      </div>
 
-    <div class="grid gap-6 lg:grid-cols-2">
-      <ReportEmployeeRanking
-        :sales-data="salesData"
-        :services-data="servicesData"
+      <ReportExecutiveDashboard
+        :overview-data="overviewData"
+        :sales-data="canViewSalesReports ? salesData : null"
+        :products-data="canViewSalesReports ? productsData : null"
+        :services-data="canViewServiceReports ? servicesData : null"
+        :loading="loading"
       />
 
-      <ReportAlertsCard
-        :products-data="productsData"
-        :appointments-data="appointmentsData"
-      />
-    </div>
+      <div v-if="canViewSalesReports || canViewServiceReports" class="grid gap-6 lg:grid-cols-2">
+        <ReportTopSellers
+          :products-data="canViewSalesReports ? productsData : null"
+          :services-data="canViewServiceReports ? servicesData : null"
+        />
+
+        <ReportPaymentMix :overview-data="overviewData" />
+      </div>
+
+      <div v-if="canViewSalesReports || canViewServiceReports" class="grid gap-6 lg:grid-cols-2">
+        <ReportEmployeeRanking
+          :sales-data="canViewSalesReports ? salesData : null"
+          :services-data="canViewServiceReports ? servicesData : null"
+        />
+
+        <ReportAlertsCard
+          :products-data="canViewSalesReports ? productsData : null"
+          :appointments-data="canViewServiceReports ? appointmentsData : null"
+        />
+      </div>
+
+      <ReportReservation v-if="showLodgingReports" />
+    </template>
   </div>
 </template>

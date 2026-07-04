@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 import { throwApiError } from "../../utils/http-error";
-import { requireTenantContext } from "../../utils/tenant-context";
+import { requireStaffTenantContext } from "../../utils/tenant-context";
 import { setCacheHeaders } from "../../utils/cache";
 
 const updateSubSchema = z.object({
@@ -10,7 +10,7 @@ const updateSubSchema = z.object({
 });
 
 export default defineEventHandler(async (event) => {
-  const context = await requireTenantContext(event);
+  const context = await requireStaffTenantContext(event);
 
   if (context.role !== "admin") {
     throwApiError(403, "SETTINGS_SUB_ADMIN_ONLY", "Solo administradores pueden actualizar la suscripcion.");

@@ -1,0 +1,3 @@
+display_name: Nexus Module UI Builder
+short_description: Construye modulos completos con tabs, Resumen ejecutivo y arquitectura de 3 capas en Nuxt 4.
+default_prompt: Analiza el modulo objetivo y construye o refactoriza su interfaz completa con tabs (Resumen primero), UiModuleHero, KPI, accesos rapidos, composable de dominio, componentes presentacionales, permisos y navegacion.

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Publicar Cloudflare y Supabase"
+  short_description: "Publica app y DB de este repo."
+  default_prompt: "Use $cloudflare-supabase-publish para publicar esta app en Cloudflare Pages y aplicar los cambios de Supabase con verificacion minima."

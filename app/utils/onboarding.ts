@@ -82,6 +82,8 @@ export const CURRENCIES: CurrencyOption[] = [
 ] as const;
 
 export const TIMEZONES: TimezoneOption[] = [...timezonesList] as const;
+export const BUSINESS_TYPE_VALUES = ["product", "service", "lodging"] as const;
+export type BusinessTypeValue = (typeof BUSINESS_TYPE_VALUES)[number];
 
 export const REGISTRATION_SCHEMA = z.object({
   fullName: z
@@ -113,14 +115,17 @@ export const ORGANIZATION_SCHEMA = z.object({
     .min(2, "El nombre debe tener al menos 2 caracteres")
     .max(100, "El nombre es demasiado largo")
     .regex(/^[a-zA-Z0-9\s\-_.,'¡!¿?]+$/, "Caracteres no permitidos"),
-  businessType: z.enum(["products", "services", "hybrid"], {
-    message: "Selecciona el tipo de negocio",
-  }),
+  businessTypes: z
+    .array(z.enum(BUSINESS_TYPE_VALUES))
+    .min(1, "Selecciona al menos un tipo de negocio"),
   selectedPlan: z.enum(["emprende", "crecimiento", "enterprise"], {
     message: "Selecciona un plan",
   }),
   billingMode: z.enum(["monthly", "quarterly", "annual"], {
     message: "Selecciona el tipo de facturacion",
+  }),
+  activationMode: z.enum(["trial", "paid"], {
+    message: "Selecciona como quieres activar tu cuenta",
   }),
   country: z.string().trim().min(2, "Selecciona un pais"),
   currency: z.string().trim().length(3, "Selecciona una moneda"),
@@ -162,6 +167,25 @@ export const DEFAULT_BANK_DETAILS = {
   qrPlaceholderUrl: "/og-image.jpg",
 } as const;
 
+export const resolveOnboardingPaymentRedirect = (input: {
+  accountStatus: "pending" | "active" | "rejected" | "suspended";
+  paymentRequired: boolean;
+}): string | null => {
+  if (input.paymentRequired || input.accountStatus === "rejected") {
+    return null;
+  }
+
+  if (input.accountStatus === "suspended") {
+    return "/dashboard?status=suspended";
+  }
+
+  if (input.accountStatus === "pending") {
+    return "/dashboard";
+  }
+
+  return "/dashboard";
+};
+
 export const ERROR_MESSAGES = {
   EMAIL_EXISTS: "Ya hay una cuenta registrada con este email.",
   EMAIL_INVALID: "Ingresa un email valido.",
@@ -172,6 +196,7 @@ export const ERROR_MESSAGES = {
   FILE_TOO_LARGE: "El archivo supera el limite permitido.",
   INVALID_FILE_TYPE: "Solo se aceptan PDF, JPG o PNG.",
   UPLOAD_FAILED: "Error al subir el comprobante. Intenta nuevamente.",
+  TRIAL_ALREADY_USED: "Ya usaste tu periodo de prueba con esta cuenta. Elige pago para continuar.",
   VALIDATION_NOT_FOUND:
     "No se encontro tu validacion de pago. Contacta soporte.",
 } as const;

@@ -1,10 +1,11 @@
 import {
   getUsersList,
 } from "../../../services/users/list";
-import { requireAdminContext } from "../../../utils/admin-users";
+import { assertAdminModuleAccess, requireAdminContext } from "../../../utils/admin-users";
 
 export default defineEventHandler(async (event) => {
   const context = await requireAdminContext(event);
+  await assertAdminModuleAccess(context, "users", "can_view");
 
   const { users, branches } = await getUsersList(context);
 

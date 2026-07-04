@@ -9,7 +9,8 @@ definePageMeta({ layout: false, title: "Crear cuenta" });
 const session = useSupabaseSession();
 const router = useRouter();
 const route = useRoute();
-const { registrationDraft, loading, error, registerUser, resolvePostAuthDestination } = useRegistration();
+const { registrationDraft, loading, error, registerUser } = useRegistration();
+const { resolvePostAuthDestination } = usePostAuthResolution();
 
 const featureItems = [
   { icon: "i-lucide-users", title: "Onboarding guiado", description: "Cada paso deja progreso guardado." },

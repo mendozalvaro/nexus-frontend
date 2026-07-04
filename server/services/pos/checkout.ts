@@ -1,7 +1,8 @@
 import type { z } from "zod";
 
 import { applyInventoryStockMutation } from "../../utils/inventory";
-import { sendSaleReceiptNotification } from "../../utils/notifications";
+import { sendNotificationWithPreferences } from "../notifications/sender";
+import { getReceiptFormatFromOrganization } from "../receipts/verification";
 
 import type { Database } from "@/types/database.types";
 
@@ -59,6 +60,21 @@ export async function processPOSCheckout(
 
   const inventoryMap = await getInventoryForBranch(context, branch.id, productItems.map((item) => item.productId));
   const serviceWindowsByEmployee = new Map<string, Array<{ startIso: string; endIso: string }>>();
+
+  const { data: organizationSettings, error: organizationSettingsError } = await context.adminClient
+    .from("organizations")
+    .select("default_receipt_format")
+    .eq("id", context.organizationId)
+    .maybeSingle();
+
+  if (organizationSettingsError) {
+    throw createError({
+      statusCode: 500,
+      statusMessage: "No se pudo cargar la configuración de formato de recibo.",
+    });
+  }
+
+  const resolvedReceiptFormat = body.receiptFormatOverride ?? getReceiptFormatFromOrganization(organizationSettings);
 
   let customerId: string | null = null;
   let customerSnapshot: {
@@ -148,6 +164,7 @@ export async function processPOSCheckout(
             branchName: branch.name,
             unitPriceAtSale: Number(product.sale_price),
             trackInventory: product.track_inventory ?? true,
+            receiptFormatUsed: resolvedReceiptFormat,
           },
         }),
       });
@@ -236,6 +253,7 @@ export async function processPOSCheckout(
             branchName: branch.name,
             unitPriceAtSale: Number(service.price),
             appointmentId,
+            receiptFormatUsed: resolvedReceiptFormat,
           },
         }),
       });
@@ -312,15 +330,19 @@ export async function processPOSCheckout(
 
       // Enviar notificacion de recibo de venta por WhatsApp (no bloqueante)
       if (customerSnapshot.phone && context.organizationId) {
-        sendSaleReceiptNotification({
-          organizationId: context.organizationId,
-          customerName: customerSnapshot.fullName,
-          customerPhone: customerSnapshot.phone,
-          branchName: branch.name,
-          ticketNumber: receipt.invoiceNumber ? `#${receipt.invoiceNumber}` : transaction.id.slice(0, 8),
-          totalAmount: String(receipt.finalAmount),
-          paymentMethod: receipt.paymentMethod ?? "cash",
-          transactionId: transaction.id,
+        const ticketNumber = receipt.invoiceNumber ? `#${receipt.invoiceNumber}` : transaction.id.slice(0, 8);
+        sendNotificationWithPreferences(context.adminClient, context.organizationId, {
+          notificationType: "sale_receipt",
+          recipientPhone: customerSnapshot.phone,
+          recipientName: customerSnapshot.fullName,
+          templateVariables: {
+            id: String(receipt.invoiceNumber ?? ticketNumber),
+            name: customerSnapshot.fullName,
+            branch: branch.name,
+            ticket: ticketNumber,
+            total: String(receipt.finalAmount),
+            payment_method: receipt.paymentMethod ?? "cash",
+          },
         }).catch((err) => {
           console.error("[POS] WhatsApp notification failed:", err);
         });

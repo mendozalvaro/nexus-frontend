@@ -20,6 +20,9 @@ create type transaction_type as enum ('sale', 'refund', 'adjustment', 'void');
 create type payment_method as enum ('cash', 'card', 'transfer', 'mixed', 'digital_wallet');
 create type audit_action as enum ('INSERT', 'UPDATE', 'DELETE', 'TRUNCATE', 'LOGIN_FAILED', 'PERMISSION_DENIED');
 create type sub_status as enum ('active', 'past_due', 'canceled', 'trial', 'over_limit');
+create type reservation_status as enum ('pending', 'confirmed', 'checked_in', 'checked_out', 'cancelled', 'no_show');
+create type room_status as enum ('available', 'occupied', 'maintenance', 'cleaning');
+create type business_type_enum as enum ('product', 'service', 'lodging');
 
 -- ============================================================================
 -- 3. NÚCLEO MULTI-TENANCY Y SUSCRIPCIONES
@@ -33,9 +36,12 @@ create table organizations (
     currency_code char(3) default 'BOB' check (length(currency_code) = 3),
     timezone text default 'America/La_Paz',
     country char(2) default 'BO',
-    business_type text default 'hybrid' check (business_type in ('products', 'services', 'hybrid')),
     address text,
     billing_data jsonb,
+    status text default 'pending' check (status in ('pending', 'active', 'suspended', 'rejected')),
+    lodging_checkout_deadline time default '12:00:00',
+    lodging_stay_cutoff_time time default '12:00:00',
+    lodging_late_checkout_penalty numeric(12, 2) default 0 check (lodging_late_checkout_penalty >= 0),
     is_active boolean default true,
     created_at timestamptz default now(),
     updated_at timestamptz default now()
@@ -67,6 +73,10 @@ create table subscription_plans (
     feature_white_label boolean default false,
     feature_advanced_reports boolean default false,
     feature_forensic_export boolean default false,
+    feature_white_label boolean default false,
+    feature_hotel_module boolean default false,
+    allowed_business_types business_type_enum[] default '{product,service,lodging}'::business_type_enum[],
+    max_business_types int default 1 check (max_business_types in (1, 2)),
     is_active boolean default true,
     created_at timestamptz default now(),
     constraint subscription_plans_trial_duration_check
@@ -75,6 +85,13 @@ create table subscription_plans (
         or
         (trial = false and trial_duration is null)
       )
+);
+
+-- Tipos de negocio de la organización (junction table)
+create table organization_business_types (
+    organization_id uuid references organizations(id) on delete cascade not null,
+    business_type business_type_enum not null,
+    primary key (organization_id, business_type)
 );
 
 -- Suscripción Activa por Organización
@@ -130,6 +147,7 @@ create table profiles (
     phone text,
     is_active boolean default true,
     last_login_at timestamptz,
+    trial_consumed_at timestamptz,
     created_at timestamptz default now(),
     updated_at timestamptz default now(),
     constraint valid_role_org check (
@@ -158,9 +176,12 @@ create table categories (
     id uuid default uuid_generate_v4() primary key,
     organization_id uuid references organizations(id) on delete cascade not null,
     name text not null,
-    type text check (type in ('product', 'service')) not null,
+    type text check (type in ('product', 'service', 'lodging')) not null,
     parent_id uuid references categories(id) on delete set null,
+    description text,
     is_active boolean default true,
+    created_at timestamptz default now(),
+    updated_at timestamptz default now(),
     unique(organization_id, name, type)
 );
 
@@ -310,7 +331,109 @@ create index idx_appointments_branch_employee_time on appointments(branch_id, em
 create index idx_appointments_status on appointments(status);
 
 -- ============================================================================
--- 7. TRANSACCIONES (POS HÍBRIDO)
+-- 7A. MÓDULO HOSTAL: Tipos de Habitación y Habitaciones
+-- ============================================================================
+
+create table rooms (
+    id uuid default uuid_generate_v4() primary key,
+    organization_id uuid references organizations(id) on delete cascade not null,
+    branch_id uuid references branches(id) on delete cascade not null,
+    category_id uuid references categories(id) on delete restrict not null,
+    room_number text not null,
+    floor int,
+    status room_status default 'available',
+    base_price numeric(12, 2) default 0 check (base_price >= 0),
+    notes text,
+    is_active boolean default true,
+    created_at timestamptz default now(),
+    updated_at timestamptz default now(),
+    unique(organization_id, branch_id, room_number)
+);
+
+-- ============================================================================
+-- 7B. MÓDULO HOSTAL: Reservas
+-- ============================================================================
+
+create table reservations (
+    id uuid default uuid_generate_v4() primary key,
+    organization_id uuid references organizations(id) on delete cascade not null,
+    branch_id uuid references branches(id) on delete cascade not null,
+    check_in date not null,
+    check_out date not null,
+    actual_check_in_at timestamptz,
+    actual_check_out_at timestamptz,
+    is_open_ended boolean default false,
+    extended_from_check_out date,
+    extension_notes text,
+    nights int generated always as (check_out - check_in) stored,
+    status reservation_status default 'pending',
+    total_amount numeric(12, 2) not null check (total_amount >= 0),
+    paid_amount numeric(12, 2) default 0 check (paid_amount >= 0),
+    source text default 'staff' check (source in ('staff')),
+    notes text,
+    cancellation_reason text,
+    cancelled_at timestamptz,
+    cancelled_by uuid references profiles(id) on delete set null,
+    created_by uuid references profiles(id) on delete set null not null,
+    created_at timestamptz default now(),
+    updated_at timestamptz default now(),
+    constraint valid_dates check (check_out > check_in),
+    constraint valid_paid check (paid_amount <= total_amount),
+    constraint valid_actual_stay check (
+        actual_check_out_at is null
+        or actual_check_in_at is null
+        or actual_check_out_at >= actual_check_in_at
+    ),
+    constraint valid_cancellation check (
+        (status in ('cancelled', 'no_show') and cancelled_by is not null)
+        or (status not in ('cancelled', 'no_show'))
+    )
+);
+
+create table reservation_rooms (
+    id uuid default uuid_generate_v4() primary key,
+    reservation_id uuid references reservations(id) on delete cascade not null,
+    room_id uuid references rooms(id) on delete restrict not null,
+    room_price numeric(12, 2) not null check (room_price >= 0),
+    subtotal numeric(12, 2) not null check (subtotal >= 0),
+    notes text,
+    created_at timestamptz default now(),
+    unique(reservation_id, room_id)
+);
+
+create table reservation_guests (
+    id uuid default uuid_generate_v4() primary key,
+    reservation_room_id uuid references reservation_rooms(id) on delete cascade not null,
+    full_name text not null,
+    document_type text,
+    document_number text,
+    birth_date date,
+    sex text,
+    address text,
+    phone text,
+    email text,
+    nationality text,
+    marital_status text,
+    is_main_guest boolean default false,
+    created_at timestamptz default now()
+);
+
+create table reservation_payments (
+    id uuid default uuid_generate_v4() primary key,
+    organization_id uuid references organizations(id) on delete cascade not null,
+    reservation_id uuid references reservations(id) on delete cascade not null,
+    amount numeric(12, 2) not null check (amount > 0),
+    payment_method text not null check (payment_method in ('cash', 'card', 'transfer', 'qr', 'digital_wallet')),
+    payment_type text not null check (payment_type in ('deposit', 'balance', 'full')),
+    reference text,
+    notes text,
+    paid_at timestamptz default now(),
+    created_by uuid references profiles(id) on delete set null not null,
+    created_at timestamptz default now()
+);
+
+-- ============================================================================
+-- 7C. TRANSACCIONES (POS HÍBRIDO)
 -- ============================================================================
 
 create table transactions (
@@ -511,11 +634,13 @@ $$ language plpgsql security definer;
 -- Función RPC: Crear organización + subscription + profile admin (Onboarding simplificado)
 create or replace function create_onboarding_organization(
     p_name text,
-    p_business_type text default 'hybrid',
+    p_business_types business_type_enum[] default '{product}'::business_type_enum[],
     p_country text default 'BO',
     p_currency text default 'BOB',
     p_timezone text default 'America/La_Paz',
     p_billing_mode text default 'monthly',
+    p_plan_slug text default 'emprende',
+    p_activation_mode text default 'trial',
     p_full_name text default null,
     p_email text default null,
     p_phone text default null
@@ -524,31 +649,75 @@ declare
     v_org_id uuid;
     v_user_id uuid;
     v_plan_id uuid;
-    v_plan_slug text;
+    v_type business_type_enum;
+    v_trial_consumed_at timestamptz;
+    v_trial_ends_at timestamptz;
 begin
     v_user_id := auth.uid();
     if v_user_id is null then
         raise exception 'Not authenticated';
     end if;
 
-    -- Get plan from user_metadata
-    v_plan_slug := coalesce(
-        (select (u.raw_user_meta_data->>'selectedPlan')::text from auth.users u where u.id = v_user_id),
-        'emprende'
-    );
-    select id into v_plan_id from subscription_plans where slug = v_plan_slug limit 1;
+    if p_activation_mode not in ('trial', 'paid') then
+        raise exception 'INVALID_ACTIVATION_MODE';
+    end if;
+
+    select trial_consumed_at into v_trial_consumed_at
+    from profiles
+    where id = v_user_id;
+
+    if p_activation_mode = 'trial' and v_trial_consumed_at is not null then
+        raise exception 'TRIAL_ALREADY_USED';
+    end if;
+
+    select id into v_plan_id from subscription_plans where slug = p_plan_slug limit 1;
     if v_plan_id is null then
         select id into v_plan_id from subscription_plans where slug = 'emprende' limit 1;
     end if;
 
+    if p_activation_mode = 'trial' then
+        v_trial_ends_at := now() + interval '31 days';
+    else
+        v_trial_ends_at := null;
+    end if;
+
     -- Create organization
-    insert into organizations (name, currency_code, timezone, business_type)
-    values (p_name, p_currency, p_timezone, p_business_type)
+    insert into organizations (name, currency_code, timezone, country, status)
+    values (
+      p_name,
+      p_currency,
+      p_timezone,
+      p_country,
+      case when p_activation_mode = 'trial' then 'active' else 'pending' end
+    )
     returning id into v_org_id;
 
-    -- Create subscription (trial 30 days)
-    insert into organization_subscriptions (organization_id, plan_id, status, current_period_end)
-    values (v_org_id, v_plan_id, 'trial', now() + interval '30 days');
+    -- Insert business types
+    foreach v_type in array p_business_types loop
+        insert into organization_business_types (organization_id, business_type)
+        values (v_org_id, v_type);
+    end loop;
+
+    insert into organization_subscriptions (
+      organization_id,
+      plan_id,
+      status,
+      current_period_end,
+      current_period_start,
+      billing_mode,
+      is_trial,
+      trial_ends_at
+    )
+    values (
+      v_org_id,
+      v_plan_id,
+      case when p_activation_mode = 'trial' then 'trial' else 'past_due' end,
+      coalesce(v_trial_ends_at, now()),
+      now(),
+      p_billing_mode,
+      p_activation_mode = 'trial',
+      v_trial_ends_at
+    );
 
     -- Update profile
     update profiles
@@ -556,7 +725,8 @@ begin
         role = 'admin',
         full_name = coalesce(p_full_name, full_name),
         email = coalesce(p_email, email),
-        phone = coalesce(p_phone, phone)
+        phone = coalesce(p_phone, phone),
+        trial_consumed_at = coalesce(trial_consumed_at, case when p_activation_mode = 'trial' then now() else null end)
     where id = v_user_id;
 
     -- Create default branch
@@ -589,6 +759,10 @@ begin
         'hasAdvancedReports', sp.feature_advanced_reports,
         'hasApiAccess', sp.feature_api_access,
         'hasForensicExport', sp.feature_forensic_export,
+        'hasHotelModule', sp.feature_hotel_module,
+        'businessTypes', (select coalesce(array_agg(business_type::text), '{}') from organization_business_types where organization_id = input_org_id),
+        'allowedBusinessTypes', sp.allowed_business_types,
+        'maxBusinessTypes', sp.max_business_types,
         'currentBranchesCount', (select count(*) from branches where organization_id = input_org_id),
         'currentUsersCount', (select count(*) from profiles where organization_id = input_org_id and role != 'client'),
         'subscriptionStatus', os.status,
@@ -668,6 +842,9 @@ create trigger update_stock_updated_at before update on inventory_stock for each
 create trigger update_inventory_transfer_updated_at before update on inventory_transfers for each row execute procedure public.update_updated_at_column();
 create trigger update_appt_updated_at before update on appointments for each row execute procedure public.update_updated_at_column();
 create trigger update_sub_updated_at before update on organization_subscriptions for each row execute procedure public.update_updated_at_column();
+create trigger update_room_updated_at before update on rooms for each row execute procedure public.update_updated_at_column();
+create trigger update_category_updated_at before update on categories for each row execute procedure public.update_updated_at_column();
+create trigger update_reservation_updated_at before update on reservations for each row execute procedure public.update_updated_at_column();
 
 -- Triggers de Auditoría (Tablas Críticas)
 create trigger audit_transactions after insert or update or delete on transactions for each row execute procedure public.audit_trigger_func();
@@ -675,6 +852,9 @@ create trigger audit_inventory after insert or update or delete on inventory_sto
 create trigger audit_appointments after insert or update or delete on appointments for each row execute procedure public.audit_trigger_func();
 create trigger audit_profiles after insert or update or delete on profiles for each row execute procedure public.audit_trigger_func();
 create trigger audit_branches after insert or update or delete on branches for each row execute procedure public.audit_trigger_func();
+create trigger audit_rooms after insert or update or delete on rooms for each row execute procedure public.audit_trigger_func();
+create trigger audit_categories after insert or update or delete on categories for each row execute procedure public.audit_trigger_func();
+create trigger audit_reservations after insert or update or delete on reservations for each row execute procedure public.audit_trigger_func();
 
 -- Trigger de Enforce Limit (Sucursales)
 create or replace function enforce_branch_limit() returns trigger as $$
@@ -704,9 +884,15 @@ alter table inventory_transfers enable row level security;
 alter table appointments enable row level security;
 alter table transactions enable row level security;
 alter table transaction_items enable row level security;
+alter table organization_business_types enable row level security;
 alter table organization_subscriptions enable row level security;
 alter table categories enable row level security;
 alter table employee_branch_assignments enable row level security;
+alter table rooms enable row level security;
+alter table reservations enable row level security;
+alter table reservation_rooms enable row level security;
+alter table reservation_guests enable row level security;
+alter table reservation_payments enable row level security;
 
 -- Políticas Simplificadas pero Robustas
 
@@ -794,7 +980,23 @@ using (
     )
 );
 
--- 6. Suscripciones: Solo Admin de la org puede ver/editar
+-- 6. Business Types: miembros de la org pueden ver, admin gestiona
+create policy "Business types select" on organization_business_types for select
+using ( organization_id = get_user_organization_id() );
+
+create policy "Business types insert" on organization_business_types for insert
+with check (
+    organization_id = get_user_organization_id()
+    and get_user_role() = 'admin'
+);
+
+create policy "Business types delete" on organization_business_types for delete
+using (
+    organization_id = get_user_organization_id()
+    and get_user_role() = 'admin'
+);
+
+-- 7. Suscripciones: Solo Admin de la org puede ver/editar
 create policy "Subscriptions admin only" on organization_subscriptions for all
 using (
     exists (
@@ -827,12 +1029,6 @@ using (
     )
 );
 
--- 9. Categories: Miembros de la org pueden ver
-create policy "Categories select" on categories for select
-using (
-    organization_id = get_user_organization_id()
-);
-
 -- 10. Employee Branch Assignments: Admin y Manager pueden ver
 create policy "Employee assignments select" on employee_branch_assignments for select
 using (
@@ -840,6 +1036,158 @@ using (
     and is_branch_in_user_organization(employee_branch_assignments.branch_id)
 );
 
+-- 12. Rooms: acceso por organización y sucursal
+create policy "Rooms select" on rooms for select
+using (
+    organization_id = get_user_organization_id()
+    and (
+        get_user_role() = 'admin'
+        or branch_id = get_user_branch_id()
+        or is_user_assigned_to_branch(branch_id)
+    )
+);
+
+create policy "Rooms insert" on rooms for insert
+with check (
+    organization_id = get_user_organization_id()
+    and get_user_role() in ('admin', 'manager')
+);
+
+create policy "Rooms update" on rooms for update
+using (
+    organization_id = get_user_organization_id()
+    and get_user_role() in ('admin', 'manager')
+);
+
+create policy "Rooms delete" on rooms for delete
+using (
+    organization_id = get_user_organization_id()
+    and get_user_role() in ('admin', 'manager')
+);
+
+-- 13. Categories: acceso por organización, admin/manager gestionan
+create policy "Categories select" on categories for select
+using ( organization_id = get_user_organization_id() );
+
+create policy "Categories insert" on categories for insert
+with check (
+    organization_id = get_user_organization_id()
+    and get_user_role() in ('admin', 'manager')
+);
+
+create policy "Categories update" on categories for update
+using (
+    organization_id = get_user_organization_id()
+    and get_user_role() in ('admin', 'manager')
+);
+
+create policy "Categories delete" on categories for delete
+using (
+    organization_id = get_user_organization_id()
+    and get_user_role() in ('admin', 'manager')
+);
+
+-- 14. Reservations: acceso por organización y sucursal
+create policy "Reservations select" on reservations for select
+using (
+    organization_id = get_user_organization_id()
+    and (
+        get_user_role() = 'admin'
+        or branch_id = get_user_branch_id()
+        or is_user_assigned_to_branch(branch_id)
+    )
+);
+
+create policy "Reservations insert" on reservations for insert
+with check (
+    organization_id = get_user_organization_id()
+    and get_user_role() in ('admin', 'manager', 'employee')
+);
+
+create policy "Reservations update" on reservations for update
+using (
+    organization_id = get_user_organization_id()
+    and get_user_role() in ('admin', 'manager', 'employee')
+);
+
+create policy "Reservations delete" on reservations for delete
+using (
+    organization_id = get_user_organization_id()
+    and get_user_role() in ('admin', 'manager')
+);
+
+-- 15. Reservation rooms: acceso vía reserva
+create policy "Reservation rooms select" on reservation_rooms for select
+using (
+    exists (
+        select 1 from reservations
+        where reservations.id = reservation_rooms.reservation_id
+        and reservations.organization_id = get_user_organization_id()
+    )
+);
+
+create policy "Reservation rooms insert" on reservation_rooms for insert
+with check (
+    exists (
+        select 1 from reservations
+        where reservations.id = reservation_rooms.reservation_id
+        and reservations.organization_id = get_user_organization_id()
+    )
+);
+
+create policy "Reservation rooms update" on reservation_rooms for update
+using (
+    exists (
+        select 1 from reservations
+        where reservations.id = reservation_rooms.reservation_id
+        and reservations.organization_id = get_user_organization_id()
+    )
+);
+
+-- 16. Reservation guests: acceso vía reservation_rooms
+create policy "Reservation guests select" on reservation_guests for select
+using (
+    exists (
+        select 1 from reservation_rooms rr
+        join reservations r on r.id = rr.reservation_id
+        where rr.id = reservation_guests.reservation_room_id
+        and r.organization_id = get_user_organization_id()
+    )
+);
+
+create policy "Reservation guests insert" on reservation_guests for insert
+with check (
+    exists (
+        select 1 from reservation_rooms rr
+        join reservations r on r.id = rr.reservation_id
+        where rr.id = reservation_guests.reservation_room_id
+        and r.organization_id = get_user_organization_id()
+    )
+);
+
+create policy "Reservation guests update" on reservation_guests for update
+using (
+    exists (
+        select 1 from reservation_rooms rr
+        join reservations r on r.id = rr.reservation_id
+        where rr.id = reservation_guests.reservation_room_id
+        and r.organization_id = get_user_organization_id()
+    )
+);
+
+-- 17. Reservation payments: acceso por organización
+create policy "Reservation payments select" on reservation_payments for select
+using (
+    organization_id = get_user_organization_id()
+);
+
+create policy "Reservation payments insert" on reservation_payments for insert
+with check (
+    organization_id = get_user_organization_id()
+    and get_user_role() in ('admin', 'manager', 'employee')
+);
+
+-- 18. Authenticated users can insert own auth audit logs
 create policy "Authenticated users can insert own auth audit logs" on audit_logs for insert
 with check (
     auth.uid() is not null
@@ -853,10 +1201,10 @@ with check (
 -- ============================================================================
 
 -- Insertar Planes
-insert into subscription_plans (slug, name, price_monthly, price_yearly, max_branches, max_users, feature_multi_branch, feature_manager_role, feature_inventory_transfer, feature_forensic_export, feature_api_access, feature_advanced_reports, feature_white_label) values
-('emprende', 'Plan Emprende', 20.00, 204.00, 1, 5, false, false, false, false, false, false, false),
-('crecimiento', 'Plan Crecimiento', 65.00, 663.00, 5, 50, true, true, true, false, false, true, false),
-('enterprise', 'Plan Enterprise', 200.00, 2040.00, 999, 999, true, true, true, true, true, true, true);
+insert into subscription_plans (slug, name, price_monthly, price_yearly, max_branches, max_users, feature_multi_branch, feature_manager_role, feature_inventory_transfer, feature_forensic_export, feature_api_access, feature_advanced_reports, feature_white_label, feature_hotel_module, allowed_business_types, max_business_types) values
+('emprende', 'Plan Emprende', 20.00, 204.00, 1, 5, false, false, false, false, false, false, false, false, '{product}'::business_type_enum[], 1),
+('crecimiento', 'Plan Crecimiento', 65.00, 663.00, 5, 50, true, true, true, false, false, true, false, true, '{product,service,lodging}'::business_type_enum[], 2),
+('enterprise', 'Plan Enterprise', 200.00, 2040.00, 999, 999, true, true, true, true, true, true, true, true, '{product,service,lodging}'::business_type_enum[], 2);
 
 -- ============================================================================
 -- 13. ÍNDICES ADICIONALES PARA RENDIMIENTO
@@ -886,6 +1234,17 @@ create index idx_employee_assignments_branch on employee_branch_assignments(bran
 create index idx_guest_customers_org on guest_customers(organization_id);
 create index idx_guest_customers_branch on guest_customers(branch_id);
 create index idx_guest_customers_phone on guest_customers(phone);
+create index idx_rooms_org_branch on rooms(organization_id, branch_id);
+create index idx_rooms_category on rooms(category_id);
+create index idx_rooms_branch_status on rooms(branch_id, status);
+create index idx_reservations_org_branch on reservations(organization_id, branch_id);
+create index idx_reservations_date_range on reservations(branch_id, check_in, check_out);
+create index idx_reservations_status on reservations(status);
+create index idx_reservation_rooms_reservation on reservation_rooms(reservation_id);
+create index idx_reservation_rooms_room on reservation_rooms(room_id);
+create index idx_reservation_guests_room on reservation_guests(reservation_room_id);
+create index idx_reservation_payments_reservation on reservation_payments(reservation_id);
+create index idx_reservation_payments_org on reservation_payments(organization_id);
 
 -- ============================================================================
 -- FIN DEL SCRIPT - NEXUSPOS v3.0

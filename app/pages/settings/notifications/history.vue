@@ -4,8 +4,9 @@ import type { NotificationRecord } from "@/types/notifications";
 definePageMeta({
   layout: "default",
   middleware: ["permissions"],
-  permission: "settings.manage",
+  permission: "settings.edit",
   roles: ["admin"],
+  moduleKey: "settings",
 });
 
 const notifications = ref<NotificationRecord[]>([]);

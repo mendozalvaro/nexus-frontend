@@ -5,17 +5,19 @@ import type { TenantContext } from "../../utils/tenant-context";
 export interface CatalogCategoryRow {
   id: string;
   name: string;
-  type: "product" | "service";
+  type: "product" | "service" | "lodging";
   parent_id: string | null;
+  description: string | null;
   is_active: boolean;
 }
 
 export interface CatalogCategory {
   id: string;
   name: string;
-  type: "product" | "service";
+  type: "product" | "service" | "lodging";
   parentId: string | null;
   parentName: string | null;
+  description: string | null;
   isActive: boolean;
   linkedCount: number;
 }
@@ -41,9 +43,10 @@ export const getCatalogCategories = async (
   return (data ?? []).map((category) => ({
     id: category.id,
     name: category.name,
-    type: category.type as "product" | "service",
+    type: category.type as "product" | "service" | "lodging",
     parentId: category.parent_id,
     parentName: category.parent_id ? (categoryMap.get(category.parent_id)?.name ?? null) : null,
+    description: category.description ?? null,
     isActive: category.is_active ?? true,
     linkedCount: 0,
   }));
@@ -52,7 +55,8 @@ export const getCatalogCategories = async (
 export interface CreateCatalogCategoryPayload {
   name: string;
   parentId: string | null;
-  type: "product" | "service";
+  type: "product" | "service" | "lodging";
+  description?: string;
 }
 
 export const createCatalogCategory = async (
@@ -66,6 +70,7 @@ export const createCatalogCategory = async (
       name: payload.name,
       parent_id: payload.parentId,
       type: payload.type,
+      description: payload.description?.trim() || null,
     })
     .select("id")
     .returns<{ id: string }[]>();
@@ -88,13 +93,18 @@ export const updateCatalogCategory = async (
   categoryId: string,
   payload: CreateCatalogCategoryPayload
 ): Promise<{ success: boolean; categoryId: string }> => {
+  const updates: Record<string, unknown> = {
+    name: payload.name,
+    parent_id: payload.parentId,
+    type: payload.type,
+  };
+  if (payload.description !== undefined) {
+    updates.description = payload.description?.trim() || null;
+  }
+
   const { error } = await context.adminClient
     .from("categories")
-    .update({
-      name: payload.name,
-      parent_id: payload.parentId,
-      type: payload.type,
-    })
+    .update(updates as never)
     .eq("id", categoryId)
     .eq("organization_id", context.organizationId);
 

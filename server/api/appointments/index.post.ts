@@ -1,30 +1,60 @@
 import {
   assertBranchScope,
+  assertAppointmentModuleAccess,
   assertEmployeeCanDeliverAppointmentService,
   assertEmployeeSelectionAllowed,
   assertRoleAccess,
   buildAppointmentWindow,
   createAppointmentSchema,
-  createAppointmentWalkInCustomer,
   getAppointmentBranchOrThrow,
   getAppointmentEmployeeOrThrow,
   resolveClientIdByUserOrThrow,
   getAppointmentServiceOrThrow,
   insertAuditLog,
   mapAppointmentMutationError,
-  readValidatedAppointmentBody,
-  requireAppointmentContext,
+  requireAppointmentContextStrict,
   validateEmployeeAvailability,
 } from "../../utils/appointments";
 import { sendAppointmentConfirmationNotification } from "../../utils/notifications";
+import { createOrganizationCustomer } from "../../services/orgCustomers";
 
 export default defineEventHandler(async (event) => {
-  const context = await requireAppointmentContext(event);
-  const body = await readValidatedAppointmentBody(event, createAppointmentSchema);
+  const context = await requireAppointmentContextStrict(event);
+  await assertAppointmentModuleAccess(context, "can_create");
+  const rawBody = await readBody<Record<string, unknown> | null>(event);
+  const parsedBody = createAppointmentSchema.safeParse(rawBody);
+
+  if (!parsedBody.success) {
+    throw createError({
+      statusCode: 400,
+      statusMessage: parsedBody.error.issues[0]?.message ?? "Payload invÃ¡lido.",
+    });
+  }
+
+  const body = parsedBody.data;
+  const customerMode = rawBody && typeof rawBody === "object" && "customerMode" in rawBody && typeof rawBody.customerMode === "string"
+    ? rawBody.customerMode
+    : (body.walkIn ? "new" : "anonymous");
+  const customerIdInput = rawBody && typeof rawBody === "object" && "customerId" in rawBody && typeof rawBody.customerId === "string"
+    ? rawBody.customerId
+    : null;
+  const newCustomerInput = rawBody && typeof rawBody === "object" && "newCustomer" in rawBody && rawBody.newCustomer && typeof rawBody.newCustomer === "object"
+    ? rawBody.newCustomer as {
+        fullName?: string;
+        lastName?: string | null;
+        phone?: string | null;
+        email?: string | null;
+        billingName?: string | null;
+        billingEmail?: string | null;
+        billingPhone?: string | null;
+        documentType?: "CI" | "NIT" | "Pasaporte" | "Otro" | null;
+        documentNumber?: string | null;
+      }
+    : null;
 
   assertRoleAccess(context, ["admin", "manager", "employee", "client"]);
 
-  if (context.role === "client" && body.walkIn) {
+  if (context.role === "client" && (body.walkIn || customerMode !== "anonymous")) {
     throw createError({
       statusCode: 403,
       statusMessage: "Los clientes no pueden crear citas walk-in desde su portal.",
@@ -51,12 +81,112 @@ export default defineEventHandler(async (event) => {
     customerId = await resolveClientIdByUserOrThrow(context, context.userId);
     customerName = context.profile.full_name;
     customerPhone = context.profile.phone;
-  } else if (body.walkIn) {
-    const guest = await createAppointmentWalkInCustomer(context, body.walkIn);
-    customerId = guest.id;
-    guestCustomerId = guest.id;
-    customerName = [guest.first_name, guest.last_name].filter(Boolean).join(" ").trim() || body.walkIn.fullName.trim();
-    customerPhone = guest.phone;
+  } else if (customerMode === "registered") {
+    if (!customerIdInput) {
+      throw createError({
+        statusCode: 400,
+        statusMessage: "Debes seleccionar un cliente registrado.",
+      });
+    }
+
+    const { data: registeredLink, error: registeredError } = await context.adminClient
+      .from("client_org")
+      .select("client_id, clients!inner(first_name, last_name, phone)")
+      .eq("organization_id", context.organizationId)
+      .eq("client_id", customerIdInput)
+      .eq("status", "active")
+      .eq("is_anonymous_template", false)
+      .maybeSingle();
+
+    if (registeredError) {
+      throw createError({
+        statusCode: 500,
+        statusMessage: "No se pudo validar el cliente registrado seleccionado.",
+      });
+    }
+
+    const registeredClient = Array.isArray(registeredLink?.clients) ? registeredLink.clients[0] : registeredLink?.clients;
+
+    if (!registeredLink || !registeredClient) {
+      throw createError({
+        statusCode: 404,
+        statusMessage: "El cliente registrado seleccionado no estÃ¡ disponible.",
+      });
+    }
+
+    customerId = registeredLink.client_id;
+    customerName = [registeredClient.first_name, registeredClient.last_name].filter(Boolean).join(" ").trim() || "Cliente";
+    customerPhone = registeredClient.phone;
+  } else if (customerMode === "new") {
+    if (!newCustomerInput?.fullName) {
+      throw createError({
+        statusCode: 400,
+        statusMessage: "Debes indicar los datos del nuevo cliente.",
+      });
+    }
+
+    const fullNameParts = newCustomerInput.fullName.trim().split(/\s+/).filter(Boolean);
+    const [firstName, ...restLastName] = fullNameParts;
+    const explicitLastName = newCustomerInput.lastName?.trim() ?? "";
+    const resolvedLastName = explicitLastName || restLastName.join(" ");
+
+    const created = await createOrganizationCustomer(context as never, {
+      firstName: firstName || "Cliente",
+      lastName: resolvedLastName || null,
+      phone: newCustomerInput.phone?.trim() || null,
+      email: newCustomerInput.email?.trim() || null,
+      billingName: newCustomerInput.billingName?.trim() || null,
+      billingEmail: newCustomerInput.billingEmail?.trim() || null,
+      billingPhone: newCustomerInput.billingPhone?.trim() || null,
+      documentType: newCustomerInput.documentType ?? null,
+      documentNumber: newCustomerInput.documentNumber?.trim() || null,
+    });
+
+    const { data: createdClient, error: createdClientError } = await context.adminClient
+      .from("clients")
+      .select("id, first_name, last_name, phone")
+      .eq("id", created.clientId)
+      .maybeSingle();
+
+    if (createdClientError || !createdClient) {
+      throw createError({
+        statusCode: 500,
+        statusMessage: "No se pudo recuperar el cliente recien creado.",
+      });
+    }
+
+    customerId = createdClient.id;
+    guestCustomerId = createdClient.id;
+    customerName = [createdClient.first_name, createdClient.last_name].filter(Boolean).join(" ").trim() || newCustomerInput.fullName.trim();
+    customerPhone = createdClient.phone;
+  } else {
+    const { data: anonymousLink, error: anonymousError } = await context.adminClient
+      .from("client_org")
+      .select("client_id, clients!inner(first_name, last_name, phone)")
+      .eq("organization_id", context.organizationId)
+      .eq("status", "active")
+      .eq("is_anonymous_template", true)
+      .maybeSingle();
+
+    if (anonymousError) {
+      throw createError({
+        statusCode: 500,
+        statusMessage: "No se pudo resolver el cliente anÃ³nimo de la organizaciÃ³n.",
+      });
+    }
+
+    const anonymousClient = Array.isArray(anonymousLink?.clients) ? anonymousLink.clients[0] : anonymousLink?.clients;
+
+    if (!anonymousLink || !anonymousClient) {
+      throw createError({
+        statusCode: 409,
+        statusMessage: "La organizaciÃ³n no tiene configurado un cliente anÃ³nimo activo.",
+      });
+    }
+
+    customerId = anonymousLink.client_id;
+    customerName = [anonymousClient.first_name, anonymousClient.last_name].filter(Boolean).join(" ").trim() || "Cliente anÃ³nimo";
+    customerPhone = anonymousClient.phone;
   }
 
   try {
@@ -85,7 +215,7 @@ export default defineEventHandler(async (event) => {
     await insertAuditLog(context, {
       recordId: data.id,
       action: "INSERT",
-      event: body.walkIn ? "APPOINTMENT_CREATED_WALK_IN" : "APPOINTMENT_CREATED",
+      event: customerMode === "new" ? "APPOINTMENT_CREATED_WALK_IN" : "APPOINTMENT_CREATED",
       newData: {
         branchId: branch.id,
         employeeId: employee.id,
@@ -97,6 +227,7 @@ export default defineEventHandler(async (event) => {
       extraContext: {
         reminder_channels: body.reminderChannels,
         guest_customer_id: guestCustomerId,
+        customer_mode: customerMode,
       },
     });
 

@@ -2,37 +2,38 @@ import { CACHE_KEYS } from "@/utils/cache-keys";
 
 export const useGlobalOrganization = () => {
   const route = useRoute();
-  const user = useSupabaseUser();
+  const { activeOrganizationId, role } = useUserContext();
 
   const shouldFetchOrganization = computed(() => {
-    // No hacer llamadas API en páginas públicas
-    if (route.path === '/' || route.path.startsWith('/auth') || route.path === '/terms' || route.path === '/privacy') {
+    if (
+      route.path === "/"
+      || route.path.startsWith("/auth")
+      || route.path.startsWith("/client")
+      || route.path === "/terms"
+      || route.path === "/privacy"
+      || route.path.startsWith("/system")
+    ) {
       return false;
     }
 
-    if (!user.value) return false;
-
-    const metadata = (user.value.user_metadata ?? {}) as Record<string, unknown>;
-    const role = typeof metadata.role === "string" ? metadata.role : null;
-    const organizationId = typeof metadata.organization_id === "string"
-      ? metadata.organization_id
-      : null;
-
-    return role !== "system" && role !== "support" && Boolean(organizationId);
+    return role.value !== "client" && Boolean(activeOrganizationId.value);
   });
 
   const { data, pending, refresh, error } = useFetch("/api/organization", {
     key: CACHE_KEYS.organization,
     lazy: true,
     dedupe: "defer",
-    immediate: false, // Nunca ejecutar inmediatamente
+    immediate: false,
     default: () => null,
   });
 
   watch(
     shouldFetchOrganization,
     async (enabled) => {
-      if (!enabled) return;
+      if (!enabled) {
+        return;
+      }
+
       await refresh();
     },
     { immediate: false },

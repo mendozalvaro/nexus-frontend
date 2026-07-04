@@ -25,15 +25,17 @@ export interface CatalogServicePayload {
 export interface CatalogCategoryPayload {
   name: string;
   parentId: string | null;
-  type: "product" | "service";
+  type: "product" | "service" | "lodging";
+  description?: string;
 }
 
 export interface CatalogCategoryItem {
   id: string;
   name: string;
-  type: "product" | "service";
+  type: "product" | "service" | "lodging";
   parentId: string | null;
   parentName: string | null;
+  description: string | null;
   isActive: boolean;
   linkedCount: number;
 }
@@ -64,11 +66,36 @@ export interface CatalogServiceItem {
   isActive: boolean;
 }
 
-export interface CatalogData {
+export interface CatalogRoomPayload {
+  roomNumber: string;
+  floor?: number;
+  categoryId: string;
+  branchId: string;
+  basePrice: number;
+  notes?: string;
+}
+
+export interface CatalogRoomItem {
+  id: string;
+  roomNumber: string;
+  floor: number | null;
+  categoryId: string;
+  categoryName: string;
+  branchId: string;
+  branchName: string;
+  basePrice: number;
+  status: string;
+  notes: string | null;
+  isActive: boolean;
+}
+
+export type CatalogData = {
   products: CatalogProductItem[];
   services: CatalogServiceItem[];
   categories: CatalogCategoryItem[];
-}
+};
+
+export type CatalogExportType = "all" | "categories" | "products" | "services";
 
 export const useCatalog = () => {
   const { resolveAccessToken } = useSessionAccess();
@@ -187,6 +214,14 @@ export const useCatalog = () => {
     };
   };
 
+  const exportCatalog = async (type: CatalogExportType) => {
+    await ensureOrganizationId();
+    return await $fetch<string>("/api/catalog/export", {
+      headers: await getAuthHeaders(),
+      query: { type },
+    });
+  };
+
   const createProduct = async (payload: CatalogProductPayload) => {
     return await $fetch<{ success: boolean; productId: string }>("/api/catalog/products", {
       method: "POST",
@@ -259,8 +294,72 @@ export const useCatalog = () => {
     });
   };
 
+  const loadLodgingCategories = async (): Promise<CatalogCategoryItem[]> => {
+    await ensureOrganizationId();
+    return await $fetch<CatalogCategoryItem[]>("/api/catalog/categories", {
+      headers: await getAuthHeaders(),
+      params: { type: "lodging" },
+    });
+  };
+
+  const createLodgingCategory = async (payload: CatalogCategoryPayload) => {
+    return await $fetch<{ success: boolean; categoryId: string }>("/api/catalog/categories", {
+      method: "POST",
+      headers: await getAuthHeaders(),
+      body: { ...payload, type: "lodging" },
+    });
+  };
+
+  const loadRooms = async (filters?: { branchId?: string; status?: string }): Promise<CatalogRoomItem[]> => {
+    await ensureOrganizationId();
+    return await $fetch<CatalogRoomItem[]>("/api/catalog/rooms", {
+      headers: await getAuthHeaders(),
+      params: filters,
+    });
+  };
+
+  const loadAvailableRooms = async (filters: { checkIn: string; checkOut: string; branchId?: string }): Promise<CatalogRoomItem[]> => {
+    await ensureOrganizationId();
+    return await $fetch<CatalogRoomItem[]>("/api/catalog/rooms/available", {
+      headers: await getAuthHeaders(),
+      params: filters,
+    });
+  };
+
+  const createRoom = async (payload: CatalogRoomPayload) => {
+    return await $fetch<{ success: boolean; roomId: string }>("/api/catalog/rooms", {
+      method: "POST",
+      headers: await getAuthHeaders(),
+      body: payload,
+    });
+  };
+
+  const updateRoom = async (roomId: string, payload: Partial<CatalogRoomPayload & { status: string }>) => {
+    return await $fetch<{ success: boolean; roomId: string }>(`/api/catalog/rooms/${roomId}`, {
+      method: "PATCH",
+      headers: await getAuthHeaders(),
+      body: payload,
+    });
+  };
+
+  const updateRoomStatus = async (roomId: string, isActive: boolean) => {
+    return await $fetch<{ success: boolean; roomId: string }>(`/api/catalog/rooms/${roomId}/status`, {
+      method: "POST",
+      headers: await getAuthHeaders(),
+      body: { isActive },
+    });
+  };
+
+  const deleteRoom = async (roomId: string) => {
+    return await $fetch<{ success: boolean; roomId: string }>(`/api/catalog/rooms/${roomId}`, {
+      method: "DELETE",
+      headers: await getAuthHeaders(),
+    });
+  };
+
   return {
     loadCatalog,
+    exportCatalog,
     loadProducts,
     loadServices,
     loadCategories,
@@ -273,5 +372,13 @@ export const useCatalog = () => {
     createCategory,
     updateCategory,
     updateCategoryStatus,
+    loadLodgingCategories,
+    createLodgingCategory,
+    loadRooms,
+    loadAvailableRooms,
+    createRoom,
+    updateRoom,
+    updateRoomStatus,
+    deleteRoom,
   };
 };

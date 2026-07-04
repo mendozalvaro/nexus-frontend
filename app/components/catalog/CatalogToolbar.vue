@@ -1,10 +1,12 @@
 <script setup lang="ts">
 const props = defineProps<{
-  activeTab: "products" | "services" | "categories";
+  activeTab: "products" | "product-categories" | "services" | "service-categories" | "room-categories";
   searchQuery: string;
   productsCount: number;
+  productCategoriesCount: number;
   servicesCount: number;
-  categoriesCount: number;
+  serviceCategoriesCount: number;
+  roomCategoriesCount: number;
 }>();
 
 const emits = defineEmits<{
@@ -24,11 +26,19 @@ const summaryText = computed(() => {
     return `${props.productsCount} producto(s)`;
   }
 
+  if (props.activeTab === "product-categories") {
+    return `${props.productCategoriesCount} categoria(s) de productos`;
+  }
+
   if (props.activeTab === "services") {
     return `${props.servicesCount} servicio(s)`;
   }
 
-  return `${props.categoriesCount} categoria(s)`;
+  if (props.activeTab === "service-categories") {
+    return `${props.serviceCategoriesCount} categoria(s) de servicios`;
+  }
+
+  return `${props.roomCategoriesCount} categoria(s) de habitaciones`;
 });
 
 const buttonLabel = computed(() => {
@@ -36,11 +46,19 @@ const buttonLabel = computed(() => {
     return "Nuevo producto";
   }
 
+  if (props.activeTab === "product-categories") {
+    return "Nueva categoria de producto";
+  }
+
   if (props.activeTab === "services") {
     return "Nuevo servicio";
   }
 
-  return "Nueva categoria";
+  if (props.activeTab === "service-categories") {
+    return "Nueva categoria de servicio";
+  }
+
+  return "Nueva categoria de habitacion";
 });
 
 const dropdownItems = computed(() => [

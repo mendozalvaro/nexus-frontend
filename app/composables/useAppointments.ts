@@ -9,6 +9,7 @@ type UserRole = Database["public"]["Enums"]["user_role"];
 export type AppointmentScopeRole = "manager" | "employee" | "client";
 export type AppointmentCalendarView = "day" | "week" | "month";
 export type ReminderChannel = "email" | "sms";
+export type AppointmentCustomerMode = "anonymous" | "registered" | "new";
 
 export interface AppointmentOption {
   label: string;
@@ -30,6 +31,11 @@ export interface AppointmentEmployeeOption extends AppointmentOption {
 export interface AppointmentBranchOption extends AppointmentOption {
   code: string;
   address: string | null;
+}
+
+export interface AppointmentCustomerOption extends AppointmentOption {
+  phone: string | null;
+  email: string | null;
 }
 
 export interface AppointmentListItem {
@@ -58,6 +64,7 @@ export interface AppointmentCatalog {
   branches: AppointmentBranchOption[];
   services: AppointmentServiceOption[];
   employees: AppointmentEmployeeOption[];
+  customers: AppointmentCustomerOption[];
 }
 
 export interface AppointmentFilters {
@@ -75,6 +82,18 @@ export interface AppointmentWalkInPayload {
   notes?: string;
 }
 
+export interface AppointmentNewCustomerPayload {
+  fullName: string;
+  phone: string;
+  lastName?: string | null;
+  email?: string | null;
+  billingName?: string | null;
+  billingEmail?: string | null;
+  billingPhone?: string | null;
+  documentType?: "CI" | "NIT" | "Pasaporte" | "Otro" | null;
+  documentNumber?: string | null;
+}
+
 export interface AppointmentMutationPayload {
   branchId: string;
   serviceId: string;
@@ -83,6 +102,9 @@ export interface AppointmentMutationPayload {
   startTimeLocal: string;
   notes: string;
   reminderChannels: ReminderChannel[];
+  customerMode?: AppointmentCustomerMode;
+  customerId?: string | null;
+  newCustomer?: AppointmentNewCustomerPayload | null;
   walkIn?: AppointmentWalkInPayload | null;
 }
 
@@ -104,6 +126,14 @@ interface AppointmentCatalogResponse {
     assignedBranchIds?: string[];
     serviceIdsByBranch?: Record<string, string[]>;
   }>;
+}
+
+interface AppointmentCustomerRow {
+  clientId: string;
+  fullName: string;
+  email: string | null;
+  phone: string | null;
+  isAnonymousTemplate: boolean;
 }
 
 const statusOrder: Array<AppointmentStatus | "all"> = [
@@ -181,6 +211,13 @@ const toAppointmentServiceOption = (service: ServiceRow): AppointmentServiceOpti
   value: service.id,
   durationMinutes: service.duration_minutes,
   price: service.price,
+});
+
+const toAppointmentCustomerOption = (customer: AppointmentCustomerRow): AppointmentCustomerOption => ({
+  label: customer.fullName,
+  value: customer.clientId,
+  phone: customer.phone,
+  email: customer.email,
 });
 
 const toAppointmentEmployeeOption = (
@@ -317,6 +354,7 @@ export const useAppointments = () => {
         branches: response.branches.map(toAppointmentBranchOption),
         services: response.services.map(toAppointmentServiceOption),
         employees: response.employees.map(toAppointmentEmployeeOption),
+        customers: [],
       };
     }
 
@@ -327,13 +365,34 @@ export const useAppointments = () => {
       });
     }
 
+    const headers = toAuthHeaders(await getAccessToken());
     const response = await $fetch<AppointmentCatalogResponse>("/api/appointments", {
-      headers: toAuthHeaders(await getAccessToken()),
+      headers,
       query: {
         scopeRole,
         currentProfileId: currentProfile.id,
       },
     });
+
+    let customerOptions: AppointmentCustomerOption[] = [];
+    try {
+      const customersResponse = await $fetch<{ rows: AppointmentCustomerRow[] }>("/api/customers", {
+        method: "GET",
+        headers,
+        query: {
+          status: "active",
+          includeAnonymous: false,
+          page: 1,
+          perPage: 100,
+        },
+      });
+
+      customerOptions = (customersResponse.rows ?? [])
+        .filter((row) => !row.isAnonymousTemplate)
+        .map(toAppointmentCustomerOption);
+    } catch {
+      customerOptions = [];
+    }
 
     const branchOptions = response.branches.map(toAppointmentBranchOption);
     const employeeOptions = response.employees.map(toAppointmentEmployeeOption);
@@ -343,6 +402,7 @@ export const useAppointments = () => {
       branches: branchOptions,
       services: response.services.map(toAppointmentServiceOption),
       employees: employeeOptions,
+      customers: customerOptions,
     };
   };
 
@@ -438,6 +498,14 @@ export const useAppointments = () => {
     }).format(new Date(appointment.startTime)),
     notes: appointment.notes ?? "",
     reminderChannels: [],
+    customerMode: appointment.isWalkIn ? "new" : "registered",
+    customerId: appointment.isWalkIn ? null : appointment.customerId,
+    newCustomer: appointment.isWalkIn
+      ? {
+          fullName: appointment.customerName,
+          phone: appointment.customerPhone ?? "",
+        }
+      : null,
     walkIn: appointment.isWalkIn
       ? {
           fullName: appointment.customerName,

@@ -1,10 +1,14 @@
 ﻿import type { Session, User } from "@supabase/supabase-js";
 
 import type {
+  AuthOAuthProvider,
   AuthErrorPayload,
   AuthOperationResult,
   AuthState,
   Profile,
+  SignInOptions,
+  SignInWithProviderOptions,
+  SignOutOptions,
   SignUpData,
   UpdateProfileInput,
   UserRole,
@@ -15,6 +19,7 @@ import { useAuthAudit } from "@/composables/auth/useAuthAudit";
 import { useClientProfileState } from "@/composables/auth/useClientProfileState";
 import {
   createPermissionDeniedMessage,
+  buildOAuthCallbackPath,
   isStaffRole,
   isValidEmail,
   MIN_PASSWORD_LENGTH,
@@ -213,7 +218,7 @@ export const useAuth = () => {
         return null;
       }
 
-      const data = await $fetch<Profile>("/api/profile");
+      const data = await refreshProfileFromContext({ force: forceRefresh });
       profile.value = data;
 
       if (data?.role === "client" && data.organization_id) {
@@ -241,6 +246,7 @@ export const useAuth = () => {
   const signIn = async (
     email: string,
     password: string,
+    options: SignInOptions = {},
   ): Promise<AuthOperationResult<Session>> => {
     const sanitizedEmail = sanitizeAuthEmail(email);
     const sanitizedPassword = sanitizeString(password);
@@ -271,7 +277,21 @@ export const useAuth = () => {
         throw signInError;
       }
 
-      await fetchProfile();
+      if (options.resolveProfile !== false) {
+        const resolvedProfile = await fetchProfile();
+        const signedInRole = data.user?.user_metadata?.role;
+
+        if (!resolvedProfile && signedInRole === "client") {
+          await supabase.auth.signOut();
+          resetContext();
+          clearClientProfileState();
+          resetTransientState();
+          throw new Error("Esta cuenta no tiene acceso al panel interno.");
+        }
+      } else {
+        clearClientProfileState();
+        await ensureContext({ requireProfile: false, forceUserValidation: true });
+      }
 
       console.info("[AUTH_LOGIN_SUCCESS]", {
         userId: data.user?.id ?? null,
@@ -303,9 +323,38 @@ export const useAuth = () => {
     }
   };
 
-  const signOut = async (): Promise<AuthOperationResult> => {
+  const signInWithProvider = async (
+    provider: AuthOAuthProvider,
+    options: SignInWithProviderOptions,
+  ): Promise<AuthOperationResult<null>> => {
+    return executeAuthAction(async () => {
+      if (!import.meta.client) {
+        throw new Error("OAuth solo esta disponible en el cliente.");
+      }
+
+      const redirectTo = `${window.location.origin}${buildOAuthCallbackPath({
+        audience: options.audience,
+        redirect: options.redirect,
+        slug: options.slug,
+      })}`;
+
+      const { error: oauthError } = await supabase.auth.signInWithOAuth({
+        provider,
+        options: { redirectTo },
+      });
+
+      if (oauthError) {
+        throw oauthError;
+      }
+
+      return null;
+    }, "No se pudo iniciar sesion con Google.", "AUTH_OAUTH_SIGN_IN_ERROR");
+  };
+
+  const signOut = async (options: SignOutOptions = {}): Promise<AuthOperationResult> => {
     return executeAuthAction(async () => {
       const currentUserId = user.value?.id ?? null;
+      const redirectTo = options.redirectTo?.trim() || AUTH_LOGIN_ROUTE;
 
       const { error: signOutError } = await supabase.auth.signOut();
       if (signOutError) {
@@ -318,7 +367,7 @@ export const useAuth = () => {
 
       console.info("[AUTH_SIGN_OUT]", { userId: currentUserId });
 
-      await navigateTo(AUTH_LOGIN_ROUTE);
+      await navigateTo(redirectTo);
       return null;
     }, "No se pudo cerrar sesión.", "AUTH_SIGN_OUT_ERROR");
   };
@@ -551,6 +600,7 @@ export const useAuth = () => {
     fetchProfile,
     fetchClientProfile,
     signIn,
+    signInWithProvider,
     signOut,
     signUp,
     updateProfile,

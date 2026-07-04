@@ -1,5 +1,7 @@
 import type { OrganizationDraft } from "@/types/registration";
+import { useSessionAccess } from "@/composables/useSessionAccess";
 import {
+  BUSINESS_TYPE_VALUES,
   ORGANIZATION_STORAGE_KEY,
   MAX_LOGO_SIZE_BYTES,
   ORGANIZATION_SCHEMA,
@@ -8,15 +10,28 @@ import {
 
 const createOrganizationDraft = (): OrganizationDraft => ({
   organizationName: "",
-  businessType: "hybrid",
+  businessTypes: ["product"],
   selectedPlan: "emprende",
   billingMode: "monthly",
+  activationMode: "trial",
   country: "BO",
   currency: "BOB",
   timezone: "America/La_Paz",
   logoPreviewUrl: null,
   logoFileName: null,
 });
+
+const normalizeBusinessTypes = (value: unknown): OrganizationDraft["businessTypes"] => {
+  const normalized = Array.isArray(value)
+    ? value.filter(
+      (entry): entry is OrganizationDraft["businessTypes"][number] =>
+        typeof entry === "string"
+        && (BUSINESS_TYPE_VALUES as readonly string[]).includes(entry),
+    )
+    : [];
+
+  return normalized.length > 0 ? normalized : ["product"];
+};
 
 export const useOrganization = () => {
   const { resolveUser } = useSessionAccess();
@@ -44,7 +59,12 @@ export const useOrganization = () => {
 
       const rawValue = localStorage.getItem(ORGANIZATION_STORAGE_KEY);
       if (rawValue) {
-        draft.value = { ...createOrganizationDraft(), ...JSON.parse(rawValue) as OrganizationDraft };
+        const parsed = JSON.parse(rawValue) as Partial<OrganizationDraft>;
+        draft.value = {
+          ...createOrganizationDraft(),
+          ...parsed,
+          businessTypes: normalizeBusinessTypes(parsed.businessTypes),
+        };
       }
     } catch {
       if (import.meta.client) localStorage.removeItem(ORGANIZATION_STORAGE_KEY);
@@ -80,7 +100,12 @@ export const useOrganization = () => {
       if (!user) throw new Error("Tu sesion no es valida. Inicia sesion nuevamente.");
 
       const profile = await fetchProfile();
-      if (profile?.organization_id) return profile.organization_id;
+      if (profile?.organization_id) {
+        return {
+          organizationId: profile.organization_id,
+          nextStep: draft.value.activationMode === "trial" ? "dashboard" : "payment",
+        } as const;
+      }
 
       const userMetadata = (user.user_metadata as Record<string, unknown> | undefined) ?? {};
       const metadataFullName = typeof userMetadata.full_name === "string" ? userMetadata.full_name.trim() : "";
@@ -100,15 +125,17 @@ export const useOrganization = () => {
         logoData = { dataBase64: base64, name: logoFile.name, type: logoFile.type };
       }
 
-      const result = await $fetch<{ organizationId: string }>("/api/onboarding/organization", {
+      const result = await $fetch<{ organizationId: string; nextStep: "dashboard" | "payment" }>("/api/onboarding/organization", {
         method: "POST",
         body: {
           organizationName: parsed.organizationName,
-          businessType: parsed.businessType,
+          businessTypes: parsed.businessTypes,
+          planSlug: parsed.selectedPlan,
           country: parsed.country,
           currency: parsed.currency,
           timezone: parsed.timezone,
           billingMode: parsed.billingMode,
+          activationMode: parsed.activationMode,
           fullName: nextFullName,
           email: nextEmail,
           phone: metadataPhone,
@@ -122,13 +149,17 @@ export const useOrganization = () => {
         method: "POST",
         body: {
           organizationId: result.organizationId,
-          currentStep: "payment",
-          progressData: asJsonObject({ organizationId: result.organizationId, organizationDraft: { ...draft.value, logoPreviewUrl: null } }),
+          currentStep: result.nextStep === "payment" ? "payment" : "completed",
+          progressData: asJsonObject({
+            organizationId: result.organizationId,
+            nextStep: result.nextStep,
+            organizationDraft: { ...draft.value, logoPreviewUrl: null },
+          }),
         },
       });
 
       if (import.meta.client) localStorage.removeItem(ORGANIZATION_STORAGE_KEY);
-      return result.organizationId;
+      return result;
     } catch (organizationError) {
       const message = organizationError instanceof Error ? organizationError.message : "No se pudo crear la organizacion.";
       if (organizationError instanceof Error && organizationError.message.toLowerCase().includes("logo")) {

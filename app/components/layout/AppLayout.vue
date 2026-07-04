@@ -4,7 +4,7 @@ import type { User } from "@supabase/supabase-js";
 import AppAside from "./AppAside.vue";
 import AppFooter from "./AppFooter.vue";
 import AppHeader from "./AppHeader.vue";
-import type { NavigationItem } from "../../composables/useNavigation";
+import type { NavigationItem } from "@/types/permissions";
 import type { Profile } from "../../types/auth";
 import type { Database } from "../../types/database.types";
 
@@ -69,6 +69,7 @@ function handleEscape(event: KeyboardEvent) {
     <AppAside
       :items="items"
       :title="title"
+      :logo-url="organization?.logo_url"
       :collapsed="isSidebarOpen"
       @close="closeSidebar"
     />

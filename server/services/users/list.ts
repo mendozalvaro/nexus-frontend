@@ -21,11 +21,24 @@ export interface BranchOption {
 }
 
 export const getUsersList = async (context: AdminContext) => {
-  const { data: branches, error: branchesError } = await context.adminClient
+  if (context.actorRole === "manager" && context.accessibleBranchIds.length === 0) {
+    return {
+      users: [],
+      branches: [],
+    };
+  }
+
+  let branchesQuery = context.adminClient
     .from("branches")
     .select("id, name, code, is_active")
     .eq("organization_id", context.organizationId)
-    .eq("is_active", true)
+    .eq("is_active", true);
+
+  if (context.actorRole === "manager") {
+    branchesQuery = branchesQuery.in("id", context.accessibleBranchIds);
+  }
+
+  const { data: branches, error: branchesError } = await branchesQuery
     .order("name", { ascending: true })
     .returns<Array<{ id: string; name: string; code: string | null; is_active: boolean }>>();
 
@@ -41,11 +54,17 @@ export const getUsersList = async (context: AdminContext) => {
   const branchLookup = new Map((branches ?? []).map((b): [string, string | null] => [b.id, b.name]));
   const branchIds = (branches ?? []).map((b) => b.id);
 
-  const { data: profiles, error: profilesError } = await context.adminClient
+  let profilesQuery = context.adminClient
     .from("profiles")
     .select("id, organization_id, full_name, email, role, is_active, created_at, last_login_at")
     .eq("organization_id", context.organizationId)
-    .neq("role", "client")
+    .neq("role", "client");
+
+  if (context.actorRole === "manager") {
+    profilesQuery = profilesQuery.eq("role", "employee");
+  }
+
+  const { data: profiles, error: profilesError } = await profilesQuery
     .order("full_name", { ascending: true })
     .returns<Array<{ id: string; full_name: string; email: string; role: string; is_active: boolean | null; created_at: string | null; last_login_at: string | null }>>();
 
@@ -85,7 +104,7 @@ export const getUsersList = async (context: AdminContext) => {
     primaryBranchByUser.set(userId, primary?.branchId ?? userAssignments[0]?.branchId ?? null);
   }
 
-  const users: UserListItem[] = (profiles ?? []).map((user): UserListItem => {
+  const users = (profiles ?? []).map((user): UserListItem => {
     const primaryBranchId = primaryBranchByUser.get(user.id) ?? null;
 
     return {
@@ -100,6 +119,12 @@ export const getUsersList = async (context: AdminContext) => {
       lastLoginAt: user.last_login_at,
       assignedBranches: assignmentsByUser.get(user.id) ?? [],
     };
+  }).filter((user) => {
+    if (context.actorRole !== "manager") {
+      return true;
+    }
+
+    return user.assignedBranches.some((assignment) => context.accessibleBranchIds.includes(assignment.branchId));
   });
 
   return {

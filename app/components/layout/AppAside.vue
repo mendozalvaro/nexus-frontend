@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { NavigationItem } from "../../composables/useNavigation";
+import type { NavigationItem } from "@/types/permissions";
 
 const route = useRoute();
 
@@ -7,9 +7,11 @@ const props = withDefaults(
   defineProps<{
     items: NavigationItem[];
     title: string;
+    logoUrl?: string | null;
     collapsed?: boolean;
   }>(),
   {
+    logoUrl: null,
     collapsed: false,
   },
 );
@@ -77,8 +79,14 @@ watch(
     >
       <div class="flex items-center justify-between border-b border-slate-200/70 px-5 py-5 dark:border-slate-800/80">
         <div class="flex min-w-0 items-center gap-3">
-          <div class="nexus-logo-shell flex h-11 w-11 items-center justify-center rounded-2xl text-sm font-semibold text-white shadow-lg">
-            NP
+          <div class="nexus-logo-shell flex h-11 w-11 items-center justify-center overflow-hidden rounded-2xl text-sm font-semibold text-white shadow-lg">
+            <img
+              v-if="logoUrl"
+              :src="logoUrl"
+              alt="Logo organizacion"
+              class="h-full w-full object-cover"
+            >
+            <span v-else>NP</span>
           </div>
           <div class="min-w-0">
             <p class="truncate text-sm font-semibold text-slate-900 dark:text-white">NexusPOS</p>

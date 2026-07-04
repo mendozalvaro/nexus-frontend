@@ -117,7 +117,7 @@ export const useInventoryPage = () => {
   });
 
   const { data: overviewData, pending: overviewPending, refresh: refreshOverview } = useAsyncData(
-    overviewAsyncKey,
+    () => overviewAsyncKey.value,
     async () => {
       await ensureProfileReady();
       return loadOverview();
@@ -129,7 +129,7 @@ export const useInventoryPage = () => {
   );
 
   const { data: transfersData, refresh: refreshTransfers } = useAsyncData(
-    transfersAsyncKey,
+    () => transfersAsyncKey.value,
     async () => {
       await ensureProfileReady();
       return loadTransfersPage({
@@ -145,7 +145,7 @@ export const useInventoryPage = () => {
   );
 
   const { data: movementsData, pending: movementsPending, refresh: refreshMovements } = useAsyncData(
-    movementsAsyncKey,
+    () => movementsAsyncKey.value,
     async () => {
       await ensureProfileReady();
       return loadHistoryPage({ ...movementFilters });

@@ -1,9 +1,9 @@
 import { setCacheHeaders } from "../utils/cache";
-import { requireTenantContext } from "../utils/tenant-context";
+import { requireStaffTenantContext } from "../utils/tenant-context";
 import { getTenantProfile, type TenantProfileData } from "../services/profile";
 
 export default defineEventHandler(async (event) => {
-  const context = await requireTenantContext(event);
+  const context = await requireStaffTenantContext(event);
 
   const profile = await getTenantProfile(event, context.userId);
 

@@ -5,10 +5,10 @@ import {
   getInventoryMovements,
 } from "../../services/inventory/stock";
 import { setCacheHeaders } from "../../utils/cache";
-import { requireInventoryContext } from "../../utils/inventory";
+import { requireInventoryContextStrict } from "../../utils/inventory-access";
 
 export default defineEventHandler(async (event) => {
-  const context = await requireInventoryContext(event);
+  const context = await requireInventoryContextStrict(event, "can_view");
   const query = getQuery(event);
 
   const branchId = typeof query.branchId === "string" ? query.branchId : null;

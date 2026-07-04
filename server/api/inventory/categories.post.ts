@@ -4,11 +4,11 @@ import {
   categorySchema,
   getProductCategoryOrThrow,
   readValidatedInventoryBody,
-  requireInventoryContext,
 } from "../../utils/inventory";
+import { requireInventoryContextStrict } from "../../utils/inventory-access";
 
 export default defineEventHandler(async (event) => {
-  const context = await requireInventoryContext(event);
+  const context = await requireInventoryContextStrict(event, "can_create");
   await assertInventoryModuleAccess(context, "can_create");
   const body = await readValidatedInventoryBody(event, categorySchema);
 
@@ -42,3 +42,4 @@ export default defineEventHandler(async (event) => {
     categoryId: data.id,
   };
 });
+

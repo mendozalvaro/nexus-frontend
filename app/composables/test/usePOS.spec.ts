@@ -55,6 +55,7 @@ describe('usePOS', () => {
     mockFetch.mockResolvedValueOnce({
       organizationId: 'org-abc',
       currentBranchId: 'branch-1',
+      defaultReceiptFormat: 'thermal',
       branches: [{ id: 'branch-1', name: 'Sucursal 1', code: 'S1' }],
       categories: [{ id: 'cat-1', name: 'Productos', type: 'product' }],
       products: [{
@@ -166,6 +167,8 @@ describe('usePOS', () => {
         discountAmount: 0,
         taxAmount: 0,
         finalAmount: 80,
+        formatUsed: 'thermal',
+        verificationUrl: '/api/receipts/verify?token=abc',
         items: []
       },
       transactionId: 'trx-1'

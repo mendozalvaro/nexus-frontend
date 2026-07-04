@@ -1,4 +1,5 @@
 import {
+  assertCatalogEntityAccess,
   assertCatalogUniqueSKU,
   catalogProductSchema,
   getCatalogCategoryOrThrow,
@@ -8,6 +9,7 @@ import {
 
 export default defineEventHandler(async (event) => {
   const context = await requireCatalogContext(event);
+  await assertCatalogEntityAccess(context, "product", "can_create");
   const body = await readValidatedCatalogBody(event, catalogProductSchema);
   const normalizedSKU = body.sku.trim() || null;
 

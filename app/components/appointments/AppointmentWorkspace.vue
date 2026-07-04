@@ -40,6 +40,7 @@ const createEmptyCatalog = (): AppointmentCatalog => ({
   branches: [],
   services: [],
   employees: [],
+  customers: [],
 });
 
 const filters = reactive(createDefaultFilters());
@@ -54,7 +55,7 @@ const formPreset = ref<Partial<AppointmentMutationPayload> | undefined>(undefine
 const asyncKey = computed(() => `appointments-workspace:${props.scopeRole}:${filters.view}:${filters.anchorDate}:${filters.branchId ?? "all"}:${filters.employeeId ?? "all"}:${filters.serviceId ?? "all"}:${filters.status}`);
 
 const { data, pending, refresh } = await useAsyncData(
-  asyncKey,
+  () => asyncKey.value,
   () => loadAppointments(props.scopeRole, { ...filters }),
   {
     server: false,
@@ -141,6 +142,9 @@ const openCreateModal = (payload?: { date: string; hour?: string }) => {
     startTimeLocal: payload?.hour ?? "09:00",
     notes: "",
     reminderChannels: [],
+    customerMode: "anonymous",
+    customerId: null,
+    newCustomer: null,
     walkIn: null,
   };
   createOpen.value = true;
@@ -543,6 +547,7 @@ const changeView = (view: AppointmentCalendarView) => {
           :branches="catalog.branches"
           :services="catalog.services"
           :employees="catalog.employees"
+          :customers="catalog.customers"
           @cancel="closeFormModals"
           @submit="handleCreate"
         />
@@ -564,6 +569,7 @@ const changeView = (view: AppointmentCalendarView) => {
           :branches="catalog.branches"
           :services="catalog.services"
           :employees="catalog.employees"
+          :customers="catalog.customers"
           submit-label="Guardar cita"
           @cancel="closeFormModals"
           @submit="handleUpdate"

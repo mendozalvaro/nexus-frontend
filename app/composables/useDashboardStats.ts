@@ -19,12 +19,18 @@ const defaultStats = (period: "7d" | "30d" | "90d"): DashboardStats => ({
 });
 
 export const useDashboardStats = () => {
-  const { organization } = useGlobalOrganization();
-  const { activeBranch } = useActiveBranch();
+  const { branches, activeBranch, loading: branchesLoading } = useActiveBranch();
   const period = useState<"7d" | "30d" | "90d">("dashboard:period", () => "30d");
+  const stats = useState<DashboardStats>("dashboard:stats:data", () => defaultStats(period.value));
+  const loading = useState<boolean>("dashboard:stats:loading", () => false);
+  const error = useState<Error | null>("dashboard:stats:error", () => null);
+  const loadedKey = useState<string | null>("dashboard:stats:loaded-key", () => null);
+  const pendingKey = useState<string | null>("dashboard:stats:pending-key", () => null);
+
+  let pendingLoad: Promise<void> | null = null;
 
   const key = computed(() => dashboardStatsKey({
-    organizationId: (organization.value as { id?: string } | null)?.id ?? null,
+    organizationId: null,
     branchId: activeBranch.value?.id ?? null,
     period: period.value,
   }));
@@ -34,23 +40,67 @@ export const useDashboardStats = () => {
     branchId: activeBranch.value?.id ?? undefined,
   }));
 
-  const { data, pending, refresh, error } = useFetch<DashboardStats>("/api/dashboard-stats", {
-    key,
-    query,
-    lazy: true,
-    dedupe: "defer",
-    default: () => defaultStats(period.value),
-  });
+  const refreshStats = async (options: { force?: boolean } = {}) => {
+    const currentKey = key.value;
+    const force = options.force === true;
 
-  const refreshStats = async () => {
-    await refresh();
+    if (!force && loadedKey.value === currentKey) {
+      return;
+    }
+
+    if (pendingLoad && pendingKey.value === currentKey) {
+      await pendingLoad;
+      return;
+    }
+
+    const loader = async () => {
+      loading.value = true;
+      error.value = null;
+
+      try {
+        stats.value = await $fetch<DashboardStats>("/api/dashboard-stats", {
+          query: query.value,
+        });
+        loadedKey.value = currentKey;
+      } catch (fetchError) {
+        error.value = fetchError instanceof Error
+          ? fetchError
+          : new Error("No se pudieron cargar las metricas del dashboard.");
+      } finally {
+        loading.value = false;
+        if (pendingKey.value === currentKey) {
+          pendingLoad = null;
+          pendingKey.value = null;
+        }
+      }
+    };
+
+    pendingLoad = loader();
+    pendingKey.value = currentKey;
+    await pendingLoad;
   };
+
+  watch(
+    () => [period.value, activeBranch.value?.id ?? null, branchesLoading.value, branches.value.length] as const,
+    async ([, activeBranchId, isBranchesLoading, branchCount]) => {
+      if (isBranchesLoading) {
+        return;
+      }
+
+      if (branchCount > 0 && !activeBranchId) {
+        return;
+      }
+
+      await refreshStats();
+    },
+    { immediate: true },
+  );
 
   return {
     cachePrefix: CACHE_KEYS.dashboardStats,
-    stats: data,
+    stats,
     period,
-    loading: pending,
+    loading,
     error,
     refreshStats,
   };

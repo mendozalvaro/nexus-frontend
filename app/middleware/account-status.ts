@@ -1,31 +1,39 @@
 import { getDefaultPathForRole } from "../utils/role-access";
 
-export default defineNuxtRouteMiddleware(async () => {
-  const { ensureAuthContext } = useAuthContext();
-  const { user, profile } = await ensureAuthContext({ requireProfile: true });
+export default defineNuxtRouteMiddleware(async (to) => {
+  if (!to.path.startsWith("/onboarding/payment")) {
+    return;
+  }
 
-  if (!user) {
+  const { resolveActorContext } = useActorContext();
+  const actor = await resolveActorContext({ requireProfile: true });
+
+  if (!actor.user) {
     return navigateTo("/auth/login");
   }
 
-  if (!profile?.organization_id) {
+  if (!actor.profile?.organization_id) {
     return navigateTo("/onboarding/organization");
   }
 
-  if (profile.role === "client") {
-    return navigateTo(getDefaultPathForRole(profile.role));
+  if (actor.actorType === "client") {
+    return navigateTo(getDefaultPathForRole(actor.profile?.role ?? null));
+  }
+
+  if (actor.actorType !== "staff") {
+    return navigateTo("/auth/login");
   }
 
   const { loadAccountStatus } = useAccountStatus();
   const { accountStatus, snapshot } = await loadAccountStatus({
-    organizationId: profile.organization_id,
+    organizationId: actor.profile.organization_id,
   });
 
   if (accountStatus === "active") {
-    return navigateTo(getDefaultPathForRole(profile.role));
+    return navigateTo(getDefaultPathForRole(actor.profile.role));
   }
 
-  if (profile.role === "admin" && !snapshot.latestValidationStatus) {
+  if (actor.profile.role === "admin" && !snapshot.latestValidationStatus) {
     return navigateTo("/onboarding/payment");
   }
 

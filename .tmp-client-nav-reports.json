@@ -1,0 +1,13 @@
+{
+  "finalUrl": "http://localhost:3000/dashboard",
+  "bodySnippet": "NP NEXUSPOS Plataforma operativa multi-tenant EL Eduardo Limachi Administrador NAVEGACION Modulos disponibles para tu rol Dashboard Catalogo Reservas Clientes Usuarios Reportes Configuracion Perfil PANEL OPERATIVO Dashboard Bienvenido de vuelta, Eduardo Limachi. Este resumen concentra actividad, modulos habilitados y senales operativas de tu organizacion. PERIODO KPI 30d ESTADO Operativo ROL ACTUAL Administrador VENTAS TOTALES $0 PEDIDOS 0 PRODUCTOS 0 USUARIOS 0 ACCIONES RAPIDAS Atajos utiles pa",
+  "navigations": [
+    "http://localhost:3000/auth/login",
+    "http://localhost:3000/auth/login",
+    "http://localhost:3000/auth/login",
+    "http://localhost:3000/auth/login",
+    "http://localhost:3000/auth/callback?audience=staff",
+    "http://localhost:3000/auth/callback?audience=staff",
+    "http://localhost:3000/dashboard"
+  ]
+}

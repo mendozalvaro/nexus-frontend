@@ -45,14 +45,10 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
-# Supabase CLI (local development only)
-supabase/
-!supabase/
-supabase/*
-!supabase/migrations/
-supabase/migrations/*
-!supabase/migrations/20260514_clients_global_billing_per_org.sql
-!.supabase/wrappers/
+# Supabase CLI scratch/state
+supabase/.temp/
+supabase/tmp*.sql
+supabase/remote-public-schema.sql
 
 # Types (regenerable)
 types/supabase.ts

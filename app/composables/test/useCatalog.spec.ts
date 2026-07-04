@@ -6,10 +6,14 @@ import { globalStateMap } from '../../../test/setup'
 const mockFetch = vi.fn()
 vi.stubGlobal('$fetch', mockFetch)
 
-const mockProfile = ref({
+const mockProfile = ref<{
+  id: string
+  organization_id: string | null
+  role: 'admin'
+}>({
   id: 'user-123',
   organization_id: 'org-abc',
-  role: 'admin' as const
+  role: 'admin'
 })
 
 const mockResolveAccessToken = vi.fn().mockResolvedValue('token-123')

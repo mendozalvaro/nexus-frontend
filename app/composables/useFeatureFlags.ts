@@ -6,23 +6,35 @@ export type FeatureFlag =
   | "feature_multi_branch"
   | "feature_advanced_reports"
   | "feature_api_access"
-  | "feature_forensic_export";
+  | "feature_forensic_export"
+  | "feature_hotel_module";
+
+const hasLodgingPermission = (capabilities: OrganizationCapabilities): boolean => {
+  const permissions = capabilities.planPermissions ?? {};
+  const features = new Set(capabilities.planFeatures ?? []);
+
+  return permissions.reservations === true
+    || permissions["catalog.rooms"] === true
+    || permissions["reports.lodging"] === true
+    || features.has("reservations")
+    || features.has("catalog.rooms")
+    || features.has("reports.lodging");
+};
 
 const FEATURE_FLAG_MAPPINGS: Record<
   FeatureFlag,
   (capabilities: OrganizationCapabilities) => boolean
 > = {
   feature_inventory: (capabilities) =>
-    (capabilities.planPermissions?.inventory
-      ?? capabilities.canCreateBranch)
-    || capabilities.canTransferStock
-    || capabilities.hasAdvancedReports,
+    capabilities.planPermissions?.inventory ?? false,
   feature_inventory_transfer: (capabilities) => capabilities.canTransferStock,
   feature_multi_branch: (capabilities) =>
     capabilities.planPermissions?.branches ?? capabilities.canCreateBranch,
   feature_advanced_reports: (capabilities) => capabilities.hasAdvancedReports,
   feature_api_access: (capabilities) => capabilities.hasApiAccess,
   feature_forensic_export: (capabilities) => capabilities.hasForensicExport,
+  feature_hotel_module: (capabilities) =>
+    (capabilities.hasHotelModule ?? false) || hasLodgingPermission(capabilities),
 };
 
 export const useFeatureFlags = () => {

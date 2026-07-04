@@ -1,19 +1,25 @@
+import { serverSupabaseClient } from "#supabase/server";
 import { createClient } from "@supabase/supabase-js";
 import { createError } from "h3";
 
 import type { H3Event } from "h3";
 import type { Database, Json } from "@/types/database.types";
+import { createUserServerClient, resolveBearerToken } from "../utils/auth-server";
 import {
+  ERROR_MESSAGES,
   buildOrganizationLogoStoragePath,
   sanitizeText,
   sanitizeNullableText,
 } from "@/utils/onboarding";
 
 type AdminClient = ReturnType<typeof createClient<Database>>;
+type RpcClient = ReturnType<typeof createClient<Database>>;
 
 const buildAdminClient = (event: H3Event): AdminClient => {
   const config = useRuntimeConfig(event);
-  const supabaseUrl = process.env.NUXT_PUBLIC_SUPABASE_URL;
+  const supabaseUrl =
+    (config.public?.supabase as { url?: string } | undefined)?.url
+    ?? process.env.NUXT_PUBLIC_SUPABASE_URL;
   const serviceRoleKey = config.supabaseServiceRoleKey as string | undefined;
 
   if (!supabaseUrl || !serviceRoleKey) {
@@ -31,13 +37,25 @@ const buildAdminClient = (event: H3Event): AdminClient => {
   });
 };
 
+const buildRpcClient = async (event: H3Event): Promise<RpcClient> => {
+  const bearerToken = resolveBearerToken(event);
+
+  if (bearerToken) {
+    return createUserServerClient(event, bearerToken);
+  }
+
+  return await serverSupabaseClient<Database>(event);
+};
+
 export interface CreateOrganizationInput {
   organizationName: string;
-  businessType: "products" | "services" | "hybrid";
+  businessTypes: string[];
+  planSlug: "emprende" | "crecimiento" | "enterprise";
   country: string;
   currency: string;
   timezone: string;
   billingMode: "monthly" | "quarterly" | "annual";
+  activationMode: "trial" | "paid";
   fullName: string;
   email: string;
   phone?: string | null;
@@ -45,7 +63,16 @@ export interface CreateOrganizationInput {
 
 export interface CreateOrganizationResult {
   organizationId: string;
+  nextStep: "dashboard" | "payment";
   logoUrl?: string | null;
+}
+
+export interface CreateOrganizationRequestInput extends CreateOrganizationInput {
+  logo?: {
+    dataBase64: string;
+    name: string;
+    type: string;
+  } | null;
 }
 
 export async function createOnboardingOrganization(
@@ -54,28 +81,35 @@ export async function createOnboardingOrganization(
   input: CreateOrganizationInput,
   logoFile?: { data: Buffer; name: string; type: string } | null,
 ): Promise<CreateOrganizationResult> {
+  const rpcClient = await buildRpcClient(event);
   const adminClient = buildAdminClient(event);
 
-  const { data: organizationId, error: createError } = await adminClient.rpc(
+  const { data: organizationId, error: rpcError } = await rpcClient.rpc(
     "create_onboarding_organization",
     {
       p_name: sanitizeText(input.organizationName),
-      p_business_type: input.businessType,
+      p_business_types: `{${input.businessTypes.join(",")}}` as unknown as string,
       p_country: input.country,
       p_currency: input.currency,
       p_timezone: input.timezone,
       p_billing_mode: input.billingMode,
-      p_slug: null as unknown as string,
-      p_address: null as unknown as string,
-      p_billing_data: null,
+      p_plan_slug: input.planSlug,
+      p_activation_mode: input.activationMode,
       p_full_name: sanitizeText(input.fullName),
       p_email: sanitizeText(input.email),
       p_phone: input.phone ?? undefined,
     },
   );
 
-  if (createError || !organizationId) {
-    throw createError ?? new Error("No se pudo crear la organizacion.");
+  if (rpcError || !organizationId) {
+    if (rpcError?.message?.includes("TRIAL_ALREADY_USED")) {
+      throw createError({
+        statusCode: 409,
+        statusMessage: ERROR_MESSAGES.TRIAL_ALREADY_USED,
+      });
+    }
+
+    throw rpcError ?? new Error("No se pudo crear la organizacion.");
   }
 
   let logoUrl: string | null = null;
@@ -103,12 +137,72 @@ export async function createOnboardingOrganization(
   await adminClient.from("onboarding_progress").upsert({
     user_id: userId,
     organization_id: organizationId,
-    current_step: "payment",
-    progress_data: { organizationId } as Json,
+    current_step: input.activationMode === "trial" ? "completed" : "payment",
+    progress_data: {
+      organizationId,
+      activationMode: input.activationMode,
+      selectedPlan: input.planSlug,
+    } as Json,
     updated_at: new Date().toISOString(),
   }, { onConflict: "user_id" });
 
-  return { organizationId, logoUrl };
+  return {
+    organizationId,
+    nextStep: input.activationMode === "trial" ? "dashboard" : "payment",
+    logoUrl,
+  };
+}
+
+export async function createOnboardingOrganizationForUser(
+  event: H3Event,
+  userId: string,
+  input: CreateOrganizationRequestInput,
+): Promise<CreateOrganizationResult> {
+  const adminClient = buildAdminClient(event);
+
+  const { data: profile, error: profileError } = await adminClient
+    .from("profiles")
+    .select("organization_id")
+    .eq("id", userId)
+    .maybeSingle();
+
+  if (profileError) {
+    throw createError({
+      statusCode: 500,
+      statusMessage: profileError.message,
+    });
+  }
+
+  if (profile?.organization_id) {
+    return {
+      organizationId: profile.organization_id,
+      nextStep: input.activationMode === "trial" ? "dashboard" : "payment",
+    };
+  }
+
+  let logoFile: { data: Buffer; name: string; type: string } | null = null;
+  if (input.logo?.dataBase64) {
+    const base64Data = input.logo.dataBase64.split(",")[1] ?? input.logo.dataBase64;
+    logoFile = {
+      data: Buffer.from(base64Data, "base64"),
+      name: input.logo.name,
+      type: input.logo.type,
+    };
+  }
+
+  return await createOnboardingOrganization(event, userId, {
+    organizationName: input.organizationName,
+    businessTypes: input.businessTypes,
+    planSlug: input.planSlug,
+    country: input.country,
+    currency: input.currency,
+    timezone: input.timezone,
+    billingMode: input.billingMode,
+    activationMode: input.activationMode,
+    fullName: input.fullName,
+    email: input.email,
+    phone: input.phone,
+  }, logoFile);
 }
 
 export interface PaymentStatusSummary {

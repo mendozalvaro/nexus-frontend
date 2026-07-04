@@ -56,12 +56,12 @@ const features = computed<FeatureCardItem[]>(() => [
   },
   {
     key: "sales",
-    title: "Punto de Venta",
+    title: "Ventas",
     caption: "Procesa ventas",
     description:
       "Vende productos y servicios en una sola transaccion cuando la cuenta este activa.",
     icon: "i-heroicons-shopping-cart",
-    route: "/pos",
+    route: "/pos/sell",
     available: props.accountStatus === "active",
     reason: "Requiere cuenta activa para procesar cobros reales.",
   },

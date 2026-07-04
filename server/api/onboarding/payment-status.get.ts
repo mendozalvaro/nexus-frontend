@@ -1,9 +1,9 @@
 import { throwApiError } from "../../utils/http-error";
-import { requireTenantContext } from "../../utils/tenant-context";
+import { requireStaffTenantContext } from "../../utils/tenant-context";
 import { getPaymentStatus } from "../../services/onboarding";
 
 export default defineEventHandler(async (event) => {
-  const context = await requireTenantContext(event);
+  const context = await requireStaffTenantContext(event);
   const query = getQuery(event);
   const organizationId = typeof query.organizationId === "string" ? query.organizationId : context.organizationId;
 

@@ -127,6 +127,7 @@ const submitService = () => {
   });
   serviceModalOpen.value = false;
 };
+
 </script>
 
 <template>
@@ -213,7 +214,7 @@ const submitService = () => {
           </div>
 
           <p class="min-h-[3rem] text-sm leading-6 text-slate-500 dark:text-slate-400">
-            {{ product.description ?? "Producto listo para venta desde el POS hibrido." }}
+            {{ product.description ?? "Producto listo para venta desde Ventas." }}
           </p>
 
           <div class="flex items-center justify-between gap-3 text-xs uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">

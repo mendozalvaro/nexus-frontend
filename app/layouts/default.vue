@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { NavigationItem } from "@/types/permissions";
+import type { Database } from "@/types/database.types";
 
 import { NAVIGATION_ITEMS, PENDING_ACTIVATION_PATH, SYSTEM_NAVIGATION_ITEMS } from "@/config/navigation";
 import { roleDefinitions } from "@/utils/roles";
@@ -8,18 +9,22 @@ const colorMode = useColorMode();
 const route = useRoute();
 const mobileMenuOpen = ref(false);
 const sidebarCollapsed = ref(false);
+const layoutMounted = ref(false);
 const SIDEBAR_COLLAPSED_STORAGE_KEY = "nexuspos:layout:sidebar-collapsed";
 
-const { user, profile, signOut } = useAuth();
+const { user, profile, resolvedRole, signOut } = useAuth();
 const { profile: globalProfile } = useGlobalUserProfile();
+const { organization: globalOrganization } = useGlobalOrganization();
+const { resolveActorContext } = useActorContext();
 const {
   accountStatus,
   paymentRequired,
   setAccountStatusState,
 } = useUserContext();
-const { getUserPermissions, hasPermission } = usePermissions();
+const { getUserPermissions, hasPermission, hasModuleAccess } = usePermissions();
 const { loadAccountStatus: loadSharedAccountStatus } = useAccountStatus();
 const { isFeatureEnabled } = useFeatureFlags();
+const { hasBusinessType } = useBusinessTypes();
 
 type UserMenuItem = {
   label: string;
@@ -41,17 +46,42 @@ const colorModeIcon = computed(() =>
 
 const isSystemArea = computed(() => route.path.startsWith("/system"));
 
+const effectiveProfile = computed(() => {
+  return (globalProfile.value as typeof profile.value) ?? profile.value;
+});
+
+const currentOrganization = computed<Database["public"]["Tables"]["organizations"]["Row"] | null>(() =>
+  (globalOrganization.value as Database["public"]["Tables"]["organizations"]["Row"] | null) ?? null,
+);
+
 const currentUserRoleLabel = computed(() => {
   if (isSystemArea.value) {
     return "System";
   }
 
-  const role = ((globalProfile.value as { role?: string | null } | null)?.role ?? profile.value?.role ?? "");
+  const profileRole = (effectiveProfile.value as { role?: string | null } | null)?.role?.trim() ?? "";
+  const metadataRole = typeof currentUserMetadata.value.role === "string"
+    ? currentUserMetadata.value.role.trim()
+    : "";
+  const resolvedAuthRole = resolvedRole.value === "guest" ? "" : resolvedRole.value;
+  const role = profileRole || metadataRole || resolvedAuthRole;
   return ROLE_LABELS[role] ?? "Usuario del sistema";
 });
 
+watch(
+  () => [route.path, user.value?.id ?? null] as const,
+  async ([path, userId]) => {
+    if (!userId || !path.startsWith("/system")) {
+      return;
+    }
+
+    await resolveActorContext({ preferSystem: true, requireProfile: false });
+  },
+  { immediate: true },
+);
+
 const currentRoleDefinition = computed(() => {
-  const role = ((globalProfile.value as { role?: keyof typeof roleDefinitions | null } | null)?.role ?? profile.value?.role) as keyof typeof roleDefinitions | undefined;
+  const role = (effectiveProfile.value as { role?: keyof typeof roleDefinitions | null } | null)?.role as keyof typeof roleDefinitions | undefined;
   return role ? roleDefinitions[role] : null;
 });
 
@@ -63,9 +93,25 @@ const dashboardHomePath = computed(() => {
   return currentRoleDefinition.value?.homePath ?? "/dashboard";
 });
 
+const showUserMenu = computed(() => Boolean(user.value || effectiveProfile.value));
+const showResolvedUserMenu = computed(() => layoutMounted.value && showUserMenu.value);
+
+const currentUserMetadata = computed<Record<string, unknown>>(() =>
+  (user.value?.user_metadata as Record<string, unknown> | undefined) ?? {},
+);
+
+const currentUserName = computed(() => {
+  const profileName = (effectiveProfile.value as { full_name?: string | null } | null)?.full_name?.trim();
+  const metadataName = typeof currentUserMetadata.value.full_name === "string"
+    ? currentUserMetadata.value.full_name.trim()
+    : "";
+  const email = user.value?.email?.trim() ?? "";
+
+  return profileName || metadataName || email || "Cuenta";
+});
+
 const userInitials = computed(() => {
-  const fullName = (globalProfile.value as { full_name?: string | null } | null)?.full_name ?? profile.value?.full_name;
-  const source = fullName?.trim() || user.value?.email?.trim() || "NexusPOS";
+  const source = currentUserName.value || "NexusPOS";
   const parts = source.split(/\s+/).filter(Boolean);
 
   if (parts.length === 1) {
@@ -133,6 +179,22 @@ const navigationItems = computed<NavigationItem[]>(() => {
       return false;
     }
 
+    if (
+      item.requiredBusinessTypes
+      && item.requiredBusinessTypes.length > 0
+      && !item.requiredBusinessTypes.some((businessType) => hasBusinessType(businessType))
+    ) {
+      return false;
+    }
+
+    if (item.moduleKey && !hasModuleAccess(item.moduleKey)) {
+      return false;
+    }
+
+    if (item.moduleKeysAny && !item.moduleKeysAny.some((moduleKey) => hasModuleAccess(moduleKey))) {
+      return false;
+    }
+
     if (item.permission && !hasPermission(permissions, item.permission)) {
       return false;
     }
@@ -156,6 +218,11 @@ const navigationItems = computed<NavigationItem[]>(() => {
     };
   });
 });
+
+const renderedNavigationItems = computed<NavigationItem[]>(() => navigationItems.value);
+const stableNavigationItems = computed<NavigationItem[]>(() =>
+  layoutMounted.value ? renderedNavigationItems.value : [],
+);
 
 const userMenuItems = computed<UserMenuItem[][]>(() => {
   const profilePath = isSystemArea.value
@@ -268,6 +335,7 @@ watch(
 
 if (import.meta.client) {
   onMounted(() => {
+    layoutMounted.value = true;
     restoreSidebarPreference();
   });
 }
@@ -283,19 +351,27 @@ if (import.meta.client) {
           <UButton variant="ghost" color="neutral" icon="i-heroicons-bars-3" aria-label="Abrir menu"
             class="shrink-0 rounded-2xl lg:hidden" @click="mobileMenuOpen = true" />
 
-          <NuxtLink :to="dashboardHomePath" class="flex items-center gap-3">
-            <div
-              class="flex h-10 w-10 items-center justify-center rounded-2xl bg-sky-500 text-sm font-bold text-white shadow-lg shadow-sky-500/30">
-              NP
-            </div>
-            <div class="hidden min-w-0 sm:block">
-              <p class="text-sm font-semibold uppercase tracking-[0.28em] text-sky-600 dark:text-sky-300">
-                NexusPOS
-              </p>
-              <p class="text-sm text-slate-500 dark:text-slate-400">
-                Plataforma operativa multi-tenant
-              </p>
-            </div>
+          <NuxtLink v-slot="{ href, navigate }" :to="dashboardHomePath" custom>
+            <a :href="href ?? undefined" class="flex items-center gap-3" @click="navigate">
+              <div
+                class="flex h-10 w-10 items-center justify-center overflow-hidden rounded-2xl bg-sky-500 text-sm font-bold text-white shadow-lg shadow-sky-500/30">
+                <img
+                  v-if="currentOrganization?.logo_url"
+                  :src="currentOrganization.logo_url"
+                  :alt="currentOrganization.name"
+                  class="h-full w-full object-cover"
+                >
+                <span v-else>NP</span>
+              </div>
+              <div class="hidden min-w-0 sm:block">
+                <p class="text-sm font-semibold uppercase tracking-[0.28em] text-sky-600 dark:text-sky-300">
+                  NexusPOS
+                </p>
+                <p class="text-sm text-slate-500 dark:text-slate-400">
+                  Plataforma operativa multi-tenant
+                </p>
+              </div>
+            </a>
           </NuxtLink>
         </div>
 
@@ -310,7 +386,7 @@ if (import.meta.client) {
           <UButton variant="ghost" color="neutral" :icon="colorModeIcon" aria-label="Cambiar modo de color"
             class="min-h-11 min-w-11 rounded-2xl" @click="toggleColorMode" />
 
-          <UDropdownMenu :items="userMenuItems">
+          <UDropdownMenu v-if="showResolvedUserMenu" :items="userMenuItems">
             <button type="button"
               class="group flex min-h-11 items-center gap-2 rounded-2xl px-1.5 py-1 text-left transition-all duration-200 hover:bg-slate-100/80 dark:hover:bg-slate-900/70 sm:gap-3 sm:px-2"
               aria-label="Menu de usuario">
@@ -320,7 +396,7 @@ if (import.meta.client) {
               </div>
               <div class="hidden min-w-0 sm:block">
                 <p class="truncate text-sm font-semibold text-slate-900 dark:text-white">
-                  {{ profile?.full_name || user?.email || 'Cuenta' }}
+                  {{ currentUserName }}
                 </p>
                 <p class="mt-1 truncate text-xs text-slate-500 dark:text-slate-400">
                   {{ currentUserRoleLabel }}
@@ -330,6 +406,25 @@ if (import.meta.client) {
                 class="hidden h-4 w-4 shrink-0 text-slate-400 transition-transform duration-200 group-hover:text-slate-600 dark:group-hover:text-slate-300 sm:block" />
             </button>
           </UDropdownMenu>
+          <div
+            v-else
+            class="flex min-h-11 items-center gap-2 rounded-2xl px-1.5 py-1 sm:gap-3 sm:px-2"
+            aria-hidden="true"
+          >
+            <div
+              class="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-slate-200 text-sm font-semibold text-slate-500 dark:bg-slate-800 dark:text-slate-400"
+            >
+              --
+            </div>
+            <div class="hidden min-w-0 sm:block">
+              <p class="truncate text-sm font-semibold text-slate-500 dark:text-slate-400">
+                Cargando cuenta
+              </p>
+              <p class="mt-1 truncate text-xs text-slate-400 dark:text-slate-500">
+                ...
+              </p>
+            </div>
+          </div>
         </div>
       </div>
     </header>
@@ -357,7 +452,7 @@ if (import.meta.client) {
           </div>
         </Transition>
 
-        <LayoutSidebarNav :items="navigationItems" :collapsed="sidebarCollapsed" />
+        <LayoutSidebarNav :items="stableNavigationItems" :collapsed="sidebarCollapsed" />
       </aside>
 
       <div class="flex min-h-[calc(100vh-4rem)] min-w-0 flex-1 flex-col">
@@ -400,8 +495,14 @@ if (import.meta.client) {
       <template #header>
         <div class="w-full space-y-4">
           <div class="flex items-center gap-3">
-            <div class="flex h-10 w-10 items-center justify-center rounded-2xl bg-sky-500 text-sm font-bold text-white">
-              NP
+            <div class="flex h-10 w-10 items-center justify-center overflow-hidden rounded-2xl bg-sky-500 text-sm font-bold text-white">
+              <img
+                v-if="currentOrganization?.logo_url"
+                :src="currentOrganization.logo_url"
+                :alt="currentOrganization.name"
+                class="h-full w-full object-cover"
+              >
+              <span v-else>NP</span>
             </div>
             <div>
               <p class="text-sm font-semibold uppercase tracking-[0.28em] text-sky-600 dark:text-sky-300">
@@ -418,7 +519,7 @@ if (import.meta.client) {
 
       <template #body>
         <div class="space-y-5 px-1 pb-4">
-          <LayoutSidebarNav :items="navigationItems" @navigate="closeMobileMenu" />
+          <LayoutSidebarNav :items="stableNavigationItems" @navigate="closeMobileMenu" />
         </div>
       </template>
     </USlideover>

@@ -1,49 +1,61 @@
-import { CACHE_KEYS } from "@/utils/cache-keys";
-
 export const useGlobalUserProfile = () => {
   const route = useRoute();
-  const user = useSupabaseUser();
+  const { user, profile, contextBootstrapState, refreshProfile } = useUserContext();
+  const { ensureAuthContext } = useAuthContext();
 
   const shouldFetchTenantProfile = computed(() => {
-    // No hacer llamadas API en páginas públicas
-    if (route.path === '/' || route.path.startsWith('/auth') || route.path === '/terms' || route.path === '/privacy') {
+    if (
+      route.path === "/"
+      || route.path.startsWith("/auth")
+      || route.path.startsWith("/client")
+      || route.path === "/terms"
+      || route.path === "/privacy"
+      || route.path.startsWith("/system")
+    ) {
       return false;
     }
 
-    if (!user.value) return false;
-    if (route.path.startsWith("/system")) return false;
-    if (import.meta.client && window.location.pathname.startsWith("/system")) return false;
+    const currentUser = user.value;
+    if (!currentUser) {
+      return false;
+    }
 
-    const metadata = (user.value.user_metadata ?? {}) as Record<string, unknown>;
+    const metadata = (currentUser.user_metadata ?? {}) as Record<string, unknown>;
     const role = typeof metadata.role === "string" ? metadata.role : null;
-    const organizationId = typeof metadata.organization_id === "string"
-      ? metadata.organization_id
-      : null;
 
-    return role !== "system" && role !== "support" && Boolean(organizationId);
+    return role !== "system" && role !== "support" && role !== "client";
   });
 
-  const { data, pending, refresh, error } = useFetch("/api/profile", {
-    key: CACHE_KEYS.profile,
-    lazy: true,
-    dedupe: "defer",
-    immediate: false, // Nunca ejecutar inmediatamente
-    default: () => null,
-  });
+  const loading = computed(() =>
+    shouldFetchTenantProfile.value
+    && contextBootstrapState.value === "resolving"
+    && !profile.value,
+  );
 
   watch(
-    shouldFetchTenantProfile,
-    async (enabled) => {
-      if (!enabled) return;
-      await refresh();
+    () => ({
+      enabled: shouldFetchTenantProfile.value,
+      userId: user.value?.id ?? null,
+      profileId: profile.value?.id ?? null,
+    }),
+    async ({ enabled, userId, profileId }) => {
+      if (!enabled || !user.value) {
+        return;
+      }
+
+      if (profileId === userId) {
+        return;
+      }
+
+      await ensureAuthContext({ requireProfile: true });
     },
-    { immediate: false },
+    { immediate: true },
   );
 
   return {
-    profile: data,
-    loading: pending,
-    error,
-    refreshProfile: refresh,
+    profile,
+    loading,
+    error: computed(() => null),
+    refreshProfile,
   };
 };

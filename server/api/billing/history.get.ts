@@ -1,9 +1,9 @@
 import { throwApiError } from "../../utils/http-error";
-import { requireTenantContext } from "../../utils/tenant-context";
+import { requireStaffTenantContext } from "../../utils/tenant-context";
 import { setCacheHeaders } from "../../utils/cache";
 
 export default defineEventHandler(async (event) => {
-  const context = await requireTenantContext(event);
+  const context = await requireStaffTenantContext(event);
 
   const query = getQuery(event);
   const limit = Math.min(Math.max(Number(query.limit) || 50, 1), 100);

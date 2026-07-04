@@ -4,7 +4,6 @@ import { createError } from "h3";
 import type { H3Event } from "h3";
 import type { Database, Json } from "@/types/database.types";
 import type { ClientProfileState } from "@/types/client";
-
 type AdminClient = ReturnType<typeof createClient<Database>>;
 
 const buildAdminClient = (event: H3Event): AdminClient => {
@@ -73,7 +72,6 @@ export async function getClientProfile(
 }
 
 export interface ClientUpsertInput {
-  organizationId?: string | null;
   firstName: string;
   lastName?: string | null;
   phone?: string | null;
@@ -84,7 +82,6 @@ export interface ClientUpsertInput {
 
 export interface ClientUpsertResult {
   id: string;
-  role: string;
   orgStatus: string;
 }
 
@@ -92,144 +89,18 @@ export async function upsertClientProfile(
   event: H3Event,
   userId: string,
   input: ClientUpsertInput,
-  profileOrgId?: string | null,
-  profileRole?: string | null,
+  organizationId: string,
 ): Promise<ClientUpsertResult> {
-  const adminClient = buildAdminClient(event);
+  const profile = await updateClientProfile(event, userId, organizationId, {
+    firstName: input.firstName,
+    lastName: input.lastName,
+    phone: input.phone,
+    email: input.email,
+    billingData: input.billingData,
+    preferences: input.preferences,
+  });
 
-  const sanitize = (v: string | null | undefined) => {
-    const normalized = v?.trim() ?? "";
-    return normalized.length > 0 ? normalized : null;
-  };
-
-  const organizationId = profileOrgId ?? sanitize(input.organizationId);
-  if (!organizationId) {
-    throw createError({
-      statusCode: 403,
-      statusMessage: "No se pudo resolver organization_id.",
-    });
-  }
-
-  const phone = sanitize(input.phone);
-  const email = sanitize(input.email);
-
-  if (!phone && !email) {
-    throw createError({
-      statusCode: 400,
-      statusMessage: "Debes enviar al menos phone o email.",
-    });
-  }
-
-  let existingClient: {
-    id: string;
-    user_id: string | null;
-    billing_data: unknown;
-    preferences: unknown;
-  } | null = null;
-
-  if (phone && email) {
-    const { data, error } = await adminClient
-      .from("clients")
-      .select("id, user_id, billing_data, preferences")
-      .or(`phone.eq.${phone},email.eq.${email}`)
-      .limit(1)
-      .maybeSingle();
-
-    if (error) throw createError({ statusCode: 500, statusMessage: error.message });
-    existingClient = data ?? null;
-  } else if (phone) {
-    const { data, error } = await adminClient
-      .from("clients")
-      .select("id, user_id, billing_data, preferences")
-      .eq("phone", phone)
-      .maybeSingle();
-
-    if (error) throw createError({ statusCode: 500, statusMessage: error.message });
-    existingClient = data ?? null;
-  } else {
-    const { data, error } = await adminClient
-      .from("clients")
-      .select("id, user_id, billing_data, preferences")
-      .eq("email", email!)
-      .maybeSingle();
-
-    if (error) throw createError({ statusCode: 500, statusMessage: error.message });
-    existingClient = data ?? null;
-  }
-
-  let clientId = existingClient?.id ?? null;
-
-  if (!clientId) {
-    const { data, error } = await adminClient
-      .from("clients")
-      .insert({
-        user_id: userId,
-        first_name: input.firstName,
-        last_name: sanitize(input.lastName),
-        phone,
-        email,
-        billing_data: (input.billingData ?? {}) as Json,
-        preferences: (input.preferences ?? {}) as Json,
-      })
-      .select("id")
-      .single<{ id: string }>();
-
-    if (error || !data) {
-      throw createError({
-        statusCode: 500,
-        statusMessage: error?.message ?? "No se pudo crear el cliente.",
-      });
-    }
-    clientId = data.id;
-  } else {
-    const { error } = await adminClient
-      .from("clients")
-      .update({
-        user_id: existingClient?.user_id ?? userId,
-        first_name: input.firstName,
-        last_name: sanitize(input.lastName),
-        phone,
-        email,
-        billing_data: (input.billingData ?? existingClient?.billing_data ?? {}) as Json,
-        preferences: (input.preferences ?? existingClient?.preferences ?? {}) as Json,
-      })
-      .eq("id", clientId);
-
-    if (error) throw createError({ statusCode: 500, statusMessage: error.message });
-  }
-
-  const { error: linkError } = await adminClient
-    .from("client_org")
-    .upsert({
-      client_id: clientId,
-      organization_id: organizationId,
-      status: "active",
-      billing_data: (input.billingData ?? {}) as Json,
-      updated_at: new Date().toISOString(),
-    }, { onConflict: "client_id,organization_id" });
-
-  if (linkError) {
-    throw createError({ statusCode: 500, statusMessage: linkError.message });
-  }
-
-  const { data: clientOrg } = await adminClient
-    .from("client_org")
-    .select("status")
-    .eq("client_id", clientId)
-    .eq("organization_id", organizationId)
-    .maybeSingle<{ status: string }>();
-
-  const orgStatus = clientOrg?.status ?? "inactive";
-
-  const resolveRole = (pRole: string | null, oStatus: string): string => {
-    if (pRole === "admin" || pRole === "manager" || pRole === "employee") return pRole;
-    if (oStatus === "active") return "client";
-    return "guest";
-  };
-
-  const role = resolveRole(profileRole ?? null, orgStatus);
-
-  return { id: clientId, role, orgStatus };
+  return { id: profile.clientId, orgStatus: profile.orgStatus };
 }
 
 export interface ClientProfileUpdateInput {

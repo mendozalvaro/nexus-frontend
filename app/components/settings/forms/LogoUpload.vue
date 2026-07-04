@@ -10,6 +10,7 @@ interface Props {
 
 interface Emits {
   (e: "upload", file: File): void;
+  (e: "remove"): void;
 }
 
 defineProps<Props>();
@@ -53,6 +54,7 @@ const clearLogo = () => {
     logoPreview.value = null;
   }
   if (fileInput.value) fileInput.value.value = "";
+  emit("remove");
 };
 </script>
 

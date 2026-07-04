@@ -9,7 +9,7 @@ import type {
 const props = withDefaults(defineProps<{
   open: boolean;
   loading?: boolean;
-  type: "product" | "service";
+  type: "product" | "service" | "lodging";
   categories: CatalogCategoryItem[];
   initialValue?: CatalogCategoryItem | null;
 }>(), {
@@ -31,6 +31,7 @@ const formInitialValue = computed(() => {
   return {
     name: props.initialValue.name,
     parentId: props.initialValue.parentId,
+    description: props.initialValue.description ?? "",
   };
 });
 </script>

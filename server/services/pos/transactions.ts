@@ -1,4 +1,4 @@
-import { buildReceiptFromTransaction, requirePOSContext } from "../../utils/pos";
+import { buildReceiptFromTransaction, requirePOSContextStrict } from "../../utils/pos";
 
 import type { Database, Json } from "@/types/database.types";
 
@@ -39,7 +39,7 @@ export async function getPOSTransactions(
   date: string,
   branchId: string | null,
 ): Promise<POSTransactionsResult> {
-  const context = await requirePOSContext(event);
+  const context = await requirePOSContextStrict(event, "can_view");
 
   const startIso = new Date(`${date}T00:00:00`).toISOString();
   const endIso = new Date(`${date}T23:59:59`).toISOString();
@@ -177,7 +177,7 @@ export async function getPOSReceipt(
   event: H3Event,
   transactionId: string,
 ): Promise<POSReceiptResult> {
-  const context = await requirePOSContext(event);
+  const context = await requirePOSContextStrict(event, "can_view");
 
   const receipt = await buildReceiptFromTransaction(context, transactionId);
 

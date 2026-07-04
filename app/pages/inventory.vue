@@ -12,6 +12,7 @@ definePageMeta({
   permission: "inventory.view",
   roles: ["admin", "manager"],
   featureFlag: "feature_inventory",
+  moduleKey: "inventory",
 });
 
 const {

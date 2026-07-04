@@ -257,7 +257,7 @@ const closeActiveCard = () => {
 
               <UButton
                 v-if="['confirmed', 'in_progress'].includes(apt.status)"
-                title="Cobrar en POS"
+                title="Cobrar en ventas"
                 color="primary"
                 variant="ghost"
                 size="xs"

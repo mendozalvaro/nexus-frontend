@@ -1,4 +1,4 @@
-<script setup lang="ts">
+﻿<script setup lang="ts">
 import type { SettingsOrganization } from "@/composables/useSettings";
 import type { UpdateOrgPayload } from "@/composables/useSettings";
 
@@ -12,6 +12,7 @@ interface Props {
 interface Emits {
   (e: "submit", payload: UpdateOrgPayload): void;
   (e: "upload-logo", file: File): void;
+  (e: "remove-logo"): void;
 }
 
 defineProps<Props>();
@@ -24,8 +25,8 @@ const emit = defineEmits<Emits>();
       <UCard class="rounded-3xl">
         <template #header>
           <div>
-            <h3 class="text-lg font-semibold text-slate-900 dark:text-white">Datos de la organizacion</h3>
-            <p class="text-sm text-slate-500 dark:text-slate-400">Informacion general que aparece en facturas y reportes.</p>
+            <h3 class="text-lg font-semibold text-slate-900 dark:text-white">Datos de la organización</h3>
+            <p class="text-sm text-slate-500 dark:text-slate-400">Información general que aparece en facturas y reportes.</p>
           </div>
         </template>
         <SettingsFormsOrganizationForm
@@ -43,7 +44,7 @@ const emit = defineEmits<Emits>();
         <template #header>
           <div>
             <h3 class="text-lg font-semibold text-slate-900 dark:text-white">Vista previa</h3>
-            <p class="text-sm text-slate-500 dark:text-slate-400">Como se ve tu organizacion en el sistema.</p>
+            <p class="text-sm text-slate-500 dark:text-slate-400">Cómo se ve tu organización en el sistema.</p>
           </div>
         </template>
         <div class="space-y-4">
@@ -63,7 +64,7 @@ const emit = defineEmits<Emits>();
                 />
               </div>
               <div class="min-w-0">
-                <p class="truncate font-semibold text-slate-900 dark:text-white">{{ org?.name ?? 'Tu organizacion' }}</p>
+                <p class="truncate font-semibold text-slate-900 dark:text-white">{{ org?.name ?? 'Tu organización' }}</p>
                 <p class="truncate text-xs text-slate-500 dark:text-slate-400">{{ org?.slug ?? 'sin-slug' }}</p>
               </div>
             </div>
@@ -72,8 +73,8 @@ const emit = defineEmits<Emits>();
           <div class="rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-900/50">
             <p class="text-[10px] uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500">Factura ejemplo</p>
             <div class="mt-2 space-y-1 text-sm">
-              <p class="font-medium text-slate-900 dark:text-white">{{ org?.name ?? 'Tu organizacion' }}</p>
-              <p class="text-slate-500 dark:text-slate-400">{{ org?.address ?? 'Sin direccion' }}</p>
+              <p class="font-medium text-slate-900 dark:text-white">{{ org?.name ?? 'Tu organización' }}</p>
+              <p class="text-slate-500 dark:text-slate-400">{{ org?.address ?? 'Sin dirección' }}</p>
               <p class="text-slate-500 dark:text-slate-400">{{ org?.timezone ?? 'America/La_Paz' }} · {{ org?.currency_code ?? 'BOB' }}</p>
             </div>
           </div>
@@ -84,9 +85,11 @@ const emit = defineEmits<Emits>();
             :mutation-loading="mutationLoading"
             :error="null"
             @upload="emit('upload-logo', $event)"
+            @remove="emit('remove-logo')"
           />
         </div>
       </UCard>
     </div>
   </div>
 </template>
+

@@ -1,4 +1,5 @@
 import {
+  assertCatalogCategoryAccess,
   catalogStatusSchema,
   getCatalogCategoryOrThrow,
   readValidatedCatalogBody,
@@ -18,6 +19,7 @@ export default defineEventHandler(async (event) => {
 
   const { isActive } = await readValidatedCatalogBody(event, catalogStatusSchema);
   const category = await getCatalogCategoryOrThrow(context, categoryId);
+  await assertCatalogCategoryAccess(context, category.type as "product" | "service" | "lodging", "can_edit");
 
   const { error } = await context.adminClient
     .from("categories")

@@ -1,10 +1,13 @@
-import { createClient } from "@supabase/supabase-js";
+﻿import { createClient } from "@supabase/supabase-js";
 import { createError, getHeader, readBody } from "h3";
 import { z } from "zod";
 
 import type { H3Event } from "h3";
 
 import type { Database, Json } from "@/types/database.types";
+import type { ReceiptFormat } from "../services/receipts/verification";
+import { buildReceiptVerificationUrl, sanitizeReceiptFormat } from "../services/receipts/verification";
+import { assertTenantModuleAccess, type TenantModuleAction } from "./tenant-module-access";
 
 type UserRole = Database["public"]["Enums"]["user_role"];
 type PaymentMethod = Database["public"]["Enums"]["payment_method"];
@@ -27,36 +30,36 @@ const ACTIVE_APPOINTMENT_STATUSES: Database["public"]["Enums"]["appointment_stat
 
 const existingCustomerSchema = z.object({
   mode: z.literal("existing"),
-  customerId: z.string().uuid("El cliente seleccionado es inválido."),
+  customerId: z.string().uuid("El cliente seleccionado es invÃ¡lido."),
 });
 
 const walkInCustomerSchema = z.object({
   mode: z.literal("walk_in"),
   fullName: z.string().trim().min(3, "El nombre del cliente es obligatorio."),
-  phone: z.string().trim().min(7, "El teléfono del cliente es obligatorio."),
+  phone: z.string().trim().min(7, "El telÃ©fono del cliente es obligatorio."),
 });
 
 const customerSchema = z.union([existingCustomerSchema, walkInCustomerSchema]);
 
 const productItemSchema = z.object({
   itemType: z.literal("product"),
-  productId: z.string().uuid("El producto seleccionado es inválido."),
+  productId: z.string().uuid("El producto seleccionado es invÃ¡lido."),
   quantity: z.number().int("La cantidad debe ser entera.").positive("La cantidad debe ser mayor a cero."),
 });
 
 const serviceItemSchema = z.object({
   itemType: z.literal("service"),
-  serviceId: z.string().uuid("El servicio seleccionado es inválido."),
-  employeeId: z.string().uuid("El colaborador seleccionado es inválido."),
-  scheduledDate: z.string().regex(LOCAL_DATE_PATTERN, "La fecha del servicio es inválida."),
-  scheduledTime: z.string().regex(LOCAL_TIME_PATTERN, "La hora del servicio es inválida."),
+  serviceId: z.string().uuid("El servicio seleccionado es invÃ¡lido."),
+  employeeId: z.string().uuid("El colaborador seleccionado es invÃ¡lido."),
+  scheduledDate: z.string().regex(LOCAL_DATE_PATTERN, "La fecha del servicio es invÃ¡lida."),
+  scheduledTime: z.string().regex(LOCAL_TIME_PATTERN, "La hora del servicio es invÃ¡lida."),
   quantity: z.number().int().positive().default(1),
 }).superRefine((value, context) => {
   if (value.quantity !== 1) {
     context.addIssue({
       code: "custom",
       path: ["quantity"],
-      message: "Cada servicio debe venderse con una sola agenda por ítem.",
+      message: "Cada servicio debe venderse con una sola agenda por Ã­tem.",
     });
   }
 });
@@ -67,7 +70,7 @@ const discountSchema = z.object({
 });
 
 export const checkoutSchema = z.object({
-  branchId: z.string().uuid("La sucursal seleccionada es inválida."),
+  branchId: z.string().uuid("La sucursal seleccionada es invÃ¡lida."),
   customer: customerSchema,
   paymentMethod: z.enum(["cash", "card", "transfer", "mixed", "digital_wallet"] satisfies PaymentMethod[]),
   discount: discountSchema,
@@ -75,6 +78,7 @@ export const checkoutSchema = z.object({
   items: z.array(z.union([productItemSchema, serviceItemSchema])).min(1, "Debes agregar al menos un producto o servicio al carrito."),
   createAppointments: z.boolean().optional().default(true),
   appointmentId: z.string().uuid().optional().nullable(),
+  receiptFormatOverride: z.enum(["thermal", "half_letter"]).optional().nullable(),
 });
 
 export interface POSContext {
@@ -122,6 +126,8 @@ export interface ReceiptPayload {
   discountAmount: number;
   taxAmount: number;
   finalAmount: number;
+  formatUsed: ReceiptFormat;
+  verificationUrl: string;
   items: ReceiptLineItem[];
 }
 
@@ -134,7 +140,7 @@ const getBearerToken = (event: H3Event): string => {
   if (!header?.startsWith("Bearer ")) {
     throw createError({
       statusCode: 401,
-      statusMessage: "No se recibió un token de autenticación válido.",
+      statusMessage: "No se recibiÃ³ un token de autenticaciÃ³n vÃ¡lido.",
     });
   }
 
@@ -150,7 +156,7 @@ const getSupabaseServerConfig = (event: H3Event) => {
   if (!url || !anonKey) {
     throw createError({
       statusCode: 500,
-      statusMessage: "La configuración pública de Supabase está incompleta.",
+      statusMessage: "La configuraciÃ³n pÃºblica de Supabase estÃ¡ incompleta.",
     });
   }
 
@@ -172,17 +178,12 @@ const parseSkills = (value: Json | null): string[] => {
   return value.filter((entry): entry is string => typeof entry === "string");
 };
 
-const sanitizeNullableString = (value: string | null | undefined): string | null => {
-  const normalized = value?.trim() ?? "";
-  return normalized.length > 0 ? normalized : null;
-};
-
 const toDateTimeIso = (date: string, time: string): string => {
   const parsed = new Date(`${date}T${time}:00`);
   if (Number.isNaN(parsed.getTime())) {
     throw createError({
       statusCode: 400,
-      statusMessage: "La fecha u hora del servicio es inválida.",
+      statusMessage: "La fecha u hora del servicio es invÃ¡lida.",
     });
   }
 
@@ -212,7 +213,7 @@ export const requirePOSContext = async (event: H3Event): Promise<POSContext> => 
   if (authError || !authData.user) {
     throw createError({
       statusCode: 401,
-      statusMessage: "No se pudo validar la sesión del usuario.",
+      statusMessage: "No se pudo validar la sesiÃ³n del usuario.",
     });
   }
 
@@ -287,6 +288,38 @@ export const requirePOSContext = async (event: H3Event): Promise<POSContext> => 
   };
 };
 
+export const requirePOSContextStrict = async (
+  event: H3Event,
+  action: TenantModuleAction = "can_view",
+): Promise<POSContext> => {
+  const context = await requirePOSContext(event);
+
+  await assertTenantModuleAccess({
+    adminClient: context.adminClient,
+    organizationId: context.organizationId,
+    role: context.role,
+    roleId: context.profile.role_id,
+    moduleKey: "pos.sales",
+    action,
+  });
+
+  return context;
+};
+
+export const assertPOSModuleAccess = async (
+  context: POSContext,
+  action: TenantModuleAction,
+) => {
+  await assertTenantModuleAccess({
+    adminClient: context.adminClient,
+    organizationId: context.organizationId,
+    role: context.role,
+    roleId: context.profile.role_id,
+    moduleKey: "pos.sales",
+    action,
+  });
+};
+
 export const readValidatedPOSBody = async <T>(event: H3Event, schema: z.ZodSchema<T>): Promise<T> => {
   const body = await readBody(event);
   const parsed = schema.safeParse(body);
@@ -294,7 +327,7 @@ export const readValidatedPOSBody = async <T>(event: H3Event, schema: z.ZodSchem
   if (!parsed.success) {
     throw createError({
       statusCode: 400,
-      statusMessage: parsed.error.issues[0]?.message ?? "Payload inválido.",
+      statusMessage: parsed.error.issues[0]?.message ?? "Payload invÃ¡lido.",
     });
   }
 
@@ -320,7 +353,7 @@ export const getPOSBranchOrThrow = async (context: POSContext, branchId: string)
   if (!data) {
     throw createError({
       statusCode: 404,
-      statusMessage: "La sucursal seleccionada no está disponible para tu organización.",
+      statusMessage: "La sucursal seleccionada no estÃ¡ disponible para tu organizaciÃ³n.",
     });
   }
 
@@ -359,7 +392,7 @@ export const getPOSEmployeeOrThrow = async (
   if (!data) {
     throw createError({
       statusCode: 404,
-      statusMessage: "El colaborador seleccionado no está disponible.",
+      statusMessage: "El colaborador seleccionado no estÃ¡ disponible.",
     });
   }
 
@@ -388,7 +421,7 @@ export const getPOSServiceOrThrow = async (
   if (!data) {
     throw createError({
       statusCode: 404,
-      statusMessage: "El servicio seleccionado no está disponible.",
+      statusMessage: "El servicio seleccionado no estÃ¡ disponible.",
     });
   }
 
@@ -417,7 +450,7 @@ export const getProductOrThrow = async (
   if (!data) {
     throw createError({
       statusCode: 404,
-      statusMessage: "El producto seleccionado no está disponible.",
+      statusMessage: "El producto seleccionado no estÃ¡ disponible.",
     });
   }
 
@@ -530,75 +563,40 @@ export const getCustomerOrThrow = async (
   if (!row?.clients) {
     throw createError({
       statusCode: 404,
-      statusMessage: "El cliente seleccionado no está disponible para la venta.",
+      statusMessage: "El cliente seleccionado no estÃ¡ disponible para la venta.",
     });
   }
 
   return row.clients;
 };
 
-export const createPOSWalkInCustomer = async (
+export const getPOSAnonymousTemplateCustomerOrThrow = async (
   context: POSContext,
-  payload: z.output<typeof walkInCustomerSchema>,
 ): Promise<ClientRow> => {
-  const phone = sanitizeNullableString(payload.phone);
-  const fullName = payload.fullName.trim();
-  const [firstName, ...lastNames] = fullName.split(/\s+/).filter(Boolean);
-  const lastName = lastNames.join(" ") || null;
-
-  let existingClient: ClientRow | null = null;
-
-  if (phone) {
-    const { data } = await context.adminClient
-      .from("clients")
-      .select("*")
-      .eq("phone", phone)
-      .maybeSingle<ClientRow>();
-    existingClient = data ?? null;
-  }
-
-  if (!existingClient) {
-    const { data, error } = await context.adminClient
-      .from("clients")
-      .insert({
-        user_id: null,
-        first_name: firstName || "Cliente",
-        last_name: lastName,
-        phone,
-        email: null,
-        billing_data: {},
-        preferences: {},
-      })
-      .select("*")
-      .single<ClientRow>();
-
-    if (error || !data) {
-      throw createError({
-        statusCode: 500,
-        statusMessage: "No se pudo registrar el cliente walk-in para la venta.",
-      });
-    }
-
-    existingClient = data;
-  }
-
-  const { error: linkError } = await context.adminClient
+  const { data, error } = await context.adminClient
     .from("client_org")
-    .upsert([{
-      client_id: existingClient.id,
-      organization_id: context.organizationId,
-      status: "active",
-      billing_data: {},
-    }], { onConflict: "client_id,organization_id" });
+    .select("client_id, clients!inner(*)")
+    .eq("organization_id", context.organizationId)
+    .eq("status", "active")
+    .eq("is_anonymous_template", true)
+    .maybeSingle();
 
-  if (linkError) {
+  if (error) {
     throw createError({
       statusCode: 500,
-      statusMessage: "No se pudo vincular el cliente walk-in a la organización.",
+      statusMessage: "No se pudo resolver el cliente anónimo template de la organización.",
     });
   }
 
-  return existingClient;
+  const row = data as unknown as { clients: ClientRow | null } | null;
+  if (!row?.clients) {
+    throw createError({
+      statusCode: 409,
+      statusMessage: "La organización no tiene un cliente anónimo template activo configurado.",
+    });
+  }
+
+  return row.clients;
 };
 
 export const getInventoryForBranch = async (
@@ -655,7 +653,7 @@ export const getCategoriesMap = async (
   if (error) {
     throw createError({
       statusCode: 500,
-      statusMessage: "No se pudieron cargar las categorías del POS.",
+      statusMessage: "No se pudieron cargar las categorÃ­as del POS.",
     });
   }
 
@@ -676,14 +674,14 @@ export const buildReceiptFromTransaction = async (
   if (transactionError || !transaction) {
     throw createError({
       statusCode: 404,
-      statusMessage: "No se encontró la transacción solicitada para el recibo.",
+      statusMessage: "No se encontrÃ³ la transacciÃ³n solicitada para el recibo.",
     });
   }
 
   if (!context.allowedBranchIds.includes(transaction.branch_id) && context.role !== "admin") {
     throw createError({
       statusCode: 403,
-      statusMessage: "No tienes acceso a esta transacción para reimprimir el recibo.",
+      statusMessage: "No tienes acceso a esta transacciÃ³n para reimprimir el recibo.",
     });
   }
 
@@ -741,20 +739,33 @@ export const buildReceiptFromTransaction = async (
     } satisfies CustomerSnapshot;
   })();
 
-  const resolvedCustomer: CustomerSnapshot = customer
-    ? {
-        mode: "existing",
-        customerId: customer.id,
-        fullName: [customer.first_name, customer.last_name].filter(Boolean).join(" ").trim() || "Cliente",
-        phone: customer.phone,
-        email: customer.email,
-      }
-    : parsedCustomerFromSnapshot ?? {
-        mode: "walk_in",
-        customerId: null,
-        fullName: "Cliente walk-in",
-        phone: null,
-      };
+  const resolvedCustomer: CustomerSnapshot = parsedCustomerFromSnapshot
+    ?? (customer
+      ? {
+          mode: "existing",
+          customerId: customer.id,
+          fullName: [customer.first_name, customer.last_name].filter(Boolean).join(" ").trim() || "Cliente",
+          phone: customer.phone,
+          email: customer.email,
+        }
+      : {
+          mode: "walk_in",
+          customerId: null,
+          fullName: "Cliente walk-in",
+          phone: null,
+        });
+
+  const formatFromSnapshot = (() => {
+    const firstSnapshot = (items ?? [])[0]?.snapshot_data;
+    if (!firstSnapshot || typeof firstSnapshot !== "object" || Array.isArray(firstSnapshot)) {
+      return null;
+    }
+    const snapshotRecord = firstSnapshot as Record<string, Json>;
+    const raw = typeof snapshotRecord.receiptFormatUsed === "string" ? snapshotRecord.receiptFormatUsed : null;
+    return sanitizeReceiptFormat(raw);
+  })();
+
+  const formatUsed: ReceiptFormat = formatFromSnapshot ?? "thermal";
 
   return {
     transactionId: transaction.id,
@@ -770,6 +781,8 @@ export const buildReceiptFromTransaction = async (
     discountAmount: Number(transaction.discount_amount ?? 0),
     taxAmount: Number(transaction.tax_amount ?? 0),
     finalAmount: Number(transaction.final_amount ?? 0),
+    formatUsed,
+    verificationUrl: buildReceiptVerificationUrl(transaction.id),
     items: (items ?? []).map((item) => {
       const snapshotObject = item.snapshot_data && typeof item.snapshot_data === "object" && !Array.isArray(item.snapshot_data)
         ? item.snapshot_data as Record<string, Json>
@@ -888,4 +901,6 @@ export const withTitleAndSubtitle = (
   customer: values.customer as unknown as Json,
   ...values.extra,
 });
+
+
 

@@ -1,0 +1,1 @@
+{"href":"http://localhost:3000/onboarding/payment","trace":[{"t":1782743860046,"kind":"trace:init","href":"http://localhost:3000/onboarding/payment"},{"t":1782743861160,"kind":"history.replaceState","href":"http://localhost:3000/onboarding/payment","urlArg":null}]}

@@ -1,4 +1,5 @@
 import type { Database, Json } from "@/types/database.types";
+import type { POSSalesOrderItem } from "@/composables/usePOSSales";
 
 type ProductRow = Database["public"]["Tables"]["products"]["Row"];
 type ServiceRow = Database["public"]["Tables"]["services"]["Row"];
@@ -8,6 +9,7 @@ type ProfileRow = Database["public"]["Tables"]["profiles"]["Row"];
 type InventoryStockRow = Database["public"]["Tables"]["inventory_stock"]["Row"];
 type AssignmentRow = Database["public"]["Tables"]["employee_branch_assignments"]["Row"];
 type PaymentMethod = Database["public"]["Enums"]["payment_method"];
+export type ReceiptFormat = "thermal" | "half_letter";
 
 export interface POSBranchOption {
   id: string;
@@ -59,9 +61,22 @@ export interface POSCustomerOption {
   phone: string | null;
 }
 
+export interface POSCustomerCreatePayload {
+  firstName: string;
+  lastName?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  billingName?: string | null;
+  billingEmail?: string | null;
+  billingPhone?: string | null;
+  documentType?: string | null;
+  documentNumber?: string | null;
+}
+
 export interface POSCatalog {
   organizationId: string;
   currentBranchId: string | null;
+  defaultReceiptFormat: ReceiptFormat;
   branches: POSBranchOption[];
   categories: POSCategoryOption[];
   products: POSProductItem[];
@@ -128,6 +143,7 @@ export interface POSCheckoutPayload {
   note: string;
   createAppointments?: boolean;
   appointmentId?: string | null;
+  receiptFormatOverride?: ReceiptFormat | null;
 }
 
 export interface POSReceiptLineItem {
@@ -162,6 +178,8 @@ export interface POSReceipt {
   discountAmount: number;
   taxAmount: number;
   finalAmount: number;
+  formatUsed: ReceiptFormat;
+  verificationUrl: string;
   items: POSReceiptLineItem[];
 }
 
@@ -184,6 +202,7 @@ export interface POSTransactionHistoryItem {
 interface POSCatalogResponse {
   organizationId: string;
   currentBranchId: string | null;
+  defaultReceiptFormat: ReceiptFormat;
   branches: BranchRow[];
   categories: CategoryRow[];
   products: ProductRow[];
@@ -207,6 +226,12 @@ const parseSkills = (value: Json | null): string[] => {
   }
 
   return value.filter((entry): entry is string => typeof entry === "string");
+};
+
+const asRecord = (value: unknown): Record<string, unknown> | null => {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
 };
 
 export const usePOS = () => {
@@ -316,6 +341,7 @@ export const usePOS = () => {
     return {
       organizationId: payload.organizationId,
       currentBranchId: payload.currentBranchId,
+      defaultReceiptFormat: payload.defaultReceiptFormat ?? "thermal",
       branches: payload.branches.map((branch) => ({
         id: branch.id,
         name: branch.name,
@@ -388,6 +414,23 @@ export const usePOS = () => {
       email: customer.email,
       phone: customer.phone,
     }));
+  };
+
+  const createPOSCustomer = async (payload: POSCustomerCreatePayload): Promise<POSCustomerOption> => {
+    await ensureProfile();
+
+    const response = await $fetch<{ customer: { id: string; fullName: string; email: string | null; phone: string | null } }>("/api/pos/customers", {
+      method: "POST",
+      headers: await getAuthHeaders(),
+      body: payload,
+    });
+
+    return {
+      id: response.customer.id,
+      fullName: response.customer.fullName,
+      email: response.customer.email ?? "",
+      phone: response.customer.phone ?? null,
+    };
   };
 
   const addProductToCart = (
@@ -501,6 +544,56 @@ export const usePOS = () => {
     cart.value = [];
   };
 
+  const replaceCartFromSalesOrderItems = (items: POSSalesOrderItem[]) => {
+    const currentCatalog = lastCatalog.value;
+
+    cart.value = items.map((item) => {
+      const snapshot = asRecord(item.snapshot_data);
+      const title = typeof snapshot?.title === "string" ? snapshot.title : (item.item_type === "product" ? "Producto" : "Servicio");
+      const subtitle = typeof snapshot?.subtitle === "string" ? snapshot.subtitle : null;
+
+      if (item.item_type === "product") {
+        const catalogProduct = currentCatalog?.products.find((product) => product.id === item.product_id) ?? null;
+        const stockAvailable = catalogProduct
+          ? (catalogProduct.stockByBranch[item.branch_id] ?? 0)
+          : null;
+
+        return {
+          id: createCartItemId(),
+          itemType: "product" as const,
+          productId: item.product_id ?? "",
+          name: title,
+          sku: typeof snapshot?.sku === "string" ? snapshot.sku : subtitle,
+          quantity: Number(item.quantity),
+          unitPrice: Number(item.unit_price),
+          subtotal: Number(item.subtotal),
+          branchId: item.branch_id,
+          categoryName: typeof snapshot?.categoryName === "string" ? snapshot.categoryName : null,
+          stockAvailable,
+        };
+      }
+
+      const catalogService = currentCatalog?.services.find((service) => service.id === item.service_id) ?? null;
+
+      return {
+        id: createCartItemId(),
+        itemType: "service" as const,
+        serviceId: item.service_id ?? "",
+        name: title,
+        quantity: 1,
+        unitPrice: Number(item.unit_price),
+        subtotal: Number(item.subtotal),
+        branchId: item.branch_id,
+        employeeId: item.employee_id ?? "",
+        employeeName: typeof snapshot?.employeeName === "string" ? snapshot.employeeName : (subtitle?.split("·")[0]?.trim() ?? "Colaborador"),
+        scheduledDate: item.scheduled_date ?? new Date().toISOString().slice(0, 10),
+        scheduledTime: item.scheduled_time ?? "09:00",
+        durationMinutes: catalogService?.durationMinutes ?? 60,
+        categoryName: typeof snapshot?.categoryName === "string" ? snapshot.categoryName : null,
+      };
+    });
+  };
+
   const getCartSubtotal = () => {
     return roundCurrency(cart.value.reduce((sum, item) => sum + item.subtotal, 0));
   };
@@ -541,6 +634,7 @@ export const usePOS = () => {
         ...payload,
         createAppointments: payload.createAppointments ?? true,
         appointmentId: payload.appointmentId ?? null,
+        receiptFormatOverride: payload.receiptFormatOverride ?? null,
         items: cart.value.map((item) => {
           if (item.itemType === "product") {
             return {
@@ -689,11 +783,13 @@ export const usePOS = () => {
     hydrateCart,
     loadCatalog,
     searchCustomers,
+    createPOSCustomer,
     addProductToCart,
     addServiceToCart,
     updateProductQuantity,
     removeCartItem,
     clearCart,
+    replaceCartFromSalesOrderItems,
     getCartSubtotal,
     getDiscountAmountPreview,
     getCheckoutPreview,
@@ -704,3 +800,4 @@ export const usePOS = () => {
     canEmployeeDeliverService,
   };
 };
+

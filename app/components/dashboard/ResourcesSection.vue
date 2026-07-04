@@ -6,7 +6,7 @@ const resources = [
     icon: "i-heroicons-book-open",
   },
   {
-    title: "Usar el POS",
+    title: "Usar Ventas",
     description: "Conoce el flujo de ventas para cuando la cuenta este activa.",
     icon: "i-heroicons-shopping-cart",
   },
@@ -33,7 +33,7 @@ defineEmits<{
       <div class="flex items-center justify-between gap-4">
         <h2 class="text-lg font-bold text-slate-950 dark:text-white">
           <UIcon name="i-heroicons-academic-cap" class="mr-2 inline h-5 w-5" />
-          Aprende a usar NexusPOS
+          Aprende a usar Ventas
         </h2>
 
         <UBadge color="neutral" variant="soft">Fase 2: docs y tour interactivo</UBadge>

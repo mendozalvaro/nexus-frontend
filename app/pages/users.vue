@@ -10,6 +10,7 @@ definePageMeta({
   middleware: ["permissions"],
   permission: "users.view",
   roles: ["admin", "manager"],
+  moduleKey: "users",
 });
 
 const { profile } = useAuth();

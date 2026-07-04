@@ -4,6 +4,7 @@ definePageMeta({
   middleware: ["permissions"],
   permission: "appointments.view",
   roles: ["client"],
+  moduleKey: "client.appointments",
 });
 </script>
 

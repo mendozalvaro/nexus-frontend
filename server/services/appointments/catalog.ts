@@ -1,4 +1,4 @@
-import { requireAppointmentContext } from "../../utils/appointments";
+import { requireAppointmentContextStrict } from "../../utils/appointments";
 
 import type { Database } from "@/types/database.types";
 
@@ -53,7 +53,7 @@ export async function getAppointmentCatalog(
   scopeRole: "admin" | "manager" | "employee",
   currentProfileId: string,
 ): Promise<AppointmentCatalogResult> {
-  const context = await requireAppointmentContext(event);
+  const context = await requireAppointmentContextStrict(event);
 
   if (!context.profile.organization_id) {
     throw createError({

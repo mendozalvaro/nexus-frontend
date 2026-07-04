@@ -36,6 +36,9 @@
       "~~/*": ["./*"]
     }
   },
+  "vueCompilerOptions": {
+    "strictTemplates": false
+  },
   "include": ["nuxt.d.ts", "**/*.ts", "**/*.tsx", "**/*.vue", ".nuxt/**/*.ts"],
   "exclude": ["node_modules", ".output", ".nuxt/dist"]
 }

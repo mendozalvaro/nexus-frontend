@@ -31,7 +31,6 @@ export const clientUpsertSchema = z.object({
   email: z.string().trim().email().optional().nullable(),
   billingData: jsonRecordSchema.optional(),
   preferences: jsonRecordSchema.optional(),
-  organizationId: z.string().uuid().optional().nullable(),
 }).strict();
 
 export interface Client {

@@ -1,20 +1,10 @@
-import { createError } from "h3";
-
+import { getOrganization } from "../services/organization";
 import { setCacheHeaders } from "../utils/cache";
-import { requireTenantContext } from "../utils/tenant-context";
+import { requireStaffTenantContext } from "../utils/tenant-context";
 
 export default defineEventHandler(async (event) => {
-  const context = await requireTenantContext(event);
-
-  const { data, error } = await context.adminClient
-    .from("organizations")
-    .select("id, name, slug, timezone, currency_code, country, business_type, address, logo_url, is_active, updated_at")
-    .eq("id", context.organizationId)
-    .single();
-
-  if (error || !data) {
-    throw createError({ statusCode: 500, statusMessage: error?.message ?? "No se pudo cargar la organizacion." });
-  }
+  const context = await requireStaffTenantContext(event);
+  const data = await getOrganization(context);
 
   setCacheHeaders(event, { sMaxAge: 300, staleWhileRevalidate: 60, visibility: "private" });
   return data;

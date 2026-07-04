@@ -1,4 +1,8 @@
-import { requireAppointmentContext } from "../../utils/appointments";
+import {
+  assertAppointmentMutationScope,
+  getAppointmentOrThrow,
+  requireAppointmentContextStrict,
+} from "../../utils/appointments";
 
 import type { H3Event } from "h3";
 
@@ -27,7 +31,9 @@ export async function getAppointmentDetail(
   event: H3Event,
   appointmentId: string,
 ): Promise<AppointmentDetailResult> {
-  const context = await requireAppointmentContext(event);
+  const context = await requireAppointmentContextStrict(event);
+  const appointment = await getAppointmentOrThrow(context, appointmentId);
+  await assertAppointmentMutationScope(context, appointment);
 
   const { data, error } = await context.adminClient
     .from("appointments")
@@ -37,7 +43,7 @@ export async function getAppointmentDetail(
       services!inner (id, name, duration_minutes, price),
       profiles!appointments_employee_id_fkey (id, full_name)
     `)
-    .eq("id", appointmentId)
+    .eq("id", appointment.id)
     .eq("organization_id", context.organizationId)
     .single();
 

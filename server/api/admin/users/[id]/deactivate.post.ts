@@ -1,9 +1,14 @@
 import { getRouterParam } from "h3";
 
-import { requireAdminContext } from "../../../../utils/admin-users";
+import {
+  assertAdminModuleAccess,
+  assertManagerCanOperateUser,
+  requireAdminContext,
+} from "../../../../utils/admin-users";
 
 export default defineEventHandler(async (event) => {
   const context = await requireAdminContext(event);
+  await assertAdminModuleAccess(context, "users", "can_edit");
   const userId = getRouterParam(event, "id");
 
   if (!userId) {
@@ -40,6 +45,8 @@ export default defineEventHandler(async (event) => {
       statusMessage: "Un manager solo puede desactivar usuarios employee.",
     });
   }
+
+  await assertManagerCanOperateUser(context, targetProfile.id);
 
   if (targetProfile.role === "admin") {
     throw createError({

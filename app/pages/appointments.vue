@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { AppointmentDashboardResult, AppointmentDashboardScopeRole } from "@/composables/useAppointmentDashboard";
-import type { AppointmentBranchOption, AppointmentServiceOption, AppointmentEmployeeOption, AppointmentListItem, AppointmentMutationPayload } from "@/composables/useAppointments";
+import type { AppointmentBranchOption, AppointmentServiceOption, AppointmentEmployeeOption, AppointmentCustomerOption, AppointmentListItem, AppointmentMutationPayload } from "@/composables/useAppointments";
 import type { AppointmentTab } from "@/components/appointments/AppointmentTabs.vue";
 import type { POSReceipt } from "@/composables/usePOS";
 import AppointmentTabs from "@/components/appointments/AppointmentTabs.vue";
@@ -16,6 +16,7 @@ definePageMeta({
   middleware: ["permissions"],
   permission: "appointments.view",
   roles: ["admin", "manager", "employee"],
+  moduleKey: "appointments",
 });
 
 const { profile } = useAuth();
@@ -42,7 +43,8 @@ const catalog = ref<{
   branches: AppointmentBranchOption[];
   services: AppointmentServiceOption[];
   employees: AppointmentEmployeeOption[];
-}>({ branches: [], services: [], employees: [] });
+  customers: AppointmentCustomerOption[];
+}>({ branches: [], services: [], employees: [], customers: [] });
 const catalogLoaded = ref(false);
 
 const appointments = ref<AppointmentListItem[]>([]);
@@ -68,6 +70,7 @@ const loadCatalogForList = async () => {
       branches: result.branches,
       services: result.services,
       employees: result.employees,
+      customers: result.customers,
     };
     catalogLoaded.value = true;
   } catch {
@@ -130,6 +133,9 @@ const openCreateModal = () => {
     startTimeLocal: "09:00",
     notes: "",
     reminderChannels: [],
+    customerMode: "anonymous",
+    customerId: null,
+    newCustomer: null,
     walkIn: null,
   };
   createOpen.value = true;
@@ -229,7 +235,7 @@ const router = useRouter();
 
 const handleCheckout = (appointment: AppointmentListItem) => {
   router.push({
-    path: "/pos",
+    path: "/pos/sell",
     query: { appointmentId: appointment.id },
   });
 };
@@ -353,6 +359,7 @@ watch(editOpen, (open) => {
           :branches="catalog.branches"
           :services="catalog.services"
           :employees="catalog.employees"
+          :customers="catalog.customers"
           @cancel="closeFormModals"
           @submit="handleCreateSubmit"
         />
@@ -374,6 +381,7 @@ watch(editOpen, (open) => {
           :branches="catalog.branches"
           :services="catalog.services"
           :employees="catalog.employees"
+          :customers="catalog.customers"
           submit-label="Guardar cita"
           @cancel="closeFormModals"
           @submit="handleUpdateSubmit"

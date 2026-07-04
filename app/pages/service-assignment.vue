@@ -13,6 +13,7 @@ definePageMeta({
   middleware: ["permissions"],
   permission: "service_assignment.view",
   roles: ["admin", "manager"],
+  moduleKey: "service_assignment",
 });
 
 const searchQuery = ref("");
@@ -209,7 +210,7 @@ const columns = computed(() => {
       <UiModuleHero
         eyebrow="Cobertura operativa"
         title="Asignacion de servicio"
-        description="Define que usuarios pueden prestar cada servicio por sucursal para que citas y POS respeten la cobertura real."
+        description="Define que usuarios pueden prestar cada servicio por sucursal para que citas y ventas respeten la cobertura real."
         icon="i-lucide-users-round"
       />
 

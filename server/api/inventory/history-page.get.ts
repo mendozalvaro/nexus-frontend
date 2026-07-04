@@ -2,12 +2,12 @@ import { getQuery } from "h3";
 
 import { getInventoryHistoryPage } from "../../services/inventory/history-page";
 import { setCacheHeaders } from "../../utils/cache";
-import { requireInventoryContext } from "../../utils/inventory";
+import { requireInventoryContextStrict } from "../../utils/inventory-access";
 
 type MovementType = "entry" | "exit" | "adjustment" | "transfer_in" | "transfer_out";
 
 export default defineEventHandler(async (event) => {
-  const context = await requireInventoryContext(event);
+  const context = await requireInventoryContextStrict(event, "can_view");
 
   const query = getQuery(event);
   const branchId = typeof query.branchId === "string" && query.branchId.length > 0 ? query.branchId : null;

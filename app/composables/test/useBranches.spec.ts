@@ -2,14 +2,19 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { ref } from 'vue'
 import { mockNuxtImport } from '@nuxt/test-utils/runtime'
 import { globalStateMap } from '../../../test/setup'
+import type { OrganizationCapabilities } from '@/types/subscription'
 
 const mockFetch = vi.fn()
 vi.stubGlobal('$fetch', mockFetch)
 
-const mockProfile = ref({
+const mockProfile = ref<{
+  id: string
+  organization_id: string | null
+  role: 'admin' | 'manager'
+}>({
   id: 'user-123',
   organization_id: 'org-abc',
-  role: 'admin' as const
+  role: 'admin'
 })
 
 const mockResolveAccessToken = vi.fn().mockResolvedValue('token-123')
@@ -22,6 +27,29 @@ const mockLoadCapabilities = vi.fn().mockResolvedValue({
 })
 const mockGetUpgradeMessage = vi.fn().mockReturnValue('Upgrade requerido')
 const mockCanCreateResource = vi.fn().mockReturnValue(true)
+
+const createCapabilities = (overrides: Partial<OrganizationCapabilities> = {}): OrganizationCapabilities => ({
+  planName: 'Plan Pro',
+  planSlug: 'crecimiento',
+  maxBranches: 1,
+  maxUsers: 10,
+  canCreateBranch: true,
+  canCreateManager: true,
+  canTransferStock: false,
+  hasAdvancedReports: false,
+  hasApiAccess: false,
+  hasForensicExport: false,
+  hasHotelModule: false,
+  businessTypes: [],
+  allowedBusinessTypes: [],
+  maxBusinessTypes: 1,
+  currentBranchesCount: 1,
+  currentUsersCount: 2,
+  subscriptionStatus: 'active',
+  periodEnd: null,
+  planLimits: undefined,
+  ...overrides
+})
 
 mockNuxtImport('useSupabaseClient', () => () => ({ from: vi.fn() }))
 mockNuxtImport('useSessionAccess', () => () => ({
@@ -182,7 +210,7 @@ describe('useBranches', () => {
       settings: {
         businessHours: branches.createDefaultBusinessHours()
       }
-    })
+    }) as { success: boolean }
 
     expect(mockFetch).toHaveBeenCalledWith('/api/admin/branches', {
       method: 'POST',
@@ -215,7 +243,7 @@ describe('useBranches', () => {
       settings: {
         businessHours: branches.createDefaultBusinessHours()
       }
-    })
+    }) as { success: boolean }
 
     expect(mockFetch).toHaveBeenCalledWith('/api/admin/branches/branch-1', {
       method: 'PATCH',
@@ -236,7 +264,7 @@ describe('useBranches', () => {
       isActive: false
     })
 
-    const result = await branches.updateBranchStatus('branch-1', false)
+    const result = await branches.updateBranchStatus('branch-1', false) as { isActive: boolean }
 
     expect(mockFetch).toHaveBeenCalledWith('/api/admin/branches/branch-1/status', {
       method: 'POST',
@@ -261,7 +289,7 @@ describe('useBranches', () => {
       productId: 'prod-1',
       quantity: 5,
       note: 'Rebalanceo de stock'
-    })
+    }) as { success: boolean }
 
     expect(mockFetch).toHaveBeenCalledWith('/api/admin/branches/transfer-stock', {
       method: 'POST',
@@ -312,7 +340,7 @@ describe('useBranches', () => {
     const branches = useBranches()
 
     const message = branches.getMultiBranchMessage({
-      capabilities: { currentBranchesCount: 2, currentPlan: 'pro', maxBranches: 5, canTransferStock: true, planLimits: null },
+      capabilities: createCapabilities({ currentBranchesCount: 2, maxBranches: 5, canTransferStock: true }),
       planFeatures: { featureMultiBranch: true, featureInventoryTransfer: true }
     })
 
@@ -324,7 +352,7 @@ describe('useBranches', () => {
     const branches = useBranches()
 
     const message = branches.getMultiBranchMessage({
-      capabilities: { currentBranchesCount: 1, currentPlan: 'starter', maxBranches: 1, canTransferStock: false, planLimits: null },
+      capabilities: createCapabilities({ currentBranchesCount: 1, maxBranches: 1, canTransferStock: false }),
       planFeatures: { featureMultiBranch: false, featureInventoryTransfer: false }
     })
 
@@ -336,7 +364,7 @@ describe('useBranches', () => {
     const branches = useBranches()
 
     const message = branches.getTransferUpgradeMessage({
-      capabilities: { currentBranchesCount: 2, currentPlan: 'pro', maxBranches: 5, canTransferStock: true, planLimits: null },
+      capabilities: createCapabilities({ currentBranchesCount: 2, maxBranches: 5, canTransferStock: true }),
       planFeatures: { featureMultiBranch: true, featureInventoryTransfer: true }
     })
 
@@ -348,7 +376,7 @@ describe('useBranches', () => {
     const branches = useBranches()
 
     const message = branches.getTransferUpgradeMessage({
-      capabilities: { currentBranchesCount: 1, currentPlan: 'starter', maxBranches: 1, canTransferStock: false, planLimits: null },
+      capabilities: createCapabilities({ currentBranchesCount: 1, maxBranches: 1, canTransferStock: false }),
       planFeatures: { featureMultiBranch: false, featureInventoryTransfer: false }
     })
 

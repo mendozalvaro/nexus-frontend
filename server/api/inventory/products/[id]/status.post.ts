@@ -2,8 +2,8 @@ import {
   assertInventoryModuleAccess,
   getInventoryProductOrThrow,
   readValidatedInventoryBody,
-  requireInventoryContext,
 } from "../../../../utils/inventory";
+import { requireInventoryContextStrict } from "../../../../utils/inventory-access";
 import { z } from "zod";
 
 const schema = z.object({
@@ -11,7 +11,7 @@ const schema = z.object({
 });
 
 export default defineEventHandler(async (event) => {
-  const context = await requireInventoryContext(event);
+  const context = await requireInventoryContextStrict(event, "can_edit");
   await assertInventoryModuleAccess(context, "can_edit");
   const productId = getRouterParam(event, "id");
 
@@ -44,3 +44,4 @@ export default defineEventHandler(async (event) => {
     isActive,
   };
 });
+

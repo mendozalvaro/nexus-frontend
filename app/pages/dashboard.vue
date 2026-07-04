@@ -3,18 +3,19 @@
 definePageMeta({
   layout: "default",
   middleware: ["permissions"],
-  permission: "profile.view",
+  permission: "dashboard.view",
   roles: ["admin", "manager", "employee"],
+  moduleKey: "dashboard",
 });
 
 const route = useRoute();
-const { profile: authProfile } = useAuth();
+const { user, profile: authProfile } = useAuth();
+const dashboardMounted = ref(false);
 const { accountStatus, setAccountStatusState } = useUserContext();
-const { getUserPermissions, hasPermission } = usePermissions();
+const { hasModuleAccess } = usePermissions();
 const { loadAccountStatus: loadSharedAccountStatus } = useAccountStatus();
 const { profile: globalProfile } = useGlobalUserProfile();
-const { organization } = useGlobalOrganization();
-const { stats: dashboardStats, period, refreshStats, loading: loadingStats } = useDashboardStats();
+const { stats: dashboardStats, period, loading: loadingStats } = useDashboardStats();
 type DashboardProfile = {
   full_name?: string | null;
   role?: string | null;
@@ -28,14 +29,30 @@ const ROLE_LABELS: Record<string, string> = {
   client: "Cliente",
 };
 
-const stats = ref({
-  totalSales: 0,
-  totalOrders: 0,
-  totalProducts: 0,
-  totalUsers: 0,
-});
 const profile = computed<DashboardProfile | null>(() => {
   return (globalProfile.value as DashboardProfile | null) ?? (authProfile.value as DashboardProfile | null);
+});
+
+const dashboardUserMetadata = computed<Record<string, unknown>>(() =>
+  (user.value?.user_metadata as Record<string, unknown> | undefined) ?? {},
+);
+
+const dashboardDisplayName = computed(() => {
+  const profileName = profile.value?.full_name?.trim();
+  const metadataName = typeof dashboardUserMetadata.value.full_name === "string"
+    ? dashboardUserMetadata.value.full_name.trim()
+    : "";
+
+  return profileName || metadataName || "Usuario";
+});
+
+const dashboardRoleLabel = computed(() => {
+  const profileRole = profile.value?.role?.trim() ?? "";
+  const metadataRole = typeof dashboardUserMetadata.value.role === "string"
+    ? dashboardUserMetadata.value.role.trim()
+    : "";
+
+  return ROLE_LABELS[profileRole || metadataRole] || "Usuario";
 });
 
 const activityItems = [
@@ -58,35 +75,34 @@ const activityItems = [
 const kpiItems = computed(() => [
   {
     label: "Ventas Totales",
-    value: `$${stats.value.totalSales.toLocaleString()}`,
+    value: `$${Number(dashboardStats.value?.sales ?? 0).toLocaleString()}`,
     icon: "i-heroicons-currency-dollar",
     tone: "emerald" as const,
   },
   {
     label: "Pedidos",
-    value: stats.value.totalOrders.toLocaleString(),
+    value: Number(dashboardStats.value?.appointments ?? 0).toLocaleString(),
     icon: "i-heroicons-shopping-bag",
     tone: "sky" as const,
   },
   {
     label: "Productos",
-    value: stats.value.totalProducts.toLocaleString(),
+    value: Number(dashboardStats.value?.products ?? 0).toLocaleString(),
     icon: "i-heroicons-archive-box",
     tone: "fuchsia" as const,
   },
   {
     label: "Usuarios",
-    value: stats.value.totalUsers.toLocaleString(),
+    value: Number(dashboardStats.value?.customers ?? 0).toLocaleString(),
     icon: "i-heroicons-users",
     tone: "amber" as const,
   },
 ]);
 
 const quickActions = computed(() => {
-  const permissions = getUserPermissions();
   const items = [];
 
-  if (hasPermission(permissions, "appointments.view")) {
+  if (hasModuleAccess("appointments")) {
     items.push({
       label: "Abrir agenda",
       description: "Revisa citas, disponibilidad y cambios del dia.",
@@ -96,17 +112,17 @@ const quickActions = computed(() => {
     });
   }
 
-  if (hasPermission(permissions, "pos.view")) {
+  if (hasModuleAccess("pos.sales")) {
     items.push({
-      label: "Ir al POS",
+      label: "Ir a Ventas",
       description: "Inicia una venta rapida o revisa el flujo operativo.",
       icon: "i-lucide-shopping-cart",
-      to: "/pos",
+      to: "/pos/sell",
       colorClass: "bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-300",
     });
   }
 
-  if (hasPermission(permissions, "users.view")) {
+  if (hasModuleAccess("users")) {
     items.push({
       label: "Gestionar usuarios",
       description: "Administra accesos, roles y estructura del equipo.",
@@ -116,7 +132,7 @@ const quickActions = computed(() => {
     });
   }
 
-  if (hasPermission(permissions, "reports.view")) {
+  if (hasModuleAccess("reports.sales") || hasModuleAccess("reports.services") || hasModuleAccess("reports.lodging")) {
     items.push({
       label: "Ver reportes",
       description: "Consulta indicadores y exportables segun tu alcance.",
@@ -154,18 +170,6 @@ const normalizeAccountStatus = (
   return "active";
 };
 
-const loadDashboardStats = async () => {
-  const permissions = getUserPermissions();
-
-  if (hasPermission(permissions, "reports.view")) {
-    await refreshStats();
-    stats.value.totalSales = Number(dashboardStats.value?.sales ?? 0);
-    stats.value.totalOrders = Number(dashboardStats.value?.appointments ?? 0);
-    stats.value.totalProducts = Number(dashboardStats.value?.products ?? 0);
-    stats.value.totalUsers = Number(dashboardStats.value?.customers ?? 0);
-  }
-};
-
 const loadAccountStatus = async (force = false) => {
   checkingStatus.value = true;
   try {
@@ -184,6 +188,7 @@ const loadAccountStatus = async (force = false) => {
 };
 
 onMounted(async () => {
+  dashboardMounted.value = true;
   const routeStatus = normalizeAccountStatus(
     typeof route.query.status === "string" ? route.query.status : null,
   );
@@ -194,21 +199,12 @@ onMounted(async () => {
       paymentRequired: false,
     });
   }
-
-  await loadDashboardStats();
-  await loadAccountStatus();
 });
-
-watch(
-  () => [period.value, (organization.value as { id?: string } | null)?.id ?? null] as const,
-  async () => {
-    await loadDashboardStats();
-  },
-);
 </script>
 
 <template>
   <div class="space-y-6 md:space-y-8">
+    <template v-if="dashboardMounted">
     <DashboardPendingBanner
       v-if="accountStatus !== 'active'"
       :account-status="accountStatus"
@@ -219,7 +215,7 @@ watch(
     <UiPageHeader
       eyebrow="Panel operativo"
       title="Dashboard"
-      :description="`Bienvenido de vuelta, ${profile?.full_name}. Este resumen concentra actividad, modulos habilitados y senales operativas de tu organizacion.`"
+      :description="`Bienvenido de vuelta, ${dashboardDisplayName}. Este resumen concentra actividad, modulos habilitados y senales operativas de tu organizacion.`"
       surface
     >
       <template #meta>
@@ -245,7 +241,7 @@ watch(
               Rol actual
             </p>
             <p class="mt-1 text-sm font-semibold text-slate-900 dark:text-white">
-              {{ ROLE_LABELS[profile?.role || ''] || 'Usuario' }}
+              {{ dashboardRoleLabel }}
             </p>
           </div>
         </div>
@@ -270,5 +266,14 @@ watch(
     >
       <UiActivityList :items="activityItems" />
     </UiSectionShell>
+    </template>
+
+    <UCard v-else class="rounded-[1.75rem]">
+      <div class="space-y-4 py-2">
+        <USkeleton class="h-24 w-full rounded-2xl" />
+        <USkeleton class="h-32 w-full rounded-2xl" />
+        <USkeleton class="h-32 w-full rounded-2xl" />
+      </div>
+    </UCard>
   </div>
 </template>

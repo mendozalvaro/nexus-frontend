@@ -1,4 +1,4 @@
-<script setup lang="ts">
+﻿<script setup lang="ts">
 import type { SettingsSiatConfig, UpdateSiatPayload } from "@/composables/useSettings";
 
 interface Props {
@@ -39,7 +39,7 @@ const regimenOptions = [
 const sistemaOptions = [
   { value: "propio" as const, label: "Sistema propio" },
   { value: "terceros" as const, label: "Sistema de terceros" },
-  { value: "siat_linea" as const, label: "SIAT en linea" },
+  { value: "siat_línea" as const, label: "SIAT en línea" },
 ];
 
 watch(
@@ -79,13 +79,13 @@ const handleSubmit = () => {
         <template #header>
           <div>
             <h3 class="text-lg font-semibold text-slate-900 dark:text-white">Habilitar SIAT</h3>
-            <p class="text-sm text-slate-500 dark:text-slate-400">Activa la emision de facturas en linea Bolivia.</p>
+            <p class="text-sm text-slate-500 dark:text-slate-400">Activa la emisión de facturas en línea Bolivia.</p>
           </div>
         </template>
         <div class="flex items-center justify-between">
           <div>
-            <p class="font-medium text-slate-900 dark:text-white">Emision SIAT activa</p>
-            <p class="text-sm text-slate-500 dark:text-slate-400">Al habilitar, se mostraran los campos de configuracion.</p>
+            <p class="font-medium text-slate-900 dark:text-white">emisión SIAT activa</p>
+            <p class="text-sm text-slate-500 dark:text-slate-400">Al habilitar, se mostrarán los campos de configuración.</p>
           </div>
           <USwitch v-model="form.is_active" />
         </div>
@@ -98,11 +98,11 @@ const handleSubmit = () => {
           <template #header>
             <div>
               <h3 class="text-lg font-semibold text-slate-900 dark:text-white">Datos fiscales</h3>
-              <p class="text-sm text-slate-500 dark:text-slate-400">Informacion tributaria requerida por el SIAT.</p>
+              <p class="text-sm text-slate-500 dark:text-slate-400">Información tributaria requerida por el SIAT.</p>
             </div>
           </template>
           <div class="grid gap-4 md:grid-cols-2">
-            <UFormField label="Razon social">
+            <UFormField label="Razón social">
               <UInput v-model="form.razon_social" placeholder="Empresa SRL" />
             </UFormField>
 
@@ -110,11 +110,11 @@ const handleSubmit = () => {
               <UInput v-model="form.nit" placeholder="1234567890" />
             </UFormField>
 
-            <UFormField label="Regimen tributario">
+            <UFormField label="Régimen tributario">
               <USelect v-model="form.regimen_tributario" :options="regimenOptions" placeholder="Seleccionar" />
             </UFormField>
 
-            <UFormField label="Actividad economica">
+            <UFormField label="Actividad económica">
               <UInput v-model="form.actividad_economica" placeholder="Comercio al por menor..." />
             </UFormField>
 
@@ -133,11 +133,11 @@ const handleSubmit = () => {
           <template #header>
             <div>
               <h3 class="text-lg font-semibold text-slate-900 dark:text-white">Certificacion SIAT</h3>
-              <p class="text-sm text-slate-500 dark:text-slate-400">Datos de autorizacion para emision de facturas.</p>
+              <p class="text-sm text-slate-500 dark:text-slate-400">Datos de autorización para emisión de facturas.</p>
             </div>
           </template>
           <div class="grid gap-4 md:grid-cols-2">
-            <UFormField label="Codigo de autorizacion">
+            <UFormField label="Codigo de autorización">
               <UInput v-model="form.codigo_autorizacion" placeholder="ABC123-DEF456" />
             </UFormField>
 
@@ -145,7 +145,7 @@ const handleSubmit = () => {
               <UInput v-model="form.punto_venta" placeholder="001" />
             </UFormField>
 
-            <UFormField label="Sistema de facturacion">
+            <UFormField label="Sistema de facturación">
               <USelect v-model="form.sistema_facturacion" :options="sistemaOptions" placeholder="Seleccionar" />
             </UFormField>
 
@@ -153,7 +153,7 @@ const handleSubmit = () => {
               <UInput v-model="form.codigo_sistema" placeholder="SF-12345" />
             </UFormField>
 
-            <UFormField label="Numero de resolucion">
+            <UFormField label="Número de resolución">
               <UInput v-model="form.resolucion_numero" placeholder="RES-2024-001" />
             </UFormField>
           </div>
@@ -172,9 +172,11 @@ const handleSubmit = () => {
           :loading="mutationLoading"
           :disabled="mutationLoading"
         >
-          Guardar configuracion SIAT
+          Guardar configuración SIAT
         </UButton>
       </div>
     </form>
   </template>
 </template>
+
+

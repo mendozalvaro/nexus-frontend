@@ -4,9 +4,15 @@ definePageMeta({
   middleware: ["permissions"],
   permission: "profile.view",
   roles: ["client"],
+  moduleKey: "client.dashboard",
 });
 
 const { profile } = useAuth();
+const clientMounted = ref(false);
+
+const dashboardDisplayName = computed(() =>
+  clientMounted.value ? (profile.value?.full_name ?? "Cliente") : "Cliente",
+);
 
 const kpiItems = [
   {
@@ -69,6 +75,10 @@ const activityItems = [
     iconClass: "text-sky-600 dark:text-sky-300",
   },
 ] as const;
+
+onMounted(() => {
+  clientMounted.value = true;
+});
 </script>
 
 <template>
@@ -76,7 +86,7 @@ const activityItems = [
     <UiPageHeader
       eyebrow="Portal cliente"
       title="Mi portal"
-      :description="`Hola, ${profile?.full_name}. Desde aqui puedes revisar tus citas, seguir reservas y mantener tu informacion personal actualizada.`"
+      :description="`Hola, ${dashboardDisplayName}. Desde aqui puedes revisar tus citas, seguir reservas y mantener tu informacion personal actualizada.`"
       surface
     >
       <template #meta>

@@ -1,4 +1,4 @@
-import { requireAppointmentContext } from "../../utils/appointments";
+import { requireAppointmentContextStrict } from "../../utils/appointments";
 
 import type { Database } from "@/types/database.types";
 
@@ -16,7 +16,7 @@ const parseServiceSkills = (value: Database["public"]["Tables"]["employee_branch
 };
 
 export default defineEventHandler(async (event) => {
-  const context = await requireAppointmentContext(event);
+  const context = await requireAppointmentContextStrict(event);
 
   if (context.role !== "client") {
     throw createError({

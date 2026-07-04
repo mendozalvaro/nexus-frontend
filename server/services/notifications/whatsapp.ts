@@ -12,11 +12,22 @@ export interface WhatsAppTemplatePayload {
   language: { code: string };
   components: Array<{
     type: string;
+    sub_type?: "url";
+    index?: string;
     parameters: Array<{
       type: string;
       text?: string;
+      parameter_name?: string;
     }>;
   }>;
+}
+
+interface SendWhatsAppOptions {
+  languageCode?: string;
+  buttonUrlParameters?: Array<{ index: number; value: string }>;
+  headerTextParameters?: string[];
+  bodyVariables?: Record<string, string>;
+  bodyVariableOrder?: string[];
 }
 
 /**
@@ -29,24 +40,70 @@ export const sendWhatsAppMessage = async (
   recipientPhone: string,
   templateName: string,
   templateVariables: Record<string, string>,
-  languageCode = "es"
+  options: SendWhatsAppOptions = {},
 ): Promise<{ messageId: string; status: string }> => {
+  const languageCode = options.languageCode ?? "es";
   const url = `${WHATSAPP_API_BASE}/${phoneId}/messages`;
 
-  // Construir parametros del template
-  const parameters = Object.entries(templateVariables).map(([_, value]) => ({
+  // Construir parámetros del template en orden determinístico:
+  // primero índices numéricos (1,2,3...), luego claves alfabéticas.
+  const bodyVariables = options.bodyVariables ?? templateVariables;
+
+  const orderedEntries = options.bodyVariableOrder && options.bodyVariableOrder.length > 0
+    ? options.bodyVariableOrder
+      .filter((key) => key in bodyVariables)
+      .map((key) => [key, bodyVariables[key]] as [string, string])
+    : Object.entries(bodyVariables).sort(([a], [b]) => {
+      const aNum = Number(a);
+      const bNum = Number(b);
+      const aIsNum = Number.isInteger(aNum) && String(aNum) === a;
+      const bIsNum = Number.isInteger(bNum) && String(bNum) === b;
+
+      if (aIsNum && bIsNum) return aNum - bNum;
+      if (aIsNum) return -1;
+      if (bIsNum) return 1;
+      return a.localeCompare(b);
+    });
+
+  const parameters = orderedEntries.map(([key, value]) => ({
     type: "text" as const,
     text: value,
+    parameter_name: key,
+  }));
+
+  const headerComponents = (options.headerTextParameters ?? []).length > 0
+    ? [{
+      type: "header",
+      parameters: (options.headerTextParameters ?? []).map((value) => ({
+        type: "text" as const,
+        text: value,
+        parameter_name: "id",
+      })),
+    }]
+    : [];
+
+  const buttonComponents = (options.buttonUrlParameters ?? []).map((button) => ({
+    type: "button",
+    sub_type: "url" as const,
+    index: String(button.index),
+    parameters: [
+      {
+        type: "text" as const,
+        text: button.value,
+      },
+    ],
   }));
 
   const body: WhatsAppTemplatePayload = {
     name: templateName,
     language: { code: languageCode },
     components: [
+      ...headerComponents,
       {
         type: "body",
         parameters,
       },
+      ...buttonComponents,
     ],
   };
 
@@ -68,8 +125,9 @@ export const sendWhatsAppMessage = async (
 
   if (!response.ok) {
     const errorData = data as WhatsAppErrorResponse;
+    const details = (errorData as any)?.error?.error_data?.details;
     throw new Error(
-      `WhatsApp API error: ${errorData.error?.message ?? "Unknown error"} (code: ${errorData.error?.code})`
+      `WhatsApp API error: ${errorData.error?.message ?? "Unknown error"} (code: ${errorData.error?.code})${details ? ` - ${details}` : ""}`
     );
   }
 

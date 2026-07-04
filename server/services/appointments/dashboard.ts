@@ -1,4 +1,4 @@
-import { requireAppointmentContext } from "../../utils/appointments";
+import { requireAppointmentContextStrict } from "../../utils/appointments";
 
 import type { Database } from "@/types/database.types";
 
@@ -80,7 +80,7 @@ export async function getAppointmentDashboard(
   currentProfileId: string,
   managerBranchId: string | null,
 ): Promise<AppointmentDashboardResult> {
-  const context = await requireAppointmentContext(event);
+  const context = await requireAppointmentContextStrict(event);
 
   const target = parseDateInput(targetDate);
   const dayStart = startOfLocalDay(target);

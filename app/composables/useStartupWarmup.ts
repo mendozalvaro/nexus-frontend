@@ -20,7 +20,7 @@ export const useStartupWarmup = () => {
   const { ensureAuthContext } = useAuthContext();
   const { loadCapabilities } = useSubscription();
   const { loadAccountStatus } = useAccountStatus();
-  const { getAccessibleBranches } = usePermissions();
+  const { getAccessibleBranches, ensureRolePermissionsLoaded } = usePermissions();
 
   const cache = useState<{
     key: string | null;
@@ -89,7 +89,10 @@ export const useStartupWarmup = () => {
           force,
           maxAgeMs,
         }),
-        getAccessibleBranches(),
+        (async () => {
+          await ensureRolePermissionsLoaded();
+          return getAccessibleBranches();
+        })(),
       ]);
 
       const result: StartupWarmupResult = {

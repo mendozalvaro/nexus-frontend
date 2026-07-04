@@ -172,7 +172,7 @@ onBeforeUnmount(() => {
           <UTextarea
             v-model="state.description"
             :rows="4"
-            placeholder="Resumen corto para el equipo o el POS"
+            placeholder="Resumen corto para el equipo o ventas"
             :disabled="loading"
             class="w-full"
             :ui="ADMIN_FIELD_UI"

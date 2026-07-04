@@ -1,12 +1,22 @@
 <script setup lang="ts">
-import type { OrganizationDraft, BusinessType } from "@/types/registration";
+import type { OrganizationDraft } from "@/types/registration";
 import type { SubscriptionPlanSlug } from "@/types/subscription";
 import LogoUpload from "./LogoUpload.vue";
-import { PLAN_PRICING, ORGANIZATION_SCHEMA, getCurrencyOptionsForCountry, getTimezoneOptionsForCountry, COUNTRIES, getPlanBillingAmount } from "@/utils/onboarding";
+import {
+  PLAN_PRICING,
+  ORGANIZATION_SCHEMA,
+  getCurrencyOptionsForCountry,
+  getTimezoneOptionsForCountry,
+  COUNTRIES,
+  getPlanBillingAmount,
+} from "@/utils/onboarding";
+
+type BusinessType = OrganizationDraft["businessTypes"][number];
 
 const props = defineProps<{
   modelValue: OrganizationDraft;
   loading?: boolean;
+  submittingTrial?: boolean;
   error?: string | null;
   logoError?: string | null;
   geoCountry?: string;
@@ -26,11 +36,19 @@ const emit = defineEmits<{
 const state = reactive<OrganizationDraft>({ ...props.modelValue });
 const syncingFromProps = ref(false);
 
+const BUSINESS_TYPE_OPTIONS = [
+  { value: "product", label: "Productos", icon: "i-lucide-package", description: "Vendo productos" },
+  { value: "service", label: "Servicios", icon: "i-lucide-concierge-bell", description: "Ofrezco servicios" },
+  { value: "lodging", label: "Alojamiento", icon: "i-lucide-bed-double", description: "Administro un hostal/hotel" },
+] as const;
+
 const areDraftsEqual = (a: OrganizationDraft, b: OrganizationDraft) =>
   a.organizationName === b.organizationName &&
-  a.businessType === b.businessType &&
+  a.businessTypes.length === b.businessTypes.length &&
+  a.businessTypes.every((v, i) => v === b.businessTypes[i]) &&
   a.selectedPlan === b.selectedPlan &&
   a.billingMode === b.billingMode &&
+  a.activationMode === b.activationMode &&
   a.country === b.country &&
   a.currency === b.currency &&
   a.timezone === b.timezone &&
@@ -49,7 +67,6 @@ watch(state, (v) => {
   emit("update:modelValue", next);
 }, { deep: true });
 
-// Auto-detect country → currency/timezone
 watch(() => [props.geoCountry, props.geoLoading], ([newCountry, loading]) => {
   if (newCountry && typeof newCountry === "string" && !loading && !state.country) {
     state.country = newCountry;
@@ -58,12 +75,6 @@ watch(() => [props.geoCountry, props.geoLoading], ([newCountry, loading]) => {
   }
 }, { immediate: true });
 
-const businessTypeOptions: { value: BusinessType; label: string; icon: string; description: string }[] = [
-  { value: "products", label: "Productos", icon: "i-lucide-package", description: "Vendo productos" },
-  { value: "services", label: "Servicios", icon: "i-lucide-concierge-bell", description: "Ofrezco servicios" },
-  { value: "hybrid", label: "Hibrido", icon: "i-lucide-layers", description: "Productos y servicios" },
-];
-
 const plan = computed(() => PLAN_PRICING.find(p => p.slug === state.selectedPlan));
 const amount = computed(() => {
   const p = plan.value;
@@ -71,35 +82,37 @@ const amount = computed(() => {
   return getPlanBillingAmount(p.slug, state.billingMode);
 });
 
-const isHybridCompatibleWithSelectedPlan = computed(() => {
-  const p = plan.value;
-  if (!p) {
-    return false;
+const toggleBusinessType = (type: BusinessType) => {
+  const idx = state.businessTypes.indexOf(type);
+  if (idx >= 0) {
+    if (state.businessTypes.length > 1) {
+      state.businessTypes.splice(idx, 1);
+    }
+  } else {
+    const plan = PLAN_PRICING.find(p => p.slug === state.selectedPlan);
+    const max = plan?.slug === "emprende" ? 1 : 2;
+    if (state.businessTypes.length < max) {
+      state.businessTypes.push(type);
+    }
   }
-
-  return p.businessOnly === false;
-});
-
-const isBusinessTypeDisabled = (type: BusinessType): boolean => {
-  if (type !== "hybrid") return false;
-  return !isHybridCompatibleWithSelectedPlan.value;
 };
 
-const selectBusinessType = (type: BusinessType) => {
-  if (isBusinessTypeDisabled(type)) {
-    return;
-  }
-  state.businessType = type;
+const isBusinessTypeChecked = (type: BusinessType) => state.businessTypes.includes(type);
+
+const isBusinessTypeDisabled = (type: BusinessType) => {
+  if (state.businessTypes.includes(type)) return false;
+  const plan = PLAN_PRICING.find(p => p.slug === state.selectedPlan);
+  const max = plan?.slug === "emprende" ? 1 : 2;
+  return state.businessTypes.length >= max;
 };
 
 watch(
-  () => [state.selectedPlan, state.businessType] as const,
+  () => state.selectedPlan,
   () => {
-    if (state.businessType === "hybrid" && !isHybridCompatibleWithSelectedPlan.value) {
-      state.businessType = "products";
+    if (state.selectedPlan === "emprende" && state.businessTypes.length > 1) {
+      state.businessTypes = [state.businessTypes[0] ?? "product"];
     }
   },
-  { immediate: true },
 );
 
 const currencyOptions = computed(() => getCurrencyOptionsForCountry(state.country));
@@ -109,11 +122,23 @@ const onLogoSelected = (file: File) => { emit("logo-selected", file); };
 </script>
 
 <template>
-  <UCard class="admin-shell-panel rounded-[1.75rem]">
+  <UCard class="admin-shell-panel relative overflow-hidden rounded-[1.75rem]">
+    <div
+      v-if="submittingTrial"
+      class="absolute inset-0 z-20 flex items-center justify-center bg-slate-950/55 px-6 backdrop-blur-[2px]"
+    >
+      <div class="w-full max-w-md rounded-[1.5rem] border border-white/15 bg-slate-950/90 p-6 text-center text-white shadow-2xl">
+        <UIcon name="i-lucide-loader-circle" class="mx-auto mb-4 h-10 w-10 animate-spin text-primary-300" />
+        <p class="text-lg font-semibold">Activando tu periodo de prueba</p>
+        <p class="mt-2 text-sm leading-6 text-slate-200">
+          Estamos creando tu empresa, configurando el plan y preparando tu acceso al dashboard.
+        </p>
+      </div>
+    </div>
     <template #header>
       <div class="space-y-1">
         <h2 class="text-2xl font-semibold text-slate-950 dark:text-white">Configura tu empresa</h2>
-        <p class="text-sm text-slate-600 dark:text-slate-300">Plan, tipo de negocio y datos basicos.</p>
+        <p class="text-sm text-slate-600 dark:text-slate-300">Plan, tipos de negocio y datos basicos.</p>
       </div>
     </template>
 
@@ -163,11 +188,11 @@ const onLogoSelected = (file: File) => { emit("logo-selected", file); };
               </div>
               <p class="mt-1 text-xs text-slate-600 dark:text-slate-300">{{ p.description }}</p>
               <p v-if="p.businessOnly" class="mt-2 text-[11px] font-medium text-amber-700 dark:text-amber-300">
-                Solo productos o servicios.
+                Solo un tipo de negocio.
               </p>
             </button>
           </div>
-          <div class="flex items-center gap-4">
+        <div class="flex items-center gap-4">
             <label class="flex items-center gap-2 text-sm">
               <input v-model="state.billingMode" type="radio" value="monthly" class="accent-primary-500" />
               Mensual <UBadge color="neutral" variant="soft" size="xs">10% off</UBadge>
@@ -183,38 +208,58 @@ const onLogoSelected = (file: File) => { emit("logo-selected", file); };
             <span class="ml-auto text-sm font-semibold text-primary-600 dark:text-primary-400">Total: ${{ amount
               }}</span>
           </div>
-          <UAlert
-            v-if="state.businessType === 'hybrid' && !isHybridCompatibleWithSelectedPlan"
-            color="warning"
-            variant="soft"
-            icon="i-lucide-triangle-alert"
-            title="El plan seleccionado no permite negocio hibrido"
-            description="Cambia a Crecimiento o Enterprise para habilitar productos y servicios juntos."
-          />
         </div>
 
-        <!-- Business Type -->
         <div class="space-y-3">
-          <p class="text-sm font-semibold text-slate-700 dark:text-slate-200">Tipo de negocio</p>
+          <p class="text-sm font-semibold text-slate-700 dark:text-slate-200">Activacion</p>
+          <div class="grid gap-3 sm:grid-cols-2">
+            <button type="button"
+              class="rounded-2xl border-2 p-4 text-left transition-all hover:shadow-md focus:outline-none focus:ring-2 focus:ring-primary-300"
+              :class="state.activationMode === 'trial'
+                ? 'border-primary-500 bg-primary-50 ring-2 ring-primary-200 dark:border-primary-400 dark:bg-primary-950/40 dark:ring-primary-700'
+                : 'border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-900/60'"
+              @click="state.activationMode = 'trial'">
+              <p class="text-sm font-semibold text-slate-950 dark:text-white">Periodo de prueba</p>
+              <p class="mt-1 text-xs text-slate-600 dark:text-slate-300">31 dias de trial. Disponible una sola vez por usuario.</p>
+            </button>
+            <button type="button"
+              class="rounded-2xl border-2 p-4 text-left transition-all hover:shadow-md focus:outline-none focus:ring-2 focus:ring-primary-300"
+              :class="state.activationMode === 'paid'
+                ? 'border-primary-500 bg-primary-50 ring-2 ring-primary-200 dark:border-primary-400 dark:bg-primary-950/40 dark:ring-primary-700'
+                : 'border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-900/60'"
+              @click="state.activationMode = 'paid'">
+              <p class="text-sm font-semibold text-slate-950 dark:text-white">Pagar ahora</p>
+              <p class="mt-1 text-xs text-slate-600 dark:text-slate-300">Continua al flujo de pago del plan seleccionado.</p>
+            </button>
+          </div>
+        </div>
+
+        <!-- Business Types (checkboxes) -->
+        <div class="space-y-3">
+          <p class="text-sm font-semibold text-slate-700 dark:text-slate-200">Tipos de negocio</p>
           <div class="grid gap-3 sm:grid-cols-3">
-            <button v-for="opt in businessTypeOptions" :key="opt.value" type="button"
-              class="rounded-2xl border-2 p-4 text-center transition-all focus:outline-none focus:ring-2 focus:ring-primary-300"
+            <label v-for="opt in BUSINESS_TYPE_OPTIONS" :key="opt.value"
+              class="relative rounded-2xl border-2 p-4 text-center transition-all cursor-pointer focus-within:ring-2 focus-within:ring-primary-300"
               :class="[
-                state.businessType === opt.value
+                isBusinessTypeChecked(opt.value)
                   ? 'border-primary-500 bg-primary-50 ring-2 ring-primary-200 dark:border-primary-400 dark:bg-primary-950/40 dark:ring-primary-700'
                   : 'border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-900/60',
                 isBusinessTypeDisabled(opt.value)
                   ? 'cursor-not-allowed opacity-50'
                   : 'hover:shadow-md',
-              ]"
-              :disabled="isBusinessTypeDisabled(opt.value)"
-              :title="isBusinessTypeDisabled(opt.value) ? 'No disponible para plan seleccionado' : undefined"
-              @click="selectBusinessType(opt.value)">
+              ]">
+              <input type="checkbox" :value="opt.value" :checked="isBusinessTypeChecked(opt.value)"
+                :disabled="isBusinessTypeDisabled(opt.value)"
+                class="absolute opacity-0 w-0 h-0"
+                @change="toggleBusinessType(opt.value)" />
               <UIcon :name="opt.icon" class="mx-auto mb-2 h-8 w-8 text-primary-600 dark:text-primary-400" />
               <p class="text-sm font-semibold text-slate-950 dark:text-white">{{ opt.label }}</p>
               <p class="mt-1 text-xs text-slate-600 dark:text-slate-300">{{ opt.description }}</p>
-            </button>
+            </label>
           </div>
+          <p v-if="state.selectedPlan === 'emprende'" class="text-xs text-amber-600 dark:text-amber-400">
+            El plan Emprende solo permite un tipo de negocio. Para combinar, elige Crecimiento o Enterprise.
+          </p>
         </div>
 
         <!-- Actions -->
@@ -223,7 +268,7 @@ const onLogoSelected = (file: File) => { emit("logo-selected", file); };
             Guardar y continuar despues
           </UButton>
           <UButton type="submit" :loading="loading" class="auth-submit-button min-h-11 sm:flex-1">
-            {{ loading ? "Creando empresa..." : "Continuar al pago" }}
+            {{ loading ? (state.activationMode === "trial" ? "Activando prueba..." : "Creando empresa...") : state.activationMode === "trial" ? "Activar prueba" : "Continuar al pago" }}
           </UButton>
         </div>
       </UForm>

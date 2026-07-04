@@ -4,7 +4,6 @@ import type { Database } from "@/types/database.types";
 import type {
   OnboardingProgressPayload,
   OnboardingProgressRow,
-  PostAuthResolution,
   RegistrationDraft,
   RegistrationResult,
 } from "@/types/registration";
@@ -15,7 +14,9 @@ import {
   sanitizeEmail,
   sanitizeText,
 } from "@/utils/onboarding";
-import { isValidUuid } from "@/utils/auth";
+import {
+  isValidUuid,
+} from "@/utils/auth";
 import {
   clearOnboardingDraftsStorage,
   loadRegistrationDraft,
@@ -44,7 +45,7 @@ export const useRegistration = () => {
   const supabase = useSupabaseClient<Database>();
   const session = useSupabaseSession();
   const { resolveUser } = useSessionAccess();
-  const { fetchProfile } = useAuth();
+  const { resolvePostAuthDestination } = usePostAuthResolution();
 
   const registrationDraft = useState<RegistrationDraft>(
     "onboarding:registration:draft",
@@ -269,51 +270,6 @@ export const useRegistration = () => {
     } finally {
       verifying.value = false;
     }
-  };
-
-  const resolvePendingOrganizationDestination = (
-    role: string | null,
-    latestPaymentValidationStatus: string | null,
-  ): PostAuthResolution => {
-    if (role === "admin" && (!latestPaymentValidationStatus || latestPaymentValidationStatus === "rejected")) {
-      return { destination: "/onboarding/payment", reason: "payment" };
-    }
-    return { destination: "/dashboard?status=pending", reason: "pending" };
-  };
-
-  const resolveStaffOrClientDestination = (
-    organizationId: string | null,
-    role: string | null,
-    organizationStatus: string | null,
-    latestPaymentValidationStatus: string | null,
-  ): PostAuthResolution => {
-    if (!organizationId) return { destination: "/onboarding/organization", reason: "organization" };
-    if (role === "client") return { destination: "/client/dashboard", reason: "active" };
-    if (organizationStatus === "pending") {
-      return resolvePendingOrganizationDestination(role, latestPaymentValidationStatus);
-    }
-    return { destination: "/dashboard", reason: "active" };
-  };
-
-  const resolvePostAuthDestination = async (): Promise<PostAuthResolution> => {
-    const user = await resolveUser();
-    if (!user) return { destination: "/auth/login", reason: "login" };
-    if (!user.email_confirmed_at) return { destination: `/auth/verify-email?email=${encodeURIComponent(user.email ?? registrationDraft.value.email)}`, reason: "verify" };
-
-    const postAuthContext = await $fetch<{
-      isSystem: boolean;
-      organizationStatus: string | null;
-      latestPaymentValidationStatus: string | null;
-    }>("/api/auth/post-auth-context");
-    if (postAuthContext.isSystem) return { destination: "/system", reason: "active" };
-
-    const profile = await fetchProfile();
-    return resolveStaffOrClientDestination(
-      profile?.organization_id ?? null,
-      profile?.role ?? null,
-      postAuthContext.organizationStatus,
-      postAuthContext.latestPaymentValidationStatus,
-    );
   };
 
   if (import.meta.client) {

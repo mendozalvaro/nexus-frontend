@@ -5,6 +5,7 @@ import { z } from "zod";
 import type { H3Event } from "h3";
 
 import type { Database, Json } from "@/types/database.types";
+import { assertTenantModuleAccess, type TenantModuleAction } from "./tenant-module-access";
 
 type UserRole = Database["public"]["Enums"]["user_role"];
 type AppointmentStatus = Database["public"]["Enums"]["appointment_status"];
@@ -182,6 +183,35 @@ export const requireAppointmentContext = async (event: H3Event): Promise<Appoint
     },
     organizationId,
   };
+};
+
+export const requireAppointmentContextStrict = async (event: H3Event): Promise<AppointmentContext> => {
+  const context = await requireAppointmentContext(event);
+
+  await assertTenantModuleAccess({
+    adminClient: context.adminClient,
+    organizationId: context.organizationId,
+    role: context.role,
+    roleId: context.profile.role_id,
+    moduleKey: "appointments",
+    action: "can_view",
+  });
+
+  return context;
+};
+
+export const assertAppointmentModuleAccess = async (
+  context: AppointmentContext,
+  action: TenantModuleAction,
+) => {
+  await assertTenantModuleAccess({
+    adminClient: context.adminClient,
+    organizationId: context.organizationId,
+    role: context.role,
+    roleId: context.profile.role_id,
+    moduleKey: "appointments",
+    action,
+  });
 };
 
 export const assertRoleAccess = (context: AppointmentContext, allowedRoles: UserRole[]) => {

@@ -1,43 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { ref } from "vue";
 import { mockNuxtImport } from "@nuxt/test-utils/runtime";
 
 import { globalStateMap } from "../../../test/setup";
 
 const {
-  mockEnsureAuthContext,
-  mockEnsureContext,
-  mockMaybeSingle,
-  mockFrom,
+  mockResolveActorContext,
   mockNavigateTo,
-} = vi.hoisted(() => {
-  const mockMaybeSingle = vi.fn();
-  const mockEq = vi.fn(() => ({ maybeSingle: mockMaybeSingle }));
-  const mockSelect = vi.fn(() => ({ eq: mockEq }));
-  const mockFrom = vi.fn(() => ({ select: mockSelect }));
-
-  return {
-    mockEnsureAuthContext: vi.fn(),
-    mockEnsureContext: vi.fn(),
-    mockMaybeSingle,
-    mockEq,
-    mockSelect,
-    mockFrom,
-    mockNavigateTo: vi.fn((target: string) => target),
-  };
-});
-
-mockNuxtImport("useAuthContext", () => () => ({
-  ensureAuthContext: mockEnsureAuthContext,
+} = vi.hoisted(() => ({
+  mockResolveActorContext: vi.fn(),
+  mockNavigateTo: vi.fn((target: string) => target),
 }));
 
-mockNuxtImport("useUserContext", () => () => ({
-  profile: ref(null),
-  ensureContext: mockEnsureContext,
-}));
-
-mockNuxtImport("useSupabaseClient", () => () => ({
-  from: mockFrom,
+mockNuxtImport("useActorContext", () => () => ({
+  resolveActorContext: mockResolveActorContext,
 }));
 
 mockNuxtImport("navigateTo", () => mockNavigateTo);
@@ -49,7 +24,10 @@ describe("system-only middleware", () => {
   });
 
   it("manda a login con redirect preservado si no hay sesion", async () => {
-    mockEnsureAuthContext.mockResolvedValue({ user: null });
+    mockResolveActorContext.mockResolvedValue({
+      user: null,
+      actorType: "guest",
+    });
 
     const middleware = (await import("../system-only")).default;
     const result = await middleware({ fullPath: "/system/users" } as never, {} as never);
@@ -59,16 +37,10 @@ describe("system-only middleware", () => {
   });
 
   it("permite acceso a usuario system activo", async () => {
-    mockEnsureAuthContext.mockResolvedValue({
+    mockResolveActorContext.mockResolvedValue({
       user: { id: "system-user-1" },
-    });
-    mockMaybeSingle.mockResolvedValue({
-      data: {
-        user_id: "system-user-1",
-        role: "system",
-        is_active: true,
-      },
-      error: null,
+      actorType: "system",
+      profile: null,
     });
 
     const middleware = (await import("../system-only")).default;
@@ -79,14 +51,9 @@ describe("system-only middleware", () => {
   });
 
   it("redirige usuario autenticado no-system a home de su rol", async () => {
-    mockEnsureAuthContext.mockResolvedValue({
+    mockResolveActorContext.mockResolvedValue({
       user: { id: "admin-user-1" },
-    });
-    mockMaybeSingle.mockResolvedValue({
-      data: null,
-      error: null,
-    });
-    mockEnsureContext.mockResolvedValue({
+      actorType: "staff",
       profile: {
         role: "admin",
       },

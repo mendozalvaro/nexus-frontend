@@ -1,4 +1,5 @@
 import {
+  assertCatalogCategoryAccess,
   assertCatalogUniqueCategoryName,
   catalogCategorySchema,
   getCatalogCategoryOrThrow,
@@ -19,6 +20,14 @@ export default defineEventHandler(async (event) => {
 
   const body = await readValidatedCatalogBody(event, catalogCategorySchema);
   const category = await getCatalogCategoryOrThrow(context, categoryId);
+  await assertCatalogCategoryAccess(context, category.type as "product" | "service" | "lodging", "can_edit");
+  if (body.type !== category.type) {
+    throw createError({
+      statusCode: 409,
+      statusMessage: "No puedes cambiar el tipo de una categoria existente.",
+    });
+  }
+  await assertCatalogCategoryAccess(context, body.type, "can_edit");
   await assertCatalogUniqueCategoryName(context, body.name.trim(), body.type, category.id);
 
   if (body.parentId) {
@@ -38,6 +47,7 @@ export default defineEventHandler(async (event) => {
       name: body.name.trim(),
       parent_id: body.parentId,
       type: body.type,
+      description: body.description?.trim() || null,
     })
     .eq("id", category.id)
     .eq("organization_id", context.organizationId);

@@ -1,5 +1,3 @@
-import type { Database } from "@/types/database.types";
-
 export type AccountStatusValue = "pending" | "active" | "rejected" | "suspended";
 
 export interface AccountStatusSnapshot {
@@ -24,7 +22,8 @@ export interface LoadAccountStatusOptions {
   maxAgeMs?: number;
 }
 
-const DEFAULT_CACHE_MAX_AGE_MS = 20000;
+const DEFAULT_CACHE_MAX_AGE_MS = 5 * 60 * 1000;
+const ACCOUNT_STATUS_FETCH_TIMEOUT_MS = 8000;
 const pendingByOrganization = new Map<string, Promise<AccountStatusSnapshot>>();
 
 const normalizeAccountStatus = (
@@ -77,7 +76,13 @@ const resolveAccountStatus = (
     return "suspended";
   }
 
-  if (snapshot.organizationStatus === "active" && snapshot.subscriptionStatus === "active") {
+  if (
+    snapshot.organizationStatus === "active"
+    && (
+      snapshot.subscriptionStatus === "active"
+      || snapshot.subscriptionStatus === "trial"
+    )
+  ) {
     return "active";
   }
 
@@ -105,11 +110,21 @@ const createActiveResult = (): AccountStatusResult => ({
   fetchedAt: Date.now(),
 });
 
-type AccountStatusSnapshotRpcRow =
-  Database["public"]["Functions"]["get_account_status_snapshot"]["Returns"][number];
+const createPendingFallbackResult = (): AccountStatusResult => ({
+  accountStatus: "pending",
+  paymentRequired: false,
+  snapshot: {
+    organizationStatus: null,
+    subscriptionStatus: null,
+    isTrial: false,
+    trialEndsAt: null,
+    latestValidationStatus: null,
+  },
+  fetchedAt: Date.now(),
+});
 
 export const useAccountStatus = () => {
-  const supabase = useSupabaseClient<Database>();
+  const { resolveAccessToken } = useSessionAccess();
   const {
     profile,
     accountStatus,
@@ -135,24 +150,17 @@ export const useAccountStatus = () => {
   };
 
   const fetchSnapshot = async (organizationId: string): Promise<AccountStatusSnapshot> => {
-    const { data, error } = await supabase.rpc("get_account_status_snapshot", {
-      p_organization_id: organizationId,
+    const accessToken = await resolveAccessToken();
+    const headers = accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined;
+    const response = await $fetch<{ snapshot: AccountStatusSnapshot }>("/api/account-status", {
+      query: {
+        organizationId,
+      },
+      timeout: ACCOUNT_STATUS_FETCH_TIMEOUT_MS,
+      ...(headers ? { headers } : {}),
     });
 
-    if (error) {
-      throw error;
-    }
-
-    const rows = (data ?? []) as AccountStatusSnapshotRpcRow[];
-    const snapshot = rows[0] ?? null;
-
-    return {
-      organizationStatus: snapshot?.organization_status ?? null,
-      subscriptionStatus: snapshot?.subscription_status ?? null,
-      isTrial: snapshot?.is_trial === true,
-      trialEndsAt: typeof snapshot?.trial_ends_at === "string" ? snapshot.trial_ends_at : null,
-      latestValidationStatus: snapshot?.latest_validation_status ?? null,
-    };
+    return response.snapshot;
   };
 
   const loadAccountStatus = async (
@@ -228,6 +236,37 @@ export const useAccountStatus = () => {
         snapshot,
         fetchedAt,
       };
+    } catch {
+      const staleCache =
+        cache.value && cache.value.organizationId === organizationId
+          ? cache.value
+          : null;
+
+      if (staleCache) {
+        const stalePaymentRequired = computePaymentRequired(
+          staleCache.snapshot.subscriptionStatus,
+          staleCache.snapshot.isTrial,
+          staleCache.snapshot.trialEndsAt,
+        );
+        const staleStatus = resolveAccountStatus(staleCache.snapshot, forcedStatus);
+        setAccountStatusState({
+          accountStatus: staleStatus,
+          paymentRequired: stalePaymentRequired,
+        });
+        return {
+          accountStatus: staleStatus,
+          paymentRequired: stalePaymentRequired,
+          snapshot: staleCache.snapshot,
+          fetchedAt: staleCache.fetchedAt,
+        };
+      }
+
+      const fallback = createPendingFallbackResult();
+      setAccountStatusState({
+        accountStatus: fallback.accountStatus,
+        paymentRequired: fallback.paymentRequired,
+      });
+      return fallback;
     } finally {
       loading.value = false;
       if (canReusePending && pendingByOrganization.get(organizationId) === loader) {

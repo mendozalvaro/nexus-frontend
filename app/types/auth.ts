@@ -4,6 +4,10 @@ import type { Database, Json, Tables, TablesInsert } from "./database.types";
 
 export type UserRole = Database["public"]["Enums"]["user_role"];
 export type AuditAction = Database["public"]["Enums"]["audit_action"];
+export type AuthAudience = "staff" | "client";
+export type AuthOAuthProvider = "google";
+export type ActorType = "guest" | "client" | "staff" | "system";
+export type ActorAccessState = "unauthenticated" | "profile_incomplete" | "authenticated";
 export type Profile = Tables<"profiles">;
 export type ProfileInsert = TablesInsert<"profiles">;
 export type AuditLogInsert = TablesInsert<"audit_logs">;
@@ -26,6 +30,20 @@ export interface UpdateProfileInput {
 export interface AuthOperationResult<T = void> {
   data: T | null;
   error: string | null;
+}
+
+export interface SignInOptions {
+  resolveProfile?: boolean;
+}
+
+export interface SignInWithProviderOptions {
+  audience: AuthAudience;
+  redirect?: string | null;
+  slug?: string | null;
+}
+
+export interface SignOutOptions {
+  redirectTo?: string | null;
 }
 
 export interface AuthErrorPayload {
@@ -61,6 +79,15 @@ export interface AuthState {
   profile: Profile | null;
   organizationId: string | null;
   role: UserRole | null;
+}
+
+export interface ActorContextPayload {
+  actorType: ActorType;
+  accessState: ActorAccessState;
+  hasSystemAccess: boolean;
+  systemRole: "system" | "support" | null;
+  user: User | null;
+  profile: Profile | null;
 }
 
 export type AuthBootstrapState =

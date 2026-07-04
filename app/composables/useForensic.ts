@@ -1,5 +1,3 @@
-import type { Ref } from "vue";
-
 import type { User } from "@supabase/supabase-js";
 
 import type { Database, Json } from "@/types/database.types";
@@ -13,7 +11,6 @@ import type {
 } from "@/types/forensic";
 
 type ProfileRow = Database["public"]["Tables"]["profiles"]["Row"];
-type AuditLogInsert = Database["public"]["Tables"]["audit_logs"]["Insert"];
 
 const DEFAULT_LOG_LIMIT = 25;
 const MAX_LOG_LIMIT = 200;
@@ -85,8 +82,8 @@ export const useForensic = () => {
   const session = useSupabaseSession();
   const { isFeatureEnabled, loadCapabilities } = useSubscription();
 
-  const isLoading = useState<boolean>("forensic:is-loading", () => false) as Ref<boolean>;
-  const error = useState<string | null>("forensic:error", () => null) as Ref<string | null>;
+  const isLoading = useState<boolean>("forensic:is-loading", () => false);
+  const error = useState<string | null>("forensic:error", () => null);
 
   const user = computed<User | null>(() => session.value?.user ?? null);
 
@@ -122,12 +119,16 @@ export const useForensic = () => {
       return null;
     }
 
-    const { data, error: roleError } = await supabase.rpc("get_user_role");
+    const { data, error: roleError } = await supabase
+      .from("profiles")
+      .select("role")
+      .eq("id", user.value.id)
+      .maybeSingle<Pick<ProfileRow, "role">>();
     if (roleError) {
       throw roleError;
     }
 
-    return data;
+    return data?.role ?? null;
   };
 
   const ensureAuditAccess = async (requestedOrgId?: string): Promise<string | null> => {
@@ -198,23 +199,20 @@ export const useForensic = () => {
         return false;
       }
 
-      const payload: AuditLogInsert = {
-        action: mapManualActionToAuditAction(action),
-        table_name: table,
-        record_id: recordId,
-        user_id: user.value.id,
-        context: {
-          ...context,
-          event: context.event ?? action,
-          organization_id: organizationId,
-          custom_message: customMessage ?? context.custom_message,
-        } as Json,
-      };
-
-      const { error: insertError } = await supabase.from("audit_logs").insert(payload);
-      if (insertError) {
-        throw insertError;
-      }
+      await $fetch("/api/auth/audit", {
+        method: "POST",
+        body: {
+          action: mapManualActionToAuditAction(action),
+          tableName: table,
+          recordId,
+          context: {
+            ...context,
+            event: context.event ?? action,
+            organization_id: organizationId,
+            custom_message: customMessage ?? context.custom_message,
+          } as Json,
+        },
+      });
 
       return true;
     } catch (logError) {

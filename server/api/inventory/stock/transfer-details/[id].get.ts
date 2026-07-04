@@ -2,13 +2,13 @@ import { getRouterParam } from "h3";
 
 import {
   assertInventoryModuleAccess,
-  requireInventoryContext,
 } from "../../../../utils/inventory";
+import { requireInventoryContextStrict } from "../../../../utils/inventory-access";
 
 type TransferStatus = "pending" | "received" | "cancelled";
 
 export default defineEventHandler(async (event) => {
-  const context = await requireInventoryContext(event);
+  const context = await requireInventoryContextStrict(event, "can_view");
   await assertInventoryModuleAccess(context, "can_view");
 
   const transferId = getRouterParam(event, "id");
@@ -227,3 +227,4 @@ export default defineEventHandler(async (event) => {
     },
   };
 });
+

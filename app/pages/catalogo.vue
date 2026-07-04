@@ -1,437 +1,113 @@
 <script setup lang="ts">
 import CatalogCategoriesTable from "@/components/catalog/CatalogCategoriesTable.vue";
 import CatalogCategoryModal from "@/components/catalog/CatalogCategoryModal.vue";
-import CatalogProductModal from "@/components/catalog/CatalogProductModal.vue";
-import CatalogProductsTable from "@/components/catalog/CatalogProductsTable.vue";
-import CatalogServicesTable from "@/components/catalog/CatalogServicesTable.vue";
-import CatalogServiceModal from "@/components/catalog/CatalogServiceModal.vue";
-import CatalogSummaryPanel from "@/components/catalog/CatalogSummaryPanel.vue";
-import CatalogTabs from "@/components/catalog/CatalogTabs.vue";
-import CatalogToolbar from "@/components/catalog/CatalogToolbar.vue";
 import CatalogImportModal from "@/components/catalog/CatalogImportModal.vue";
 import CatalogImportPreview from "@/components/catalog/CatalogImportPreview.vue";
 import CatalogImportSummary from "@/components/catalog/CatalogImportSummary.vue";
-
-import type {
-  CatalogCategoryItem,
-  CatalogCategoryPayload,
-  CatalogProductItem,
-  CatalogProductPayload,
-  CatalogServiceItem,
-  CatalogServicePayload,
-} from "@/composables/useCatalog";
+import CatalogProductModal from "@/components/catalog/CatalogProductModal.vue";
+import CatalogProductsTable from "@/components/catalog/CatalogProductsTable.vue";
+import CatalogRoomFormModal from "@/components/catalog/CatalogRoomFormModal.vue";
+import CatalogRoomsTable from "@/components/catalog/CatalogRoomsTable.vue";
+import CatalogServiceModal from "@/components/catalog/CatalogServiceModal.vue";
+import CatalogServicesTable from "@/components/catalog/CatalogServicesTable.vue";
+import CatalogSummaryPanel from "@/components/catalog/CatalogSummaryPanel.vue";
+import CatalogTabs from "@/components/catalog/CatalogTabs.vue";
+import CatalogToolbar from "@/components/catalog/CatalogToolbar.vue";
 
 definePageMeta({
   layout: "default",
   middleware: ["permissions"],
-  permission: "catalog.view",
+  moduleKey: "catalog",
+  moduleKeysAny: ["catalog.products", "catalog.services", "catalog.rooms"],
   roles: ["admin", "manager"],
 });
 
-type CatalogTab = "summary" | "products" | "services" | "categories";
-const activeTab = ref<CatalogTab>("summary");
-const searchQuery = ref("");
-const mutationLoading = ref(false);
-const mutationError = ref<string | null>(null);
-const productModalOpen = ref(false);
-const serviceModalOpen = ref(false);
-const categoryModalOpen = ref(false);
-const editingProduct = ref<CatalogProductItem | null>(null);
-const editingService = ref<CatalogServiceItem | null>(null);
-const editingCategory = ref<CatalogCategoryItem | null>(null);
-
 const {
-  loadProducts,
-  loadServices,
-  loadCategories,
-  createProduct,
-  updateProduct,
-  updateProductStatus,
-  createService,
-  updateService,
-  updateServiceStatus,
-  createCategory,
-  updateCategory,
-  updateCategoryStatus,
-} = useCatalog();
-const { ensureTenantContext, uploadCatalogImage } = useCatalogMedia();
-const {
-  step: importStep,
-  entityType: importEntityType,
-  duplicateStrategy: importDuplicateStrategy,
-  parsedData: importParsedData,
-  previewResult: importPreviewResult,
-  importSummary: importSummaryData,
-  loading: importLoading,
-  error: importError,
-  downloadTemplate: importDownloadTemplate,
-  parseExcel: importParseExcel,
-  requestPreview: importRequestPreview,
-  executeImport: importExecuteImport,
-  reset: importReset,
-} = useCatalogImport();
-
-const importModalOpen = ref(false);
-
-const { data: productsData, refresh: refreshProducts, pending: pendingProducts } = await useAsyncData(
-  "catalog-products",
-  () => loadProducts(),
-  { server: false },
-);
-
-const { data: servicesData, refresh: refreshServices, pending: pendingServices } = await useAsyncData(
-  "catalog-services",
-  () => loadServices(),
-  { server: false },
-);
-
-const { data: categoriesData, refresh: refreshCategories, pending: pendingCategories } = await useAsyncData(
-  "catalog-categories",
-  () => loadCategories(),
-  { server: false },
-);
-
-const categoryMap = computed(() => new Map((categoriesData.value ?? []).map((category) => [category.id, category])));
-
-const products = computed(() =>
-  (productsData.value ?? []).map((item) => ({
-    ...item,
-    categoryName: item.categoryId ? (categoryMap.value.get(item.categoryId)?.name ?? null) : null,
-  })),
-);
-
-const services = computed(() =>
-  (servicesData.value ?? []).map((item) => ({
-    ...item,
-    categoryName: item.categoryId ? (categoryMap.value.get(item.categoryId)?.name ?? null) : null,
-  })),
-);
-
-const categories = computed(() => {
-  const productsCountByCategory = new Map<string, number>();
-  const servicesCountByCategory = new Map<string, number>();
-
-  for (const product of products.value) {
-    if (product.categoryId) {
-      productsCountByCategory.set(product.categoryId, (productsCountByCategory.get(product.categoryId) ?? 0) + 1);
-    }
-  }
-
-  for (const service of services.value) {
-    if (service.categoryId) {
-      servicesCountByCategory.set(service.categoryId, (servicesCountByCategory.get(service.categoryId) ?? 0) + 1);
-    }
-  }
-
-  return (categoriesData.value ?? []).map((item) => ({
-    ...item,
-    linkedCount: item.type === "product"
-      ? (productsCountByCategory.get(item.id) ?? 0)
-      : (servicesCountByCategory.get(item.id) ?? 0),
-  }));
-});
-
-const pending = computed(() => pendingProducts.value || pendingServices.value || pendingCategories.value);
-const catalog = computed(() => ({ products: products.value, services: services.value, categories: categories.value }));
-const productCategories = computed(() => catalog.value.categories.filter((category) => category.type === "product"));
-const serviceCategories = computed(() => catalog.value.categories.filter((category) => category.type === "service"));
-
-const filteredProducts = computed(() => {
-  const query = searchQuery.value.trim().toLowerCase();
-  if (!query) {
-    return catalog.value.products;
-  }
-
-  return catalog.value.products.filter((item) =>
-    [item.name, item.sku ?? "", item.categoryName ?? "", item.description ?? ""].some((value) =>
-      value.toLowerCase().includes(query),
-    ),
-  );
-});
-
-const filteredServices = computed(() => {
-  const query = searchQuery.value.trim().toLowerCase();
-  if (!query) {
-    return catalog.value.services;
-  }
-
-  return catalog.value.services.filter((item) =>
-    [item.name, item.categoryName ?? "", item.description ?? ""].some((value) =>
-      value.toLowerCase().includes(query),
-    ),
-  );
-});
-
-const filteredCategories = computed(() => {
-  const query = searchQuery.value.trim().toLowerCase();
-  if (!query) {
-    return catalog.value.categories;
-  }
-
-  return catalog.value.categories.filter((item) =>
-    [item.name, item.parentName ?? "", item.type].some((value) =>
-      value.toLowerCase().includes(query),
-    ),
-  );
-});
-
-const openProductModal = (product?: CatalogProductItem) => {
-  editingProduct.value = product ?? null;
-  productModalOpen.value = true;
-};
-
-const openServiceModal = (service?: CatalogServiceItem) => {
-  editingService.value = service ?? null;
-  serviceModalOpen.value = true;
-};
-
-const openCategoryModal = (category?: CatalogCategoryItem) => {
-  editingCategory.value = category ?? null;
-  categoryModalOpen.value = true;
-};
-
-const closeProductModal = () => {
-  productModalOpen.value = false;
-};
-
-const closeServiceModal = () => {
-  serviceModalOpen.value = false;
-};
-
-const closeCategoryModal = () => {
-  categoryModalOpen.value = false;
-};
-
-const resolveErrorMessage = (error: unknown, fallback: string) => {
-  if (
-    error
-    && typeof error === "object"
-    && "statusMessage" in error
-    && typeof (error as { statusMessage?: unknown }).statusMessage === "string"
-  ) {
-    return (error as { statusMessage: string }).statusMessage;
-  }
-
-  if (error instanceof Error && error.message) {
-    return error.message;
-  }
-
-  return fallback;
-};
-
-const handleCreateForTab = () => {
-  if (activeTab.value === "products") {
-    openProductModal();
-    return;
-  }
-
-  if (activeTab.value === "services") {
-    openServiceModal();
-    return;
-  }
-
-  if (activeTab.value === "categories") {
-    openCategoryModal();
-  }
-};
-
-const handleProductSubmit = async (payload: CatalogProductPayload) => {
-  mutationLoading.value = true;
-  mutationError.value = null;
-  try {
-    const nextPayload: CatalogProductPayload = { ...payload };
-    if (payload.imageFile) {
-      nextPayload.imageUrl = await uploadCatalogImage(payload.imageFile, "product", {
-        cropSquare: payload.cropSquare,
-      });
-    }
-    nextPayload.imageFile = null;
-
-    if (editingProduct.value) {
-      await updateProduct(editingProduct.value.id, nextPayload);
-    } else {
-      await createProduct(nextPayload);
-    }
-
-    closeProductModal();
-    editingProduct.value = null;
-    await refreshProducts();
-  } catch (error) {
-    mutationError.value = resolveErrorMessage(error, "No se pudo crear/actualizar el producto.");
-    console.error("[CATALOGO] Product submit failed:", error);
-  } finally {
-    mutationLoading.value = false;
-  }
-};
-
-const handleServiceSubmit = async (payload: CatalogServicePayload) => {
-  mutationLoading.value = true;
-  mutationError.value = null;
-  try {
-    const nextPayload: CatalogServicePayload = { ...payload };
-    if (payload.imageFile) {
-      nextPayload.imageUrl = await uploadCatalogImage(payload.imageFile, "service", {
-        cropSquare: payload.cropSquare,
-      });
-    }
-    nextPayload.imageFile = null;
-
-    if (editingService.value) {
-      await updateService(editingService.value.id, nextPayload);
-    } else {
-      await createService(nextPayload);
-    }
-
-    closeServiceModal();
-    editingService.value = null;
-    await refreshServices();
-  } catch (error) {
-    mutationError.value = resolveErrorMessage(error, "No se pudo crear/actualizar el servicio.");
-    console.error("[CATALOGO] Service submit failed:", error);
-  } finally {
-    mutationLoading.value = false;
-  }
-};
-
-const handleCategorySubmit = async (payload: CatalogCategoryPayload) => {
-  mutationLoading.value = true;
-  mutationError.value = null;
-  try {
-    if (editingCategory.value) {
-      await updateCategory(editingCategory.value.id, payload);
-    } else {
-      await createCategory(payload);
-    }
-
-    closeCategoryModal();
-    editingCategory.value = null;
-    await refreshCategories();
-  } catch (error) {
-    mutationError.value = resolveErrorMessage(error, "No se pudo crear/actualizar la categoria.");
-    console.error("[CATALOGO] Category submit failed:", error);
-  } finally {
-    mutationLoading.value = false;
-  }
-};
-
-const handleToggleProductStatus = async ({ id, nextState }: { id: string; nextState: boolean }) => {
-  mutationError.value = null;
-  try {
-    await updateProductStatus(id, nextState);
-    await refreshProducts();
-  } catch (error) {
-    mutationError.value = resolveErrorMessage(error, "No se pudo actualizar el estado del producto.");
-    console.error("[CATALOGO] Product status failed:", error);
-  }
-};
-
-const handleToggleServiceStatus = async ({ id, nextState }: { id: string; nextState: boolean }) => {
-  mutationError.value = null;
-  try {
-    await updateServiceStatus(id, nextState);
-    await refreshServices();
-  } catch (error) {
-    mutationError.value = resolveErrorMessage(error, "No se pudo actualizar el estado del servicio.");
-    console.error("[CATALOGO] Service status failed:", error);
-  }
-};
-
-const handleToggleCategoryStatus = async ({ id, nextState }: { id: string; nextState: boolean }) => {
-  mutationError.value = null;
-  try {
-    await updateCategoryStatus(id, nextState);
-    await refreshCategories();
-  } catch (error) {
-    mutationError.value = resolveErrorMessage(error, "No se pudo actualizar el estado de la categoria.");
-    console.error("[CATALOGO] Category status failed:", error);
-  }
-};
-
-const handleOpenImport = () => {
-  importReset();
-  importModalOpen.value = true;
-};
-
-const handleExport = async () => {
-  try {
-    const response = await $fetch("/api/catalog/export", {
-      query: { type: activeTab.value === "summary" ? "all" : activeTab.value },
-    });
-
-    const blob = new Blob([response as string], { type: "text/csv" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `catalogo_${activeTab.value}_${new Date().toISOString().slice(0, 10)}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
-  } catch (e) {
-    mutationError.value = e instanceof Error ? e.message : "No se pudo exportar el catalogo.";
-  }
-};
-
-const handleImportFileSelected = async (file: File) => {
-  try {
-    await importParseExcel(file);
-    await importRequestPreview();
-  } catch (e) {
-    // Error is set in composable
-  }
-};
-
-const handleImportPreviewUpdateStrategy = (strategy: "upsert" | "skip") => {
-  importDuplicateStrategy.value = strategy;
-};
-
-const handleImportConfirm = async () => {
-  await importExecuteImport();
-  if (importSummaryData.value) {
-    await refreshProducts();
-    await refreshServices();
-    await refreshCategories();
-  }
-};
-
-const handleImportClose = () => {
-  importModalOpen.value = false;
-  importReset();
-};
-
-watch(
-  () => productModalOpen.value,
-  (open) => {
-    if (!open) {
-      editingProduct.value = null;
-    }
-  },
-);
-
-watch(
-  () => serviceModalOpen.value,
-  (open) => {
-    if (!open) {
-      editingService.value = null;
-    }
-  },
-);
-
-watch(
-  () => categoryModalOpen.value,
-  (open) => {
-    if (!open) {
-      editingCategory.value = null;
-    }
-  },
-);
-
-onMounted(async () => {
-  await ensureTenantContext();
-});
+  activeTab,
+  branchOptions,
+  canViewProductCatalog,
+  canViewRoomCatalog,
+  canViewServiceCatalog,
+  catalog,
+  closeCategoryModal,
+  closeProductModal,
+  closeServiceModal,
+  currentCategoryType,
+  editingCategory,
+  editingProduct,
+  editingRoom,
+  editingService,
+  filteredProductCategories,
+  filteredProducts,
+  filteredRoomCategories,
+  filteredServices,
+  filteredServiceCategories,
+  handleCategorySubmit,
+  handleCreateForTab,
+  handleExport,
+  handleImportClose,
+  handleImportConfirm,
+  handleImportFileSelected,
+  handleImportPreviewUpdateStrategy,
+  handleOpenImport,
+  handleProductSubmit,
+  handleRoomSubmit,
+  handleServiceSubmit,
+  handleToggleCategoryStatus,
+  handleToggleProductStatus,
+  handleToggleRoomStatus,
+  handleToggleServiceStatus,
+  importDownloadTemplate,
+  importDuplicateStrategy,
+  importEntityType,
+  importError,
+  importLoading,
+  importModalOpen,
+  importParsedData,
+  importPreviewResult,
+  importReset,
+  importStep,
+  importSummaryData,
+  lodgingCategories,
+  mutationError,
+  mutationLoading,
+  openProductModal,
+  openServiceModal,
+  openCategoryModal,
+  openRoomModal,
+  pending,
+  pendingRooms,
+  productCategories,
+  productModalOpen,
+  roomCategories,
+  roomModalOpen,
+  roomsData,
+  searchQuery,
+  serviceCategories,
+  serviceModalOpen,
+  categoryModalOpen,
+} = useCatalogPage();
 </script>
 
 <template>
   <div class="space-y-6 md:space-y-8">
-    <CatalogTabs v-model="activeTab" />
+    <ClientOnly>
+      <template #fallback>
+        <UCard class="rounded-[1.75rem]">
+          <div class="space-y-3 py-4">
+            <USkeleton class="h-10 w-full rounded-xl" />
+            <USkeleton class="h-28 w-full rounded-2xl" />
+            <USkeleton class="h-28 w-full rounded-2xl" />
+          </div>
+        </UCard>
+      </template>
+
+    <CatalogTabs
+      v-model="activeTab"
+      :show-products="canViewProductCatalog"
+      :show-services="canViewServiceCatalog"
+      :show-rooms="canViewRoomCatalog"
+    />
 
     <UAlert
       v-if="mutationError"
@@ -443,19 +119,28 @@ onMounted(async () => {
 
     <CatalogSummaryPanel
       v-if="activeTab === 'summary'"
+      :show-products="canViewProductCatalog"
+      :show-services="canViewServiceCatalog"
+      :show-rooms="canViewRoomCatalog"
       :products-count="catalog.products.length"
+      :product-categories-count="productCategories.length"
       :services-count="catalog.services.length"
-      :categories-count="catalog.categories.length"
+      :service-categories-count="serviceCategories.length"
+      :rooms-count="roomsData.length"
+      :room-categories-count="roomCategories.length"
       @navigate="activeTab = $event"
     />
 
     <template v-else>
       <CatalogToolbar
-        :active-tab="activeTab"
+        v-if="activeTab !== 'rooms'"
+        :active-tab="activeTab as 'products' | 'product-categories' | 'services' | 'service-categories' | 'room-categories'"
         :search-query="searchQuery"
         :products-count="filteredProducts.length"
+        :product-categories-count="filteredProductCategories.length"
         :services-count="filteredServices.length"
-        :categories-count="filteredCategories.length"
+        :service-categories-count="filteredServiceCategories.length"
+        :room-categories-count="filteredRoomCategories.length"
         @update:search-query="searchQuery = $event"
         @create="handleCreateForTab"
         @import="handleOpenImport"
@@ -479,12 +164,43 @@ onMounted(async () => {
       />
 
       <CatalogCategoriesTable
-        v-else-if="activeTab === 'categories'"
-        :rows="filteredCategories"
+        v-else-if="activeTab === 'product-categories'"
+        :rows="filteredProductCategories"
         :loading="pending || mutationLoading"
         @edit="openCategoryModal"
         @toggle-status="handleToggleCategoryStatus"
       />
+
+      <CatalogCategoriesTable
+        v-else-if="activeTab === 'service-categories'"
+        :rows="filteredServiceCategories"
+        :loading="pending || mutationLoading"
+        @edit="openCategoryModal"
+        @toggle-status="handleToggleCategoryStatus"
+      />
+
+      <CatalogCategoriesTable
+        v-else-if="activeTab === 'room-categories'"
+        :rows="filteredRoomCategories"
+        :loading="pending || mutationLoading"
+        @edit="openCategoryModal"
+        @toggle-status="handleToggleCategoryStatus"
+      />
+
+      <template v-if="activeTab === 'rooms'">
+        <div class="flex justify-end">
+          <UButton color="primary" icon="i-lucide-plus" @click="() => openRoomModal()">
+            Nueva habitacion
+          </UButton>
+        </div>
+
+        <CatalogRoomsTable
+          :rows="roomsData"
+          :loading="pendingRooms || mutationLoading"
+          @edit="openRoomModal"
+          @toggle-status="handleToggleRoomStatus"
+        />
+      </template>
     </template>
 
     <CatalogProductModal
@@ -510,12 +226,22 @@ onMounted(async () => {
     <CatalogCategoryModal
       :open="categoryModalOpen"
       :loading="mutationLoading"
-      :type="editingCategory?.type ?? (activeTab === 'services' ? 'service' : 'product')"
-      :categories="catalog.categories"
+      :type="currentCategoryType"
+      :categories="activeTab === 'room-categories' ? roomCategories : activeTab === 'service-categories' ? serviceCategories : productCategories"
       :initial-value="editingCategory"
       @update:open="categoryModalOpen = $event"
       @submit="handleCategorySubmit"
       @cancel="closeCategoryModal"
+    />
+
+    <CatalogRoomFormModal
+      :open="roomModalOpen"
+      :loading="mutationLoading"
+      :initial-value="editingRoom"
+      :lodging-categories="lodgingCategories"
+      :branches="branchOptions"
+      @update:open="roomModalOpen = $event"
+      @submit="handleRoomSubmit"
     />
 
     <UModal v-model:open="importModalOpen" :title="'Importar datos al catalogo'" class="max-w-2xl">
@@ -573,5 +299,6 @@ onMounted(async () => {
         </div>
       </template>
     </UModal>
+    </ClientOnly>
   </div>
 </template>

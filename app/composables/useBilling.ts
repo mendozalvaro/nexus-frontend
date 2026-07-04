@@ -1,4 +1,3 @@
-import type { Ref } from "vue";
 import type { SubscriptionPlanSlug } from "@/types/subscription";
 
 export interface BillingLedgerEntry {
@@ -60,7 +59,7 @@ export const useBilling = () => {
   const { loadCapabilities } = useSubscription();
   const { refreshOrganization } = useGlobalOrganization();
 
-  const history = useState<BillingLedgerEntry[]>("billing:history", () => []) as Ref<BillingLedgerEntry[]>;
+  const history = useState<BillingLedgerEntry[]>("billing:history", () => []);
   const historyLoading = useState<boolean>("billing:history-loading", () => false);
   const historyTotal = useState<number>("billing:history-total", () => 0);
   const mutationLoading = useState<boolean>("billing:mutation-loading", () => false);

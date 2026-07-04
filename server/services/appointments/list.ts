@@ -1,4 +1,4 @@
-import { requireAppointmentContext } from "../../utils/appointments";
+import { requireAppointmentContextStrict } from "../../utils/appointments";
 
 import type { Database } from "@/types/database.types";
 
@@ -106,7 +106,7 @@ export async function getAppointmentsList(
     employees: Array<{ id: string; fullName: string }>;
   },
 ): Promise<AppointmentsListResult> {
-  const context = await requireAppointmentContext(event);
+  const context = await requireAppointmentContextStrict(event);
 
   const { startIso, endIso } = getDateRange(filters.view, filters.anchorDate);
 

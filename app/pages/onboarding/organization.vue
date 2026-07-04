@@ -7,10 +7,12 @@ definePageMeta({ layout: false, title: "Configurar empresa" });
 
 const router = useRouter();
 const { draft, loading, error, logoError, createOrganization, clearLogo, validateLogoFile, hydrateDraft } = useOrganization();
-const { resolvePostAuthDestination, registrationDraft } = useRegistration();
+const { registrationDraft } = useRegistration();
+const { resolvePostAuthDestination } = usePostAuthResolution();
 const { detectCountry, loading: geoLoading, error: geoError } = useGeoIP();
 
 const selectedLogo = ref<File | null>(null);
+const submittingTrial = computed(() => loading.value && draft.value.activationMode === "trial");
 
 const onDraftUpdate = (value: typeof draft.value) => { draft.value = value; };
 
@@ -22,13 +24,19 @@ const onLogoSelected = (file: File) => {
 
 const onClearLogo = () => { selectedLogo.value = null; clearLogo(); };
 
-const onSaveLater = async () => { await navigateTo("/dashboard?status=pending", { replace: true }); };
+const onSaveLater = async () => { await navigateTo("/dashboard", { replace: true }); };
 
 const onSubmit = async () => {
   try {
-    const organizationId = await createOrganization(selectedLogo.value);
-    if (!organizationId) return;
-    await router.push(`/onboarding/payment?plan=${draft.value.selectedPlan}&billing=${draft.value.billingMode}`);
+    const result = await createOrganization(selectedLogo.value);
+    if (!result?.organizationId) return;
+
+    if (result.nextStep === "payment") {
+      await router.push(`/onboarding/payment?plan=${draft.value.selectedPlan}&billing=${draft.value.billingMode}`);
+      return;
+    }
+
+    await router.push("/dashboard");
   } catch { /* error handled in composable */ }
 };
 
@@ -71,6 +79,7 @@ if (import.meta.client) {
       <UAlert v-if="geoError" color="warning" variant="soft" icon="i-lucide-globe" :title="geoError" />
       <OrganizationForm
         :model-value="draft" :loading="loading || geoLoading" :error="error" :logo-error="logoError"
+        :submitting-trial="submittingTrial"
         :geo-country="draft.country" :geo-currency="draft.currency" :geo-timezone="draft.timezone" :geo-loading="geoLoading"
         @update:model-value="onDraftUpdate" @logo-selected="onLogoSelected" @clear-logo="onClearLogo"
         @save-later="onSaveLater" @submit="onSubmit"

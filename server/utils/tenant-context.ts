@@ -1,31 +1,10 @@
-import { createClient } from "@supabase/supabase-js";
 import { createError } from "h3";
-import { serverSupabaseUser } from "#supabase/server";
 
-import type { H3Event } from "h3";
 import type { Database } from "@/types/database.types";
+import { requireActorContext } from "./actor-context";
 
-type ProfileSummary = Pick<
-  Database["public"]["Tables"]["profiles"]["Row"],
-  "id" | "organization_id" | "role" | "full_name" | "email" | "avatar_url" | "phone" | "is_active"
->;
-
-type AdminClient = ReturnType<typeof createClient<Database>>;
-
-const UUID_REGEX =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-
-const resolveAuthUserId = (user: unknown): string | null => {
-  if (!user || typeof user !== "object") {
-    return null;
-  }
-
-  const candidate =
-    (user as { id?: unknown }).id
-    ?? (user as { sub?: unknown }).sub;
-
-  return typeof candidate === "string" ? candidate : null;
-};
+type ProfileSummary = NonNullable<Awaited<ReturnType<typeof requireActorContext>>["profile"]>;
+type AdminClient = Awaited<ReturnType<typeof requireActorContext>>["adminClient"];
 
 export interface TenantContext {
   adminClient: AdminClient;
@@ -35,94 +14,41 @@ export interface TenantContext {
   role: Database["public"]["Enums"]["user_role"];
 }
 
-const ROLE_SET = new Set<Database["public"]["Enums"]["user_role"]>([
-  "admin",
-  "manager",
-  "employee",
-  "client",
-]);
+export interface StaffTenantContext extends TenantContext {
+  role: Exclude<Database["public"]["Enums"]["user_role"], "client">;
+}
 
-const normalizeRole = (value: unknown): Database["public"]["Enums"]["user_role"] | null => {
-  if (typeof value !== "string") {
-    return null;
-  }
+export interface ClientTenantContext extends TenantContext {
+  role: "client";
+}
 
-  return ROLE_SET.has(value as Database["public"]["Enums"]["user_role"])
-    ? (value as Database["public"]["Enums"]["user_role"])
-    : null;
-};
+const resolveTenantContext = async (
+  event: Parameters<typeof requireActorContext>[0],
+): Promise<TenantContext & { actorType: Awaited<ReturnType<typeof requireActorContext>>["actorType"] }> => {
+  const actor = await requireActorContext(event);
 
-const buildAdminClient = (event: H3Event): AdminClient => {
-  const config = useRuntimeConfig(event);
-  const supabaseUrl = process.env.NUXT_PUBLIC_SUPABASE_URL;
-  const serviceRoleKey = config.supabaseServiceRoleKey as string | undefined;
-
-  if (!supabaseUrl || !serviceRoleKey) {
-    throw createError({
-      statusCode: 500,
-      statusMessage: "Configuracion de Supabase incompleta para contexto tenant.",
-    });
-  }
-
-  return createClient<Database, "public">(supabaseUrl, serviceRoleKey, {
-    auth: {
-      persistSession: false,
-      autoRefreshToken: false,
-    },
-  });
-};
-
-export const requireTenantContext = async (event: H3Event): Promise<TenantContext> => {
-  const user = await serverSupabaseUser(event);
-  if (!user) {
-    throw createError({ statusCode: 401, statusMessage: "No autorizado." });
-  }
-
-  const userId = resolveAuthUserId(user);
-  if (!userId || !UUID_REGEX.test(userId)) {
-    throw createError({ statusCode: 401, statusMessage: "Sesion invalida: user id no valido." });
-  }
-
-  const adminClient = buildAdminClient(event);
-  const { data: profile, error } = await adminClient
-    .from("profiles")
-    .select("id, organization_id, role, full_name, email, avatar_url, phone, is_active")
-    .eq("id", userId)
-    .maybeSingle<ProfileSummary>();
-
-  if (error) {
-    throw createError({
-      statusCode: 500,
-      statusMessage: `No se pudo cargar perfil para contexto tenant: ${error.message}`,
-    });
-  }
-
-  if (!profile) {
+  if (!actor.profile) {
     throw createError({
       statusCode: 403,
       statusMessage: "No se encontro un perfil asociado al usuario autenticado.",
     });
   }
 
-  if (!profile.organization_id) {
+  if (!actor.profile.organization_id) {
     throw createError({
       statusCode: 403,
       statusMessage: "El perfil autenticado no tiene organization_id asignado.",
     });
   }
 
-  if (profile.is_active === false) {
+  if (actor.profile.is_active === false) {
     throw createError({
       statusCode: 403,
       statusMessage: "El perfil autenticado esta inactivo.",
     });
   }
 
-  const resolvedRole = profile.role
-    ?? normalizeRole((user.user_metadata as { role?: unknown } | null | undefined)?.role)
-    ?? normalizeRole((user.app_metadata as { role?: unknown } | null | undefined)?.role);
-
-  if (!resolvedRole) {
+  if (!actor.role) {
     throw createError({
       statusCode: 403,
       statusMessage: "No se pudo resolver el rol del usuario autenticado.",
@@ -130,11 +56,50 @@ export const requireTenantContext = async (event: H3Event): Promise<TenantContex
   }
 
   return {
-    adminClient,
-    userId,
-    profile,
-    organizationId: profile.organization_id,
-    role: resolvedRole,
+    adminClient: actor.adminClient,
+    userId: actor.userId,
+    profile: actor.profile,
+    organizationId: actor.profile.organization_id,
+    role: actor.role,
+    actorType: actor.actorType,
   };
 };
 
+export const requireTenantContext = async (
+  event: Parameters<typeof requireActorContext>[0],
+): Promise<TenantContext> => {
+  const { actorType: _actorType, ...context } = await resolveTenantContext(event);
+  return context;
+};
+
+export const requireStaffTenantContext = async (
+  event: Parameters<typeof requireActorContext>[0],
+): Promise<StaffTenantContext> => {
+  const context = await resolveTenantContext(event);
+
+  if (context.actorType !== "staff" || context.role === "client") {
+    throw createError({
+      statusCode: 403,
+      statusMessage: "Este recurso requiere acceso staff.",
+    });
+  }
+
+  const { actorType: _actorType, ...staffContext } = context;
+  return staffContext as StaffTenantContext;
+};
+
+export const requireClientTenantContext = async (
+  event: Parameters<typeof requireActorContext>[0],
+): Promise<ClientTenantContext> => {
+  const context = await resolveTenantContext(event);
+
+  if (context.actorType !== "client" || context.role !== "client") {
+    throw createError({
+      statusCode: 403,
+      statusMessage: "Este recurso requiere acceso cliente.",
+    });
+  }
+
+  const { actorType: _actorType, ...clientContext } = context;
+  return clientContext as ClientTenantContext;
+};

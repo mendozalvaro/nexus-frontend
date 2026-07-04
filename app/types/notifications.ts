@@ -28,6 +28,7 @@ export interface NotificationPreferences {
   reminder_minutes_before: number;
   created_at: string;
   updated_at: string;
+  has_whatsapp_access_token?: boolean;
 }
 
 export interface NotificationRecord {

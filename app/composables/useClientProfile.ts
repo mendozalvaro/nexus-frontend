@@ -31,8 +31,6 @@ const defaultBillingState = (): ClientBillingFormState => ({
 });
 
 export const useClientProfile = () => {
-  const { activeOrganizationId } = useAuth();
-
   const clientProfile = useState<ClientProfileState | null>("client:profile:data", () => null);
   const loading = ref(false);
   const saving = ref(false);
@@ -63,9 +61,7 @@ export const useClientProfile = () => {
     success.value = null;
 
     try {
-      const response = await $fetch<{ profile: ClientProfileState | null }>("/api/clients/profile", {
-        query: { organizationId: activeOrganizationId.value },
-      });
+      const response = await $fetch<{ profile: ClientProfileState | null }>("/api/clients/profile");
       clientProfile.value = response.profile;
       if (clientProfile.value) {
         setFormFromProfile(clientProfile.value);

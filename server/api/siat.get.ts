@@ -1,10 +1,10 @@
 import { createError } from "h3";
 
 import { setCacheHeaders } from "../utils/cache";
-import { requireTenantContext } from "../utils/tenant-context";
+import { requireStaffTenantContext } from "../utils/tenant-context";
 
 export default defineEventHandler(async (event) => {
-  const context = await requireTenantContext(event);
+  const context = await requireStaffTenantContext(event);
 
   const { data, error } = await (context.adminClient as any)
     .from("organization_siat_config")

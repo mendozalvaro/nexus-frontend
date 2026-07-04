@@ -86,15 +86,17 @@ export const useOnboarding = () => {
       return;
     }
 
-    await supabase.from("audit_logs").insert({
-      action: "INSERT",
-      table_name: "onboarding_success",
-      record_id: organizationId,
-      user_id: session.value.user.id,
-      context: {
-        event: "ONBOARDING_SUCCESS_VIEWED",
-        organization_id: organizationId,
-        payment_validation_id: paymentValidationId ?? null,
+    await $fetch("/api/auth/audit", {
+      method: "POST",
+      body: {
+        action: "INSERT",
+        tableName: "onboarding_success",
+        recordId: organizationId,
+        context: {
+          event: "ONBOARDING_SUCCESS_VIEWED",
+          organization_id: organizationId,
+          payment_validation_id: paymentValidationId ?? null,
+        },
       },
     });
   };

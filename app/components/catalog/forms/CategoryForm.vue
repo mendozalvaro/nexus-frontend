@@ -13,11 +13,13 @@ import { ADMIN_FIELD_UI } from "@/utils/ui/forms";
 interface CategoryFormState {
   name: string;
   parentId: string | null;
+  description: string;
+  type: "product" | "service" | "lodging";
 }
 
 const props = withDefaults(defineProps<{
   loading?: boolean;
-  type: "product" | "service";
+  type: "product" | "service" | "lodging";
   categories: CatalogCategoryItem[];
   initialValue?: Partial<CategoryFormState>;
   submitLabel?: string;
@@ -35,6 +37,8 @@ const emits = defineEmits<{
 const state = reactive<CategoryFormState>({
   name: "",
   parentId: null,
+  description: "",
+  type: props.type,
 });
 
 watch(
@@ -42,9 +46,15 @@ watch(
   (value) => {
     state.name = value.name ?? "";
     state.parentId = value.parentId ?? null;
+    state.description = (value as Record<string, unknown>).description as string ?? "";
+    state.type = props.type;
   },
   { immediate: true, deep: true },
 );
+
+watch(() => props.type, (type) => {
+  state.type = type;
+});
 
 const options = computed(() => {
     const filtered = props.categories.filter((category) => category.type === props.type);
@@ -65,6 +75,8 @@ const parentModel = computed({
 const schema = z.object({
   name: z.string().trim().min(2, "El nombre de la categoria es obligatorio."),
   parentId: z.string().uuid().nullable(),
+  type: z.enum(["product", "service", "lodging"]),
+  description: z.string().trim().max(240, "La descripcion no puede superar 240 caracteres.").optional(),
 });
 
 const submit = () => {
@@ -72,6 +84,7 @@ const submit = () => {
     name: state.name.trim(),
     parentId: state.parentId,
     type: props.type,
+    description: state.description || undefined,
   });
 };
 </script>
@@ -84,8 +97,16 @@ const submit = () => {
       :columns="1"
     >
       <AdminFieldGroup :columns="1">
+        <UFormField label="Tipo" name="type">
+          <UInput :model-value="state.type === 'product' ? 'Producto' : state.type === 'service' ? 'Servicio' : 'Alojamiento'" disabled class="w-full" :ui="ADMIN_FIELD_UI" />
+        </UFormField>
+
         <UFormField label="Nombre" name="name">
           <UInput v-model="state.name" placeholder="Ej. Capilares" :disabled="loading" class="w-full" :ui="ADMIN_FIELD_UI" />
+        </UFormField>
+
+        <UFormField label="Descripcion" name="description">
+          <UTextarea v-model="state.description" placeholder="Describe la categoria" :disabled="loading" class="w-full" :ui="ADMIN_FIELD_UI" />
         </UFormField>
 
         <UFormField label="Categoria padre" name="parentId">

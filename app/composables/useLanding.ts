@@ -79,7 +79,7 @@ const features: LandingFeatureItem[] = [
   },
   {
     icon: "i-lucide-shopping-cart",
-    title: "POS Hibrido",
+    title: "Ventas Hibridas",
     description: "Vende productos y servicios en la misma transaccion, con control de stock en tiempo real.",
   },
   {

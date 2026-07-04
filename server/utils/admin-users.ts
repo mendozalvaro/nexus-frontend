@@ -13,6 +13,7 @@ import {
   resolvePlanPermission,
   type PlanLimitScalar,
 } from "@/utils/subscription-plan";
+import { assertTenantModuleAccess } from "./tenant-module-access";
 
 type UserRole = Database["public"]["Enums"]["user_role"];
 export type InternalRole = Exclude<UserRole, "client">;
@@ -22,6 +23,8 @@ export interface AdminContext {
   organizationId: string;
   userId: string;
   actorRole: InternalRole;
+  roleId: string | null;
+  accessibleBranchIds: string[];
   capabilities: {
     maxUsers: number;
     currentUsersCount: number;
@@ -187,7 +190,7 @@ export const requireAdminContext = async (event: H3Event): Promise<AdminContext>
 
   const { data: profile, error: profileError } = await adminClient
     .from("profiles")
-    .select("id, organization_id, role, is_active")
+    .select("id, organization_id, role, role_id, is_active")
     .eq("id", authData.user.id)
     .maybeSingle();
 
@@ -212,11 +215,30 @@ export const requireAdminContext = async (event: H3Event): Promise<AdminContext>
     });
   }
 
+  let accessibleBranchIds: string[] = [];
+  if (actorRole === "manager") {
+    const { data: assignments, error: assignmentsError } = await adminClient
+      .from("employee_branch_assignments")
+      .select("branch_id")
+      .eq("user_id", profile.id);
+
+    if (assignmentsError) {
+      throw createError({
+        statusCode: 500,
+        statusMessage: "No se pudo validar el alcance de sucursales del manager.",
+      });
+    }
+
+    accessibleBranchIds = Array.from(new Set((assignments ?? []).map((assignment) => assignment.branch_id)));
+  }
+
   return {
     adminClient,
     organizationId: profile.organization_id,
     userId: profile.id,
     actorRole,
+    roleId: profile.role_id ?? null,
+    accessibleBranchIds,
     capabilities: parseCapabilities(capabilityData),
   };
 };
@@ -242,6 +264,21 @@ export const assertPlanPermission = async (
   throw createError({
     statusCode: 403,
     statusMessage: message,
+  });
+};
+
+export const assertAdminModuleAccess = async (
+  context: AdminContext,
+  moduleKey: "users",
+  action: "can_view" | "can_create" | "can_edit" | "can_delete" = "can_view",
+) => {
+  await assertTenantModuleAccess({
+    adminClient: context.adminClient,
+    organizationId: context.organizationId,
+    role: context.actorRole,
+    roleId: context.roleId,
+    moduleKey,
+    action,
   });
 };
 
@@ -433,6 +470,63 @@ export const assertBranchesBelongToOrganization = async (
     throw createError({
       statusCode: 400,
       statusMessage: "Se detectaron sucursales fuera de la organizacion actual.",
+    });
+  }
+};
+
+export const assertManagerBranchScope = (
+  context: AdminContext,
+  branchIds: string[],
+) => {
+  if (context.actorRole !== "manager" || branchIds.length === 0) {
+    return;
+  }
+
+  const uniqueBranchIds = Array.from(new Set(branchIds));
+  const outOfScope = uniqueBranchIds.filter((branchId) => !context.accessibleBranchIds.includes(branchId));
+
+  if (outOfScope.length > 0) {
+    throw createError({
+      statusCode: 403,
+      statusMessage: "El manager solo puede operar empleados de su sucursal asignada.",
+    });
+  }
+};
+
+export const assertManagerCanOperateUser = async (
+  context: AdminContext,
+  targetUserId: string,
+) => {
+  if (context.actorRole !== "manager") {
+    return;
+  }
+
+  if (context.accessibleBranchIds.length === 0) {
+    throw createError({
+      statusCode: 403,
+      statusMessage: "El manager no tiene sucursales asignadas para gestionar usuarios.",
+    });
+  }
+
+  const { data: assignments, error } = await context.adminClient
+    .from("employee_branch_assignments")
+    .select("branch_id")
+    .eq("user_id", targetUserId);
+
+  if (error) {
+    throw createError({
+      statusCode: 500,
+      statusMessage: "No se pudo validar la sucursal del usuario objetivo.",
+    });
+  }
+
+  const targetBranchIds = Array.from(new Set((assignments ?? []).map((assignment) => assignment.branch_id)));
+  const hasOverlap = targetBranchIds.some((branchId) => context.accessibleBranchIds.includes(branchId));
+
+  if (!hasOverlap) {
+    throw createError({
+      statusCode: 403,
+      statusMessage: "El manager solo puede operar empleados de su sucursal asignada.",
     });
   }
 };

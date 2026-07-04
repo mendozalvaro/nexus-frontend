@@ -1,0 +1,20 @@
+{
+  "finalBrowserUrl": "http://localhost:3000/dashboard",
+  "routes": [
+    {
+      "path": "/reports",
+      "status": 302,
+      "location": "/onboarding/organization"
+    },
+    {
+      "path": "/onboarding/organization",
+      "status": 302,
+      "location": "/onboarding/organization"
+    },
+    {
+      "path": "/users",
+      "status": 302,
+      "location": "/auth/login?redirect=/users"
+    }
+  ]
+}

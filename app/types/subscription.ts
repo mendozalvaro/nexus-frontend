@@ -16,6 +16,10 @@ export interface OrganizationCapabilities {
   hasAdvancedReports: boolean;
   hasApiAccess: boolean;
   hasForensicExport: boolean;
+  hasHotelModule?: boolean;
+  businessTypes: string[];
+  allowedBusinessTypes: string[];
+  maxBusinessTypes: number;
   currentBranchesCount: number;
   currentUsersCount: number;
   subscriptionStatus: SubscriptionStatus;

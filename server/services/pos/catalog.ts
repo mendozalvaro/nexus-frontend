@@ -2,7 +2,7 @@ import type { Database } from "@/types/database.types";
 
 import {
   assertBranchAccess,
-  requirePOSContext,
+  requirePOSContextStrict,
 } from "../../utils/pos";
 
 import type { H3Event } from "h3";
@@ -18,6 +18,7 @@ type AssignmentRow = Database["public"]["Tables"]["employee_branch_assignments"]
 export interface POSCatalogResult {
   organizationId: string;
   currentBranchId: string | null;
+  defaultReceiptFormat: "thermal" | "half_letter";
   branches: BranchRow[];
   categories: CategoryRow[];
   products: ProductRow[];
@@ -28,7 +29,7 @@ export interface POSCatalogResult {
 }
 
 export async function getPOSCatalog(event: H3Event): Promise<POSCatalogResult> {
-  const context = await requirePOSContext(event);
+  const context = await requirePOSContextStrict(event, "can_view");
 
   const branchFilter = context.role === "admin"
     ? context.adminClient
@@ -48,6 +49,7 @@ export async function getPOSCatalog(event: H3Event): Promise<POSCatalogResult> {
       .returns<BranchRow[]>();
 
   const [
+    { data: organization, error: organizationError },
     { data: branches, error: branchesError },
     { data: categories, error: categoriesError },
     { data: products, error: productsError },
@@ -55,6 +57,11 @@ export async function getPOSCatalog(event: H3Event): Promise<POSCatalogResult> {
     { data: employees, error: employeesError },
     { data: assignments, error: assignmentsError },
   ] = await Promise.all([
+    context.adminClient
+      .from("organizations")
+      .select("default_receipt_format")
+      .eq("id", context.organizationId)
+      .maybeSingle(),
     branchFilter,
     context.adminClient
       .from("categories")
@@ -91,7 +98,7 @@ export async function getPOSCatalog(event: H3Event): Promise<POSCatalogResult> {
       .returns<AssignmentRow[]>(),
   ]);
 
-  const firstError = branchesError ?? categoriesError ?? productsError ?? servicesError ?? employeesError ?? assignmentsError;
+  const firstError = organizationError ?? branchesError ?? categoriesError ?? productsError ?? servicesError ?? employeesError ?? assignmentsError;
   if (firstError) {
     throw createError({
       statusCode: 500,
@@ -150,6 +157,7 @@ export async function getPOSCatalog(event: H3Event): Promise<POSCatalogResult> {
   return {
     organizationId: context.organizationId,
     currentBranchId: context.allowedBranchIds[0] ?? null,
+    defaultReceiptFormat: organization?.default_receipt_format === "half_letter" ? "half_letter" : "thermal",
     branches: accessibleBranches,
     categories: categories ?? [],
     products: products ?? [],

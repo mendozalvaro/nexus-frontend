@@ -87,6 +87,36 @@
     @apply mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400;
   }
 
+  .ripple {
+    position: relative;
+    overflow: hidden;
+    transform: translateZ(0);
+  }
+
+  .ripple::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(circle at var(--ripple-x, 50%) var(--ripple-y, 50%), rgb(255 255 255 / 0.3) 0%, transparent 60%);
+    opacity: 0;
+    transition: opacity 0.4s ease;
+    pointer-events: none;
+  }
+
+  .ripple:active::after {
+    opacity: 1;
+    transition: opacity 0s;
+  }
+
+  .scrollbar-none {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  .scrollbar-none::-webkit-scrollbar {
+    display: none;
+  }
+
   .auth-shell {
     background:
       radial-gradient(circle at top left, rgb(14 165 233 / 0.2), transparent 30%),

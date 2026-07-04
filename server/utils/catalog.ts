@@ -5,6 +5,7 @@ import { z } from "zod";
 import type { H3Event } from "h3";
 
 import type { Database } from "@/types/database.types";
+import { assertTenantModuleAccess, type TenantModuleAction, type TenantModuleKey } from "./tenant-module-access";
 
 type UserRole = Database["public"]["Enums"]["user_role"];
 type ProductRow = Database["public"]["Tables"]["products"]["Row"];
@@ -15,7 +16,7 @@ type AssignmentRow = Database["public"]["Tables"]["employee_branch_assignments"]
 type AdminClient = ReturnType<typeof createClient<Database>>;
 
 type CatalogRole = Extract<UserRole, "admin" | "manager">;
-type CategoryType = "product" | "service";
+type CategoryType = "product" | "service" | "lodging";
 
 const numericField = z.coerce.number().finite("Ingresa un valor numerico valido.");
 
@@ -42,7 +43,8 @@ export const catalogServiceSchema = z.object({
 export const catalogCategorySchema = z.object({
   name: z.string().trim().min(2, "El nombre de la categoria es obligatorio."),
   parentId: z.string().uuid().nullable().default(null),
-  type: z.enum(["product", "service"]),
+  type: z.enum(["product", "service", "lodging"]),
+  description: z.string().trim().max(240).optional().default(""),
 });
 
 export const catalogStatusSchema = z.object({
@@ -60,6 +62,26 @@ export interface CatalogContext {
   };
   allowedBranchIds: string[];
 }
+
+const resolveCatalogCategoryModule = (type: CategoryType): Extract<TenantModuleKey,
+  | "catalog.categories.products"
+  | "catalog.categories.services"
+  | "catalog.categories.rooms"
+> => {
+  if (type === "product") return "catalog.categories.products";
+  if (type === "service") return "catalog.categories.services";
+  return "catalog.categories.rooms";
+};
+
+const resolveCatalogEntityModule = (type: CategoryType): Extract<TenantModuleKey,
+  | "catalog.products"
+  | "catalog.services"
+  | "catalog.rooms"
+> => {
+  if (type === "product") return "catalog.products";
+  if (type === "service") return "catalog.services";
+  return "catalog.rooms";
+};
 
 const getBearerToken = (event: H3Event): string => {
   const header = getHeader(event, "authorization");
@@ -222,6 +244,37 @@ export const readValidatedCatalogBody = async <T>(event: H3Event, schema: z.ZodS
   return parsed.data;
 };
 
+export const assertCatalogModuleAccess = async (
+  context: CatalogContext,
+  moduleKey: TenantModuleKey,
+  action: TenantModuleAction = "can_view",
+) => {
+  await assertTenantModuleAccess({
+    adminClient: context.adminClient,
+    organizationId: context.organizationId,
+    role: context.role,
+    roleId: context.profile.role_id,
+    moduleKey,
+    action,
+  });
+};
+
+export const assertCatalogEntityAccess = async (
+  context: CatalogContext,
+  type: CategoryType,
+  action: TenantModuleAction = "can_view",
+) => {
+  await assertCatalogModuleAccess(context, resolveCatalogEntityModule(type), action);
+};
+
+export const assertCatalogCategoryAccess = async (
+  context: CatalogContext,
+  type: CategoryType,
+  action: TenantModuleAction = "can_view",
+) => {
+  await assertCatalogModuleAccess(context, resolveCatalogCategoryModule(type), action);
+};
+
 export const getCatalogProductOrThrow = async (context: CatalogContext, productId: string): Promise<ProductRow> => {
   const { data, error } = await context.adminClient
     .from("products")
@@ -362,5 +415,46 @@ export const assertCatalogUniqueCategoryName = async (
   if ((data ?? []).length > 0) {
     throw createError({ statusCode: 409, statusMessage: "Ya existe una categoria con ese nombre para este tipo." });
   }
+};
+
+// ─── Rooms ────────────────────────────────────────────
+
+type RoomRow = Database["public"]["Tables"]["rooms"]["Row"];
+
+export const roomSchema = z.object({
+  roomNumber: z.string().trim().min(1, "El numero de habitacion es obligatorio."),
+  floor: z.coerce.number().int().nullable().optional(),
+  categoryId: z.string().uuid("Selecciona una categoria valida."),
+  branchId: z.string().uuid("Selecciona una sucursal valida."),
+  basePrice: numericField.min(0, "El precio base no puede ser negativo."),
+  notes: z.string().trim().max(500).optional().default(""),
+});
+
+export const roomUpdateSchema = z.object({
+  roomNumber: z.string().trim().min(1).optional(),
+  floor: z.coerce.number().int().nullable().optional(),
+  categoryId: z.string().uuid().optional(),
+  basePrice: numericField.min(0).optional(),
+  status: z.enum(["available", "occupied", "maintenance", "cleaning"]).optional(),
+  notes: z.string().trim().max(500).optional(),
+});
+
+export const getRoomOrThrow = async (context: CatalogContext, roomId: string): Promise<RoomRow> => {
+  const { data, error } = await context.adminClient
+    .from("rooms")
+    .select("*")
+    .eq("organization_id", context.organizationId)
+    .eq("id", roomId)
+    .maybeSingle<RoomRow>();
+
+  if (error) {
+    throw createError({ statusCode: 500, statusMessage: "No se pudo validar la habitacion." });
+  }
+
+  if (!data) {
+    throw createError({ statusCode: 404, statusMessage: "La habitacion no existe." });
+  }
+
+  return data;
 };
 

@@ -4,7 +4,7 @@ import type { Json, Tables } from "@/types/database.types";
 import type { SubscriptionPlanSlug } from "./subscription";
 
 export type BillingMode = "monthly" | "quarterly" | "annual";
-export type BusinessType = "products" | "services" | "hybrid";
+export type ActivationMode = "trial" | "paid";
 
 export interface RegistrationDraft {
   fullName: string;
@@ -17,9 +17,10 @@ export interface RegistrationDraft {
 
 export interface OrganizationDraft {
   organizationName: string;
-  businessType: BusinessType;
+  businessTypes: ("product" | "service" | "lodging")[];
   selectedPlan: SubscriptionPlanSlug;
   billingMode: BillingMode;
+  activationMode: ActivationMode;
   country: string;
   currency: string;
   timezone: string;
@@ -49,5 +50,18 @@ export interface PostAuthResolution {
     | "organization"
     | "payment"
     | "pending"
-    | "active";
+    | "active"
+    | "unauthorized";
+  errorMessage?: string | null;
+}
+
+export interface PostAuthContextPayload {
+  isSystem: boolean;
+  hasClientAccount: boolean;
+  resolvedRole: "admin" | "manager" | "employee" | "client" | null;
+  organizationId: string | null;
+  organizationStatus: string | null;
+  latestPaymentValidationStatus: string | null;
+  storefrontOrganizationSlug: string | null;
+  storefrontClientStatus: "active" | "inactive" | "blocked" | null;
 }

@@ -1,4 +1,4 @@
-import { requirePOSContext } from "../../utils/pos";
+import { requirePOSContextStrict } from "../../utils/pos";
 
 import type { H3Event } from "h3";
 
@@ -21,7 +21,7 @@ export async function getPOSProducts(
   event: H3Event,
   branchId: string | null,
 ): Promise<POSProductsResult> {
-  const context = await requirePOSContext(event);
+  const context = await requirePOSContextStrict(event, "can_view");
 
   if (branchId) {
     const { allowedBranchIds } = context;

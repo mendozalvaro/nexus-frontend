@@ -1,25 +1,19 @@
 import { setCacheHeaders } from "../../utils/cache";
-import { requireTenantContext } from "../../utils/tenant-context";
+import { requireStaffTenantContext } from "../../utils/tenant-context";
+import { getOrganizationSlugValidationError, normalizeOrganizationSlug } from "../../utils/organization-slug";
 
 const slugCache = new Map<string, { available: boolean; ts: number }>();
 const CACHE_TTL = 30000;
 
 export default defineEventHandler(async (event) => {
-  const context = await requireTenantContext(event);
+  const context = await requireStaffTenantContext(event);
 
   const query = getQuery(event);
-  const slug = String(query.slug ?? "").trim().toLowerCase();
+  const slug = normalizeOrganizationSlug(String(query.slug ?? ""));
+  const slugError = getOrganizationSlugValidationError(slug);
 
-  if (!slug || slug.length < 4) {
-    return { available: false, message: "Minimo 4 caracteres" };
-  }
-
-  if (slug.length > 50) {
-    return { available: false, message: "Maximo 50 caracteres" };
-  }
-
-  if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) {
-    return { available: false, message: "Solo letras minusculas, numeros y guiones" };
+  if (slugError) {
+    return { available: false, message: slugError };
   }
 
   const cached = slugCache.get(slug);

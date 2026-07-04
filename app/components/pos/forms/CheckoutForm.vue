@@ -11,6 +11,7 @@ import type {
   POSBranchOption,
   POSCheckoutPayload,
   POSCustomerOption,
+  ReceiptFormat,
 } from "@/composables/usePOS";
 
 const props = withDefaults(defineProps<{
@@ -21,6 +22,7 @@ const props = withDefaults(defineProps<{
   discountAmount: number;
   finalAmount: number;
   customerOptions: POSCustomerOption[];
+  defaultReceiptFormat?: ReceiptFormat;
   hasAppointmentContext?: boolean;
   appointmentCustomerId?: string | null;
   appointmentWalkIn?: { fullName: string; phone: string } | null;
@@ -50,6 +52,7 @@ const state = reactive({
   note: "",
   customerQuery: "",
   createAppointments: true,
+  receiptFormatOverride: (props.defaultReceiptFormat ?? "thermal") as ReceiptFormat,
 });
 
 watch(
@@ -105,6 +108,15 @@ watch(
   { immediate: true },
 );
 
+watch(
+  () => props.defaultReceiptFormat,
+  (value) => {
+    if (!value) return;
+    state.receiptFormatOverride = value;
+  },
+  { immediate: true },
+);
+
 const schema = z.object({
   branchId: z.string().uuid("Selecciona una sucursal válida."),
   customerMode: z.enum(["existing", "walk_in"]),
@@ -112,6 +124,7 @@ const schema = z.object({
   walkInFullName: z.string(),
   walkInPhone: z.string(),
   paymentMethod: z.enum(["cash", "card", "transfer", "mixed", "digital_wallet"]),
+  receiptFormatOverride: z.enum(["thermal", "half_letter"]),
   discountType: z.enum(["none", "percentage", "fixed"]),
   discountValue: z.number().min(0, "El descuento no puede ser negativo."),
   note: z.string().trim().max(240, "La nota no puede superar 240 caracteres."),
@@ -197,6 +210,7 @@ const submit = () => {
     },
     note: state.note,
     createAppointments: state.createAppointments,
+    receiptFormatOverride: state.receiptFormatOverride,
   });
 };
 </script>
@@ -282,6 +296,21 @@ const submit = () => {
             label-key="label"
             value-key="value"
             placeholder="Método de pago"
+            class="w-full"
+            :disabled="loading"
+            :ui="ADMIN_FIELD_UI"
+          />
+        </UFormField>
+
+        <UFormField label="Formato de recibo" name="receiptFormatOverride">
+          <USelect
+            v-model="state.receiptFormatOverride"
+            :items="[
+              { label: 'Térmico (ticket)', value: 'thermal' },
+              { label: 'Media carta', value: 'half_letter' },
+            ]"
+            label-key="label"
+            value-key="value"
             class="w-full"
             :disabled="loading"
             :ui="ADMIN_FIELD_UI"

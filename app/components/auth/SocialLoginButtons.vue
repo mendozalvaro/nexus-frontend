@@ -1,22 +1,37 @@
 <script setup lang="ts">
+import type { AuthAudience } from "@/types/auth";
+
 const props = withDefaults(defineProps<{
   disabled?: boolean;
   compact?: boolean;
+  audience: AuthAudience;
+  redirect?: string | null;
+  slug?: string | null;
 }>(), {
   disabled: false,
   compact: false,
+  redirect: null,
+  slug: null,
 });
 
-const providers = [
-  {
-    label: "Continuar con Google",
-    icon: "i-lucide-chrome",
-  },
-  {
-    label: "Continuar con Microsoft",
-    icon: "i-lucide-monitor-smartphone",
-  },
-];
+const { signInWithProvider, isSubmitting } = useAuth();
+const pending = ref(false);
+
+const isDisabled = computed(() => props.disabled || pending.value || isSubmitting.value);
+
+const handleGoogleSignIn = async () => {
+  pending.value = true;
+
+  try {
+    await signInWithProvider("google", {
+      audience: props.audience,
+      redirect: props.redirect,
+      slug: props.slug,
+    });
+  } finally {
+    pending.value = false;
+  }
+};
 </script>
 
 <template>
@@ -24,29 +39,25 @@ const providers = [
     <div class="auth-separator">
       <div class="h-px flex-1 bg-slate-200/80 dark:bg-slate-800" />
       <span class="px-3 text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500 dark:text-slate-400">
-        Accesos sociales
+        Acceso con Google
       </span>
       <div class="h-px flex-1 bg-slate-200/80 dark:bg-slate-800" />
     </div>
 
-    <div :class="compact ? 'grid gap-3' : 'grid gap-3 sm:grid-cols-2'">
+    <div :class="compact ? 'grid gap-3' : 'grid gap-3 sm:grid-cols-1'">
       <UButton
-        v-for="provider in providers"
-        :key="provider.label"
         color="neutral"
         variant="soft"
         size="lg"
-        :icon="provider.icon"
+        icon="i-lucide-chrome"
         class="auth-social-button"
-        :disabled="disabled"
-        :aria-label="`${provider.label}. Próximamente`"
+        :loading="pending"
+        :disabled="isDisabled"
+        aria-label="Continuar con Google"
+        @click="handleGoogleSignIn"
       >
-        {{ provider.label }}
+        Continuar con Google
       </UButton>
     </div>
-
-    <p class="text-center text-xs leading-6 text-slate-600 dark:text-slate-300">
-      Inicio de sesión social disponible en fase 2.
-    </p>
   </div>
 </template>

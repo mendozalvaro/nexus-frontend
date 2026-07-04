@@ -4,6 +4,7 @@ definePageMeta({
   middleware: ["permissions"],
   permission: "profile.view",
   roles: ["client"],
+  moduleKey: "client.profile",
 });
 
 const {
@@ -20,11 +21,11 @@ const {
 } = useClientProfile();
 
 const handleGeneralUpdate = (field: keyof typeof formState, value: string) => {
-  (formState as any)[field] = value;
+  formState[field] = value;
 };
 
 const handleBillingUpdate = (field: keyof typeof billingState, value: string) => {
-  (billingState as any)[field] = value;
+  billingState[field] = value;
 };
 
 onMounted(async () => {

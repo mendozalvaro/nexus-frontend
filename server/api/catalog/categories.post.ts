@@ -1,4 +1,5 @@
 import {
+  assertCatalogCategoryAccess,
   assertCatalogUniqueCategoryName,
   catalogCategorySchema,
   getCatalogCategoryOrThrow,
@@ -9,6 +10,7 @@ import {
 export default defineEventHandler(async (event) => {
   const context = await requireCatalogContext(event);
   const body = await readValidatedCatalogBody(event, catalogCategorySchema);
+  await assertCatalogCategoryAccess(context, body.type, "can_create");
 
   await assertCatalogUniqueCategoryName(context, body.name.trim(), body.type);
 
@@ -23,6 +25,7 @@ export default defineEventHandler(async (event) => {
       name: body.name.trim(),
       parent_id: body.parentId,
       type: body.type,
+      description: body.description?.trim() || null,
       is_active: true,
     })
     .select("id")

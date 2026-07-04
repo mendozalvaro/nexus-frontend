@@ -18,8 +18,8 @@ const {
   error,
   resendVerificationEmail,
   refreshVerificationStatus,
-  resolvePostAuthDestination,
 } = useRegistration();
+const { resolvePostAuthDestination } = usePostAuthResolution();
 
 const email = computed(() => typeof route.query.email === "string" ? route.query.email : registrationDraft.value.email);
 const verified = ref(false);

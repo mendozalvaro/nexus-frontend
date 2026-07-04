@@ -1,5 +1,3 @@
-import type { Ref } from "vue";
-
 export interface SettingsOrganization {
   id: string;
   name: string;
@@ -7,11 +5,27 @@ export interface SettingsOrganization {
   timezone: string | null;
   currency_code: string | null;
   country: string | null;
-  business_type: string | null;
   address: string | null;
   logo_url: string | null;
   is_active: boolean | null;
+  default_receipt_format: "thermal" | "half_letter" | null;
+  lodging_checkout_deadline: string | null;
+  lodging_stay_cutoff_time: string | null;
+  lodging_late_checkout_penalty: number | null;
   updated_at: string | null;
+}
+
+export interface UpdateOrgPayload {
+  name?: string;
+  slug?: string;
+  timezone?: string;
+  currency_code?: string;
+  country?: string;
+  address?: string | null;
+  default_receipt_format?: "thermal" | "half_letter";
+  lodging_checkout_deadline?: string;
+  lodging_stay_cutoff_time?: string;
+  lodging_late_checkout_penalty?: number;
 }
 
 export interface SettingsSubscription {
@@ -26,16 +40,6 @@ export interface SettingsSubscription {
   doc_type: "nit" | "ci" | "pasaporte" | "cedula" | null;
   doc_number: string | null;
   updated_at: string | null;
-}
-
-export interface UpdateOrgPayload {
-  name?: string;
-  slug?: string;
-  timezone?: string;
-  currency_code?: string;
-  country?: string;
-  business_type?: "products" | "services" | "hybrid";
-  address?: string | null;
 }
 
 export interface UpdateSubPayload {
@@ -87,9 +91,9 @@ export const useSettings = () => {
   const { refreshOrganization } = useGlobalOrganization();
   const { loadCapabilities, capabilities } = useSubscription();
 
-  const organization = useState<SettingsOrganization | null>("settings:organization", () => null) as Ref<SettingsOrganization | null>;
-  const subscription = useState<SettingsSubscription | null>("settings:subscription", () => null) as Ref<SettingsSubscription | null>;
-  const siatConfig = useState<SettingsSiatConfig | null>("settings:siat", () => null) as Ref<SettingsSiatConfig | null>;
+  const organization = useState<SettingsOrganization | null>("settings:organization", () => null);
+  const subscription = useState<SettingsSubscription | null>("settings:subscription", () => null);
+  const siatConfig = useState<SettingsSiatConfig | null>("settings:siat", () => null);
   const orgLoading = useState<boolean>("settings:org-loading", () => false);
   const subLoading = useState<boolean>("settings:sub-loading", () => false);
   const siatLoading = useState<boolean>("settings:siat-loading", () => false);
@@ -157,6 +161,26 @@ export const useSettings = () => {
       return result;
     } catch (e) {
       error.value = e instanceof Error ? e.message : "No se pudo actualizar el logo.";
+      throw e;
+    } finally {
+      mutationLoading.value = false;
+    }
+  };
+
+  const removeLogo = async () => {
+    mutationLoading.value = true;
+    error.value = null;
+    try {
+      const result = await $fetch<{ id: string; logo_url: null }>("/api/settings/organization-logo", {
+        method: "DELETE",
+      });
+      if (organization.value) {
+        organization.value = { ...organization.value, logo_url: null };
+      }
+      await refreshOrganization();
+      return result;
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : "No se pudo quitar el logo.";
       throw e;
     } finally {
       mutationLoading.value = false;
@@ -266,6 +290,7 @@ export const useSettings = () => {
     loadSiatConfig,
     updateOrganization,
     updateLogo,
+    removeLogo,
     updateSubscription,
     updateBillingData,
     updateSiatConfig,

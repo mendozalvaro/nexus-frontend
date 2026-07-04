@@ -1,7 +1,6 @@
 import { z } from "zod";
-import { serverSupabaseUser } from "#supabase/server";
 
-import { requireTenantContext } from "../../utils/tenant-context";
+import { requireClientTenantContext } from "../../utils/tenant-context";
 import { updateClientProfile } from "../../services/clientProfile";
 import type { ClientProfileState } from "@/types/client";
 
@@ -15,12 +14,7 @@ const updateClientSchema = z.object({
 });
 
 export default defineEventHandler(async (event) => {
-  const authUser = await serverSupabaseUser(event);
-  if (!authUser) {
-    throw createError({ statusCode: 401, statusMessage: "No autorizado." });
-  }
-
-  const context = await requireTenantContext(event);
+  const context = await requireClientTenantContext(event);
 
   const body = await readBody(event);
   const parsed = updateClientSchema.safeParse(body);
@@ -31,6 +25,6 @@ export default defineEventHandler(async (event) => {
     });
   }
 
-  const result = await updateClientProfile(event, authUser.id, context.organizationId, parsed.data);
+  const result = await updateClientProfile(event, context.userId, context.organizationId, parsed.data);
   return { profile: result as ClientProfileState };
 });

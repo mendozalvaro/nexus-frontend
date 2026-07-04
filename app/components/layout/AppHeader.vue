@@ -120,8 +120,14 @@ function handleEscape(event: KeyboardEvent) {
 
       <NuxtLink :to="homePath" class="admin-focus-ring admin-interactive flex min-w-0 items-center gap-3 rounded-2xl">
         <div
-          class="nexus-logo-shell flex h-11 w-11 items-center justify-center rounded-2xl text-sm font-semibold text-white shadow-lg">
-          NP
+          class="nexus-logo-shell flex h-11 w-11 items-center justify-center overflow-hidden rounded-2xl text-sm font-semibold text-white shadow-lg">
+          <img
+            v-if="organization?.logo_url"
+            :src="organization.logo_url"
+            :alt="organizationName"
+            class="h-full w-full object-cover"
+          >
+          <span v-else>NP</span>
         </div>
         <div class="hidden min-w-0 sm:block">
           <p class="truncate text-sm font-semibold text-slate-900 dark:text-white">NexusPOS</p>

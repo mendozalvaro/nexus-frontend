@@ -1,8 +1,6 @@
 import type { Database, Json } from "@/types/database.types";
 
 type SystemUserRow = Database["public"]["Tables"]["system_users"]["Row"];
-type StatsRpcRow =
-  Database["public"]["Functions"]["admin_payment_validation_stats"]["Returns"][number];
 type ListRpcRow =
   Database["public"]["Functions"]["admin_list_payment_validations"]["Returns"][number];
 type DetailRpcRow =
@@ -81,32 +79,6 @@ const isRecord = (value: unknown): value is Record<string, unknown> => {
 
 const readString = (value: unknown): string | null => {
   return typeof value === "string" && value.length > 0 ? value : null;
-};
-
-const readNumber = (value: unknown): number | null => {
-  return typeof value === "number" && Number.isFinite(value) ? value : null;
-};
-
-const extractFileSize = (value: unknown): number | null => {
-  if (!isRecord(value)) {
-    return null;
-  }
-
-  return readNumber(value.size);
-};
-
-const formatAvgTime = (value: number): string => {
-  if (value <= 0) {
-    return "0 min";
-  }
-
-  if (value < 60) {
-    return `${Math.round(value)} min`;
-  }
-
-  const hours = Math.floor(value / 60);
-  const minutes = Math.round(value % 60);
-  return minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`;
 };
 
 const normalizeStatus = (value: string | null): PaymentValidationListRow["status"] => {
@@ -238,6 +210,52 @@ export const usePaymentSystem = () => {
 
   const getDefaultFilters = () => createDefaultFilters();
 
+  const getSystemRequestHeaders = async () => {
+    let token = session.value?.access_token;
+
+    if (!token) {
+      const { data, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError) {
+        throw sessionError;
+      }
+
+      token = data.session?.access_token;
+    }
+
+    if (!token) {
+      throw new Error("No se encontro una sesion valida para operaciones system.");
+    }
+
+    return {
+      Authorization: `Bearer ${token}`,
+    };
+  };
+
+  const getReadableErrorMessage = (err: unknown, fallback: string) => {
+    if (!err || typeof err !== "object") {
+      return fallback;
+    }
+
+    const candidate = ((err as {
+      data?: { message?: string; statusMessage?: string };
+      statusMessage?: string;
+      message?: string;
+    }).data?.statusMessage)
+      ?? (err as {
+        data?: { message?: string; statusMessage?: string };
+        statusMessage?: string;
+        message?: string;
+      }).data?.message
+      ?? (err as { statusMessage?: string; message?: string }).statusMessage
+      ?? (err as { statusMessage?: string; message?: string }).message;
+
+    if (!candidate) {
+      return fallback;
+    }
+
+    return candidate.replace(/^\[[A-Z_]+\]\s+"[^"]+":\s*/u, "").trim();
+  };
+
   const resolveSystemUser = async (): Promise<SystemUserRow | null> => {
     const currentUserId = session.value?.user?.id;
     if (!currentUserId) {
@@ -260,23 +278,10 @@ export const usePaymentSystem = () => {
   };
 
   const loadStats = async () => {
-    const { data, error: statsError } = await supabase.rpc(
-      "admin_payment_validation_stats",
-    );
-
-    if (statsError) {
-      throw statsError;
-    }
-
-    const payload = Array.isArray(data) ? data[0] : null;
-    const row: StatsRpcRow | null = payload ?? null;
-
-    stats.value = {
-      pending: row?.pending_count ?? 0,
-      approvedToday: row?.approved_today ?? 0,
-      rejectedToday: row?.rejected_today ?? 0,
-      avgTime: formatAvgTime(row?.avg_review_minutes ?? 0),
-    };
+    const response = await $fetch<{ stats: PaymentSystemStats }>("/api/system/payment-validations/stats", {
+      headers: await getSystemRequestHeaders(),
+    });
+    stats.value = response.stats;
   };
 
   const loadValidations = async (filters: PaymentSystemFilters) => {
@@ -284,30 +289,25 @@ export const usePaymentSystem = () => {
     error.value = null;
 
     try {
-      const { data, error: listError } = await supabase.rpc(
-        "admin_list_payment_validations",
-        {
-          p_search: filters.search || undefined,
-          p_status: filters.status ?? undefined,
-          p_date_from: filters.dateFrom || undefined,
-          p_date_to: filters.dateTo || undefined,
-          p_page: page.value,
-          p_page_size: perPage.value,
+      const response = await $fetch<{
+        rows: ListRpcRow[];
+        total: number;
+      }>("/api/system/payment-validations", {
+        headers: await getSystemRequestHeaders(),
+        query: {
+          search: filters.search || undefined,
+          status: filters.status || undefined,
+          dateFrom: filters.dateFrom || undefined,
+          dateTo: filters.dateTo || undefined,
+          page: page.value,
+          perPage: perPage.value,
         },
-      );
+      });
 
-      if (listError) {
-        throw listError;
-      }
-
-      const rows = Array.isArray(data) ? data.map(mapListRow) : [];
-      validations.value = rows;
-      const firstRow = Array.isArray(data) ? (data[0] ?? null) : null;
-      totalValidations.value = firstRow?.total_count ?? 0;
+      validations.value = Array.isArray(response.rows) ? response.rows.map(mapListRow) : [];
+      totalValidations.value = Number(response.total ?? 0);
     } catch (loadError) {
-      error.value = loadError instanceof Error
-        ? loadError.message
-        : "No pudimos cargar las validaciones de pago.";
+      error.value = getReadableErrorMessage(loadError, "No pudimos cargar las validaciones de pago.");
       validations.value = [];
       totalValidations.value = 0;
     } finally {
@@ -320,62 +320,24 @@ export const usePaymentSystem = () => {
     await Promise.all([loadStats(), loadValidations(filters)]);
   };
 
-  const resolveReceiptSignedUrl = async (storagePath: string): Promise<string | null> => {
-    const { data, error: signedUrlError } = await supabase.storage
-      .from("receipts")
-      .createSignedUrl(storagePath, 60 * 30);
-
-    if (signedUrlError) {
-      throw signedUrlError;
-    }
-
-    return data?.signedUrl ?? null;
-  };
-
-  const resolveReceiptSize = async (storagePath: string): Promise<number | null> => {
-    const segments = storagePath.split("/").filter(Boolean);
-    const fileName = segments.pop();
-    const folderPath = segments.join("/");
-
-    if (!fileName) {
-      return null;
-    }
-
-    const { data, error: listError } = await supabase.storage
-      .from("receipts")
-      .list(folderPath, { limit: 20, search: fileName });
-
-    if (listError || !Array.isArray(data)) {
-      return null;
-    }
-
-    const fileEntry = data.find((entry) => entry.name === fileName);
-    return extractFileSize(fileEntry?.metadata);
-  };
-
   const openValidationDetail = async (validationId: string) => {
     detailLoading.value = true;
     error.value = null;
 
     try {
-      const { data, error: detailError } = await supabase.rpc(
-        "admin_get_payment_validation_detail",
-        { p_validation_id: validationId },
-      );
+      const response = await $fetch<{
+        row: (DetailRpcRow & {
+          receipt_url: string | null;
+          receipt_size_bytes: number | null;
+        }) | null;
+      }>(`/api/system/payment-validations/${validationId}`, {
+        headers: await getSystemRequestHeaders(),
+      });
 
-      if (detailError) {
-        throw detailError;
-      }
-
-      const row: DetailRpcRow | null = Array.isArray(data) ? (data[0] ?? null) : null;
+      const row = response.row;
       if (!row) {
         throw new Error("No encontramos la validacion seleccionada.");
       }
-
-      const [receiptUrl, receiptSizeBytes] = await Promise.all([
-        resolveReceiptSignedUrl(row.receipt_storage_path),
-        resolveReceiptSize(row.receipt_storage_path),
-      ]);
 
       selectedValidation.value = {
         ...mapDetailRow(row),
@@ -383,13 +345,11 @@ export const usePaymentSystem = () => {
         organizationAddress: row.organization_address,
         subscriptionStatus: row.subscription_status,
         billingData: row.billing_data,
-        receiptUrl,
-        receiptSizeBytes,
+        receiptUrl: row.receipt_url,
+        receiptSizeBytes: row.receipt_size_bytes,
       };
     } catch (detailLoadError) {
-      error.value = detailLoadError instanceof Error
-        ? detailLoadError.message
-        : "No pudimos cargar el detalle de la validacion.";
+      error.value = getReadableErrorMessage(detailLoadError, "No pudimos cargar el detalle de la validacion.");
       selectedValidation.value = null;
     } finally {
       detailLoading.value = false;
@@ -435,20 +395,19 @@ export const usePaymentSystem = () => {
     feedback.value = null;
 
     try {
-      const { data, error: reviewError } = await supabase.rpc(
-        "admin_review_payment_validation",
+      const response = await $fetch<{ result: Json }>(
+        `/api/system/payment-validations/${input.validationId}/review`,
         {
-          p_validation_id: input.validationId,
-          p_decision: input.decision,
-          p_reason: input.reason ?? undefined,
+          method: "POST",
+          headers: await getSystemRequestHeaders(),
+          body: {
+            decision: input.decision,
+            reason: input.reason ?? null,
+          },
         },
       );
 
-      if (reviewError) {
-        throw reviewError;
-      }
-
-      const result = parseReviewResult(data);
+      const result = parseReviewResult(response.result);
       if (!result) {
         throw new Error("No pudimos procesar la respuesta de la revision.");
       }
@@ -471,9 +430,10 @@ export const usePaymentSystem = () => {
       feedback.value = {
         color: "error",
         title: "No pudimos completar la revision",
-        description: reviewValidationError instanceof Error
-          ? reviewValidationError.message
-          : "Ocurrio un error inesperado al revisar el pago.",
+        description: getReadableErrorMessage(
+          reviewValidationError,
+          "Ocurrio un error inesperado al revisar el pago.",
+        ),
       };
       throw reviewValidationError;
     } finally {

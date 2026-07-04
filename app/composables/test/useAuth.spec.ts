@@ -8,25 +8,37 @@ const mockEq = vi.fn(() => ({ maybeSingle: mockMaybeSingle }))
 const mockSelect = vi.fn(() => ({ eq: mockEq }))
 const mockFrom = vi.fn(() => ({ select: mockSelect }))
 const mockFetch = vi.fn()
+const mockSignInWithPassword = vi.fn()
+const mockSignInWithOAuth = vi.fn()
+const mockSignOut = vi.fn()
+const mockSignUp = vi.fn()
+const mockResetPasswordForEmail = vi.fn()
 vi.stubGlobal('$fetch', mockFetch)
 
 mockNuxtImport('useSupabaseClient', () => () => ({
   from: mockFrom,
   auth: {
-    signInWithPassword: vi.fn(),
-    signOut: vi.fn(),
-    signUp: vi.fn(),
-    resetPasswordForEmail: vi.fn()
+    signInWithPassword: mockSignInWithPassword,
+    signInWithOAuth: mockSignInWithOAuth,
+    signOut: mockSignOut,
+    signUp: mockSignUp,
+    resetPasswordForEmail: mockResetPasswordForEmail
   }
 }))
 
 const mockSession = ref({
   user: { id: 'user-123', email: 'test@nexus.com', user_metadata: {} }
 })
+const mockAuthenticatedUser = ref(mockSession.value.user)
+const mockBootstrapState = ref<'idle' | 'resolving' | 'authenticated' | 'profile_incomplete' | 'unauthenticated'>('authenticated')
 
 mockNuxtImport('useSupabaseSession', () => () => mockSession)
 mockNuxtImport('useSessionAccess', () => () => ({
-  resolveUser: vi.fn().mockResolvedValue(mockSession.value.user)
+  session: mockSession,
+  authenticatedUser: mockAuthenticatedUser,
+  authBootstrapState: mockBootstrapState,
+  resolveUser: vi.fn().mockImplementation(async () => mockSession.value.user),
+  resolveAccessToken: vi.fn().mockResolvedValue('token-123'),
 }))
 
 describe('useAuth cache', () => {
@@ -38,6 +50,8 @@ describe('useAuth cache', () => {
     mockSession.value = {
       user: { id: 'user-123', email: 'test@nexus.com', user_metadata: {} }
     }
+    mockAuthenticatedUser.value = mockSession.value.user
+    mockBootstrapState.value = 'authenticated'
 
     const profileData = {
       id: 'user-123',
@@ -53,6 +67,17 @@ describe('useAuth cache', () => {
     })
 
     mockFetch.mockResolvedValue(profileData)
+    mockSignInWithPassword.mockResolvedValue({
+      data: {
+        user: { id: 'user-123', email: 'test@nexus.com' },
+        session: { access_token: 'token-123' },
+      },
+      error: null,
+    })
+    mockSignInWithOAuth.mockResolvedValue({
+      data: { provider: 'google', url: 'https://accounts.google.com' },
+      error: null,
+    })
   })
 
   afterEach(() => {
@@ -93,5 +118,62 @@ describe('useAuth cache', () => {
 
     await fetchProfile({ force: true })
     expect(mockFetch).toHaveBeenCalledTimes(2)
+  })
+
+  it('evita /api/profile en login publico', async () => {
+    const { useAuth } = await import('../useAuth')
+    const { signIn } = useAuth()
+
+    const result = await signIn('test@nexus.com', '12345678', { resolveProfile: false })
+
+    expect(result.error).toBeNull()
+    expect(mockSignInWithPassword).toHaveBeenCalledTimes(1)
+    expect(mockFetch).not.toHaveBeenCalledWith("/api/profile")
+  })
+
+  it('cierra sesion si una cuenta client intenta entrar por login staff y /api/profile responde 403', async () => {
+    mockSession.value = {
+      user: { id: 'client-123', email: 'client@nexus.com', user_metadata: { role: 'client' } }
+    }
+    mockAuthenticatedUser.value = mockSession.value.user
+    mockSignInWithPassword.mockResolvedValue({
+      data: {
+        user: { id: 'client-123', email: 'client@nexus.com', user_metadata: { role: 'client' } },
+        session: { access_token: 'token-456' },
+      },
+      error: null,
+    })
+    mockFetch.mockRejectedValue({
+      statusCode: 403,
+      message: 'El perfil autenticado no tiene organization_id asignado.',
+    })
+    mockSignOut.mockResolvedValue({ error: null })
+
+    const { useAuth } = await import('../useAuth')
+    const { signIn } = useAuth()
+
+    const result = await signIn('client@nexus.com', '12345678')
+
+    expect(result.data).toBeNull()
+    expect(result.error).toBe('Esta cuenta no tiene acceso al panel interno.')
+    expect(mockSignOut).toHaveBeenCalledTimes(1)
+  })
+
+  it('inicia oauth staff preservando redirect valido', async () => {
+    const { useAuth } = await import('../useAuth')
+    const { signInWithProvider } = useAuth()
+
+    const result = await signInWithProvider('google', {
+      audience: 'staff',
+      redirect: '/inventory',
+    })
+
+    expect(result.error).toBeNull()
+    expect(mockSignInWithOAuth).toHaveBeenCalledWith({
+      provider: 'google',
+      options: {
+        redirectTo: 'http://localhost:3000/auth/callback?audience=staff&redirect=%2Finventory',
+      },
+    })
   })
 })

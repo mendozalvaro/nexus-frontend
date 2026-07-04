@@ -1,7 +1,10 @@
 import { getRouterParam } from "h3";
 
 import {
+  assertAdminModuleAccess,
   assertBranchesBelongToOrganization,
+  assertManagerBranchScope,
+  assertManagerCanOperateUser,
   assertPlanPermission,
   assertRoleRules,
   assertUserLimit,
@@ -18,6 +21,7 @@ export default defineEventHandler(async (event) => {
   const userId = getRouterParam(event, "id");
   const body = await readValidatedAdminBody(event, updateUserSchema);
 
+  await assertAdminModuleAccess(context, "users", "can_edit");
   await assertPlanPermission(context, "users");
 
   if (!userId) {
@@ -48,6 +52,8 @@ export default defineEventHandler(async (event) => {
     });
   }
 
+  await assertManagerCanOperateUser(context, existingProfile.id);
+
   if (existingProfile.role === "admin" || body.role === "admin") {
     throw createError({
       statusCode: 403,
@@ -70,6 +76,7 @@ export default defineEventHandler(async (event) => {
   );
   await assertUserLimit(context, body.role, existingProfile.role);
   await assertBranchesBelongToOrganization(context.adminClient, context.organizationId, branchIdsToValidate);
+  assertManagerBranchScope(context, branchIdsToValidate);
 
   const { data: duplicateProfile } = await context.adminClient
     .from("profiles")

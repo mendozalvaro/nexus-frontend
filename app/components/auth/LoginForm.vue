@@ -2,6 +2,7 @@
 import { z } from "zod";
 
 import SocialLoginButtons from "./SocialLoginButtons.vue";
+import { buildOAuthCallbackPath } from "@/utils/auth";
 import { sanitizeInternalRedirect } from "@/utils/redirect";
 
 type LoginFormData = z.output<typeof schema>;
@@ -27,10 +28,8 @@ const schema = z.object({
 
 const REMEMBER_STORAGE_KEY = "nexuspos:auth:remember";
 
-const router = useRouter();
 const session = useSupabaseSession();
-const { signIn, isLoading, isSubmitting } = useAuth();
-const { resolvePostAuthDestination } = useRegistration();
+const { signIn, isLoading, isSubmitting, error: authError } = useAuth();
 const {
   attemptCount,
   isRateLimited,
@@ -50,12 +49,14 @@ const state = reactive<LoginFormData>({
 
 const submitting = ref(false);
 const redirecting = ref(false);
-const error = ref<string | null>(null);
+const hydrated = ref(false);
+const localError = ref<string | null>(null);
 const showPassword = ref(false);
 const liveMessage = ref("");
+const displayedError = computed(() => localError.value ?? authError.value);
 
 const isBusy = computed(() => submitting.value || redirecting.value || isSubmitting.value || isLoading.value);
-const submitDisabled = computed(() => isBusy.value || isRateLimited.value);
+const submitDisabled = computed(() => !hydrated.value || isBusy.value || isRateLimited.value);
 const submitLabel = computed(() => {
   if (isRateLimited.value) {
     return "Acceso bloqueado temporalmente";
@@ -111,16 +112,18 @@ const hydrateRememberPreference = () => {
   }
 };
 
-const redirectByRole = async () => {
+const redirectToStaffCallback = async () => {
   if (redirecting.value) {
     return;
   }
 
   redirecting.value = true;
 
-  const resolution = await resolvePostAuthDestination();
   try {
-    await router.push(sanitizedRedirect.value ?? resolution.destination);
+    await navigateTo(buildOAuthCallbackPath({
+      audience: "staff",
+      redirect: sanitizedRedirect.value,
+    }), { replace: true });
   } finally {
     redirecting.value = false;
   }
@@ -135,7 +138,7 @@ const handleRateLimit = () => {
 
   if (rateLimitMessage.value) {
     liveMessage.value = rateLimitMessage.value;
-    error.value = rateLimitMessage.value;
+    localError.value = rateLimitMessage.value;
     return;
   }
 
@@ -147,35 +150,37 @@ const checkExistingSession = async () => {
     return;
   }
 
-  await redirectByRole();
+  await redirectToStaffCallback();
 };
 
 const onSubmit = async (event: LoginSubmitEvent) => {
+  event.preventDefault();
+
   if (isRateLimited.value) {
-    error.value = rateLimitMessage.value;
+    localError.value = rateLimitMessage.value;
     liveMessage.value = rateLimitMessage.value ?? "";
     return;
   }
 
   submitting.value = true;
-  error.value = null;
+  localError.value = null;
   liveMessage.value = "";
   state.email = event.data.email.trim().toLowerCase();
 
   try {
-    const result = await signIn(state.email, event.data.password);
+    const result = await signIn(state.email, event.data.password, { resolveProfile: false });
 
     if (!result.data || result.error) {
-      error.value = "Credenciales invalidas.";
+      localError.value = "Credenciales invalidas.";
       handleRateLimit();
       return;
     }
 
     syncRememberPreference();
     resetRateLimit();
-    await redirectByRole();
+    await redirectToStaffCallback();
   } catch {
-    error.value = "Credenciales invalidas.";
+    localError.value = "Credenciales invalidas.";
     handleRateLimit();
   } finally {
     submitting.value = false;
@@ -189,13 +194,14 @@ const handleEscape = (event: KeyboardEvent) => {
 
   if (showPassword.value) {
     showPassword.value = false;
-  } else if (error.value) {
-    error.value = null;
+  } else if (displayedError.value) {
+    localError.value = null;
   }
 };
 
 if (import.meta.client) {
   onMounted(async () => {
+    hydrated.value = true;
     hydrateRememberPreference();
     window.addEventListener("keydown", handleEscape);
     await checkExistingSession();
@@ -231,10 +237,10 @@ watch(() => session.value?.user?.id ?? null, async (userId) => {
 
       <UAlert v-if="registrationMessage" color="success" variant="soft" icon="i-lucide-badge-check" :title="registrationMessage" class="mb-4" />
       <UAlert v-if="sessionExpiredMessage" color="warning" variant="soft" icon="i-lucide-timer-reset" :title="sessionExpiredMessage" class="mb-4" />
-      <UAlert v-if="error" color="error" variant="soft" icon="i-lucide-octagon-alert" :title="error" class="mb-4" />
+      <UAlert v-if="displayedError" color="error" variant="soft" icon="i-lucide-octagon-alert" :title="displayedError" class="mb-4" />
       <UAlert v-if="shouldShowWarning && warningMessage && !isRateLimited" color="warning" variant="soft" icon="i-lucide-shield-alert" :title="warningMessage" class="auth-pulse-soft mb-4" />
 
-      <UForm :schema="schema" :state="state" :validate-on="['blur']" class="auth-form-stack" @submit="onSubmit">
+      <UForm method="post" :schema="schema" :state="state" :validate-on="['blur']" class="auth-form-stack" @submit.prevent="onSubmit">
         <div class="auth-field-group">
           <UFormField class="auth-field" label="Email" name="email">
             <UInput v-model="state.email" type="email" size="xl" autofocus autocomplete="email" placeholder="tu@empresa.com" icon="i-lucide-mail" :disabled="submitDisabled" class="auth-field-input admin-focus-ring w-full" :ui="{ base: 'min-h-11 text-base' }" />
@@ -268,7 +274,12 @@ watch(() => session.value?.user?.id ?? null, async (userId) => {
       </UForm>
 
       <div class="mt-6">
-        <SocialLoginButtons :disabled="submitDisabled" compact />
+        <SocialLoginButtons
+          :disabled="submitDisabled"
+          :redirect="sanitizedRedirect"
+          audience="staff"
+          compact
+        />
       </div>
 
       <div class="mt-6 text-center text-sm text-slate-600 dark:text-slate-300">

@@ -1,0 +1,13 @@
+{
+  "notificationType": "sale_receipt",
+  "recipientPhone": "60195006",
+  "recipientName": "Alvarito",
+  "templateVariables": {
+    "id": "RV-1001",
+    "name": "Alvarito",
+    "branch": "Sucursal Central",
+    "ticket": "TCK-1001",
+    "total": "Bs 125.00",
+    "payment_method": "QR"
+  }
+}

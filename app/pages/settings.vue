@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import type { UpdateOrgPayload, UpdateSiatPayload, UpdateBillingDataPayload } from "@/composables/useSettings";
+import type { UpdateBillingDataPayload, UpdateOrgPayload, UpdateSiatPayload } from "@/composables/useSettings";
+import type { StorefrontBusinessType } from "@/types/storefront";
 import type { SubscriptionPlanSlug } from "@/types/subscription";
 
 definePageMeta({
@@ -7,9 +8,10 @@ definePageMeta({
   middleware: ["permissions"],
   permission: "settings.view",
   roles: ["admin"],
+  moduleKey: "settings",
 });
 
-const activeTab = ref<"organization" | "subscription" | "siat" | "preferences" | "notifications" | "danger" | "billing-history">("organization");
+const activeTab = ref<"organization" | "storefront" | "subscription" | "siat" | "preferences" | "notifications" | "danger" | "billing-history">("organization");
 
 const {
   organization,
@@ -26,6 +28,7 @@ const {
   loadSiatConfig,
   updateOrganization,
   updateLogo,
+  removeLogo,
   updateBillingData,
   updateSiatConfig,
   deactivateOrganization,
@@ -43,6 +46,16 @@ const {
   clearError: clearBillingError,
 } = useBilling();
 
+const {
+  settings: storefrontSettings,
+  access: storefrontAccess,
+  loading: storefrontLoading,
+  mutationLoading: storefrontMutationLoading,
+  error: storefrontError,
+  loadStorefront,
+  updateStorefront,
+} = useStorefrontSettings();
+
 const { profile } = useAuth();
 
 const showPlanChangeModal = ref(false);
@@ -50,20 +63,52 @@ const showCancelModal = ref(false);
 const cancelReason = ref("");
 
 onMounted(async () => {
-  await Promise.all([loadOrganization(), loadSubscription()]);
+  await Promise.all([loadOrganization(), loadSubscription(), loadStorefront()]);
 });
 
 watch(activeTab, async (tab) => {
   if (tab === "subscription" && history.value.length === 0) {
     await loadHistory(5, 0);
   }
+
   if (tab === "siat" && !siatConfig.value && !siatLoading.value) {
     await loadSiatConfig();
   }
+
   if (tab === "billing-history" && history.value.length === 0) {
     await loadHistory();
   }
 });
+
+watch(
+  () => storefrontAccess.value?.canView,
+  (canView) => {
+    if (activeTab.value === "storefront" && canView === false) {
+      activeTab.value = "organization";
+    }
+  },
+);
+
+const availableStorefrontBusinessTypes = computed<StorefrontBusinessType[]>(() => {
+  const values = capabilities.value?.businessTypes ?? [];
+  const filtered = values.filter((value): value is StorefrontBusinessType =>
+    value === "product" || value === "service" || value === "lodging",
+  );
+
+  return filtered.length ? filtered : ["product"];
+});
+
+const tabs = computed(() => [
+  { key: "organization" as const, label: "Organizacion", icon: "i-lucide-building-2" },
+  ...(storefrontAccess.value?.canView
+    ? [{ key: "storefront" as const, label: "Tienda Virtual", icon: "i-lucide-store" }]
+    : []),
+  { key: "subscription" as const, label: "Suscripcion", icon: "i-lucide-credit-card" },
+  { key: "siat" as const, label: "Facturacion SIAT", icon: "i-lucide-receipt" },
+  { key: "preferences" as const, label: "Preferencias", icon: "i-lucide-palette" },
+  { key: "notifications" as const, label: "Notificaciones", icon: "i-lucide-bell-ring" },
+  { key: "danger" as const, label: "Zona peligrosa", icon: "i-lucide-triangle-alert" },
+]);
 
 const handleUpdateOrg = async (payload: UpdateOrgPayload) => {
   try {
@@ -81,9 +126,36 @@ const handleUploadLogo = async (file: File) => {
   }
 };
 
+const handleRemoveLogo = async () => {
+  try {
+    await removeLogo();
+  } catch {
+    // Error handled in composable
+  }
+};
+
 const handleUpdateBillingData = async (payload: UpdateBillingDataPayload) => {
   try {
     await updateBillingData(payload);
+  } catch {
+    // Error handled in composable
+  }
+};
+
+const handleUpdateStorefront = async (payload: {
+  slug: string;
+  businessType: StorefrontBusinessType;
+  templateKey: import("@/types/storefront").StorefrontTemplateKey;
+  colorPresetKey: import("@/types/storefront").StorefrontColorPresetKey;
+  primaryColor: string;
+  secondaryColor: string;
+  accentColor: string;
+  companyDescription: string | null;
+  isPublished: boolean;
+}) => {
+  try {
+    await updateStorefront(payload);
+    await loadOrganization();
   } catch {
     // Error handled in composable
   }
@@ -132,31 +204,11 @@ const handleCancel = async () => {
 const handleLoadMoreHistory = async () => {
   await loadHistory(50, history.value.length);
 };
-
-const tabs = [
-  { key: "organization" as const, label: "Organizacion", icon: "i-lucide-building-2" },
-  { key: "subscription" as const, label: "Suscripcion", icon: "i-lucide-credit-card" },
-  { key: "siat" as const, label: "Facturacion SIAT", icon: "i-lucide-receipt" },
-  { key: "preferences" as const, label: "Preferencias", icon: "i-lucide-palette" },
-  { key: "notifications" as const, label: "Notificaciones", icon: "i-lucide-bell-ring" },
-  { key: "danger" as const, label: "Zona peligrosa", icon: "i-lucide-triangle-alert" },
-];
 </script>
 
 <template>
   <div class="space-y-6 md:space-y-8">
-    <div class="flex flex-wrap gap-2">
-      <UButton
-        v-for="tab in tabs"
-        :key="tab.key"
-        :variant="activeTab === tab.key ? 'solid' : 'soft'"
-        :color="activeTab === tab.key ? 'primary' : 'neutral'"
-        :icon="tab.icon"
-        @click="activeTab = tab.key"
-      >
-        {{ tab.label }}
-      </UButton>
-    </div>
+    <SettingsTabNav v-model="activeTab" :tabs="tabs" />
 
     <UAlert
       v-if="error"
@@ -176,13 +228,21 @@ const tabs = [
       @click:close="clearBillingError"
     />
 
-    <UCard v-if="orgLoading || subLoading" class="rounded-3xl">
+    <UAlert
+      v-if="storefrontError"
+      color="error"
+      variant="soft"
+      icon="i-lucide-circle-x"
+      :title="storefrontError"
+    />
+
+    <UCard v-if="orgLoading || subLoading || storefrontLoading" class="rounded-3xl">
       <div class="flex items-center justify-center py-12">
         <UIcon name="i-lucide-loader" class="h-8 w-8 animate-spin text-primary-500" />
       </div>
     </UCard>
 
-    <template v-else>
+    <div v-else :key="activeTab" class="space-y-6">
       <SettingsSectionsOrganizationSection
         v-if="activeTab === 'organization'"
         :org="organization"
@@ -191,6 +251,18 @@ const tabs = [
         :error="error"
         @submit="handleUpdateOrg"
         @upload-logo="handleUploadLogo"
+        @remove-logo="handleRemoveLogo"
+      />
+
+      <SettingsSectionsStorefrontSection
+        v-else-if="activeTab === 'storefront'"
+        :settings="storefrontSettings"
+        :access="storefrontAccess"
+        :loading="storefrontLoading"
+        :mutation-loading="storefrontMutationLoading"
+        :error="storefrontError"
+        :available-business-types="availableStorefrontBusinessTypes"
+        @submit="handleUpdateStorefront"
       />
 
       <SettingsSectionsSubscriptionSection
@@ -210,7 +282,7 @@ const tabs = [
 
       <SettingsSectionsSiatSection
         v-else-if="activeTab === 'siat'"
-        :config="siatConfig"
+        :config="siatConfig ?? null"
         :loading="siatLoading"
         :mutation-loading="mutationLoading"
         :error="error"
@@ -219,65 +291,12 @@ const tabs = [
 
       <SettingsSectionsPreferencesSection
         v-else-if="activeTab === 'preferences'"
+        :org="organization"
+        :mutation-loading="mutationLoading"
+        @submit="handleUpdateOrg"
       />
 
-      <div v-else-if="activeTab === 'notifications'" class="space-y-4">
-        <div class="flex items-center justify-between">
-          <h3 class="text-lg font-semibold">Configuracion de notificaciones</h3>
-          <div class="flex gap-2">
-            <NuxtLink to="/settings/notifications/history">
-              <UButton variant="soft" icon="i-lucide-list">
-                Ver historial
-              </UButton>
-            </NuxtLink>
-            <NuxtLink to="/settings/notifications">
-              <UButton color="primary" icon="i-lucide-settings">
-                Configurar WhatsApp
-              </UButton>
-            </NuxtLink>
-          </div>
-        </div>
-
-        <UCard>
-          <p class="text-muted">
-            Configura WhatsApp Cloud API para enviar recibos de venta y recordatorios de citas automaticamente.
-          </p>
-
-          <div class="mt-4 grid gap-4 sm:grid-cols-2">
-            <div class="flex items-start gap-3 p-4 border rounded-lg">
-              <UIcon name="i-lucide-receipt" class="text-xl text-primary mt-0.5" />
-              <div>
-                <p class="font-medium">Recibos de venta</p>
-                <p class="text-sm text-muted">Envia confirmacion de compra por WhatsApp</p>
-              </div>
-            </div>
-
-            <div class="flex items-start gap-3 p-4 border rounded-lg">
-              <UIcon name="i-lucide-calendar-check" class="text-xl text-primary mt-0.5" />
-              <div>
-                <p class="font-medium">Confirmacion de citas</p>
-                <p class="text-sm text-muted">Notifica al agendar una cita</p>
-              </div>
-            </div>
-
-            <div class="flex items-start gap-3 p-4 border rounded-lg">
-              <UIcon name="i-lucide-bell" class="text-xl text-primary mt-0.5" />
-              <div>
-                <p class="font-medium">Recordatorios</p>
-                <p class="text-sm text-muted">Envia recordatorio antes de la cita</p>
-              </div>
-            </div>
-
-            <div class="flex items-start gap-3 p-4 border rounded-lg">
-              <UIcon name="i-lucide-circle-alert" class="text-xl text-primary mt-0.5" />
-              <div>
-                <p class="font-medium">Cambios de estado</p>
-                <p class="text-sm text-muted">Notifica cuando cambia el estado de una cita</p>
-              </div>
-            </div>
-          </div>
-        </UCard>
-      </div>
+      <SettingsSectionsNotificationsSection v-else-if="activeTab === 'notifications'" />
 
       <UCard v-else-if="activeTab === 'danger'" class="rounded-3xl">
         <SettingsSectionsDangerZoneSection
@@ -306,7 +325,7 @@ const tabs = [
           @load-more="handleLoadMoreHistory"
         />
       </UCard>
-    </template>
+    </div>
 
     <SettingsModalsPlanChangeModal
       v-if="showPlanChangeModal"

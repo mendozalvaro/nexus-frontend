@@ -1,4 +1,5 @@
 import {
+  assertCatalogEntityAccess,
   assertCatalogUniqueServiceName,
   catalogServiceSchema,
   getCatalogCategoryOrThrow,
@@ -8,6 +9,7 @@ import {
 
 export default defineEventHandler(async (event) => {
   const context = await requireCatalogContext(event);
+  await assertCatalogEntityAccess(context, "service", "can_create");
   const body = await readValidatedCatalogBody(event, catalogServiceSchema);
 
   await assertCatalogUniqueServiceName(context, body.name.trim());

@@ -13,6 +13,7 @@ definePageMeta({
   permission: "branches.view",
   roles: ["admin"],
   featureFlag: "feature_multi_branch",
+  moduleKey: "branches",
 });
 
 const searchQuery = ref("");

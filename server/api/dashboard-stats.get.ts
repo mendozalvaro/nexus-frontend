@@ -1,7 +1,7 @@
 import { getQuery } from "h3";
 
 import { setCacheHeaders } from "../utils/cache";
-import { requireTenantContext } from "../utils/tenant-context";
+import { requireStaffTenantContext } from "../utils/tenant-context";
 import { getDashboardStats } from "../services/dashboard/stats";
 
 const UUID_V4_RELAXED_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -20,7 +20,7 @@ const normalizeBranchId = (value: unknown): string | null => {
 };
 
 export default defineEventHandler(async (event) => {
-  const context = await requireTenantContext(event);
+  const context = await requireStaffTenantContext(event);
   const query = getQuery(event);
 
   const period = typeof query.period === "string" ? query.period : "30d";

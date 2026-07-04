@@ -1,22 +1,14 @@
 import { z } from "zod";
-import { serverSupabaseUser } from "#supabase/server";
 
 import type { Database } from "@/types/database.types";
-import { createAdminServerClient } from "../../utils/auth-server";
+import { createAdminServerClient, resolveServerAuthenticatedUser } from "../../utils/auth-server";
 import { throwApiError } from "../../utils/http-error";
 
 const authAuditSchema = z.object({
-  action: z.enum(["INSERT", "UPDATE", "DELETE", "PERMISSION_DENIED"]),
+  action: z.enum(["INSERT", "UPDATE", "DELETE", "LOGIN_FAILED", "PERMISSION_DENIED"]),
   tableName: z.string().trim().min(1),
   context: z.object({
-    event: z.enum([
-      "LOGIN_SUCCESS",
-      "LOGIN_FAILED",
-      "SIGN_UP",
-      "SIGN_OUT",
-      "PROFILE_UPDATED",
-      "PERMISSION_DENIED",
-    ]),
+    event: z.string().trim().min(1),
     email: z.string().optional(),
     organization_id: z.string().uuid().nullable().optional(),
     role: z.enum(["admin", "manager", "employee", "client"]).nullable().optional(),
@@ -45,7 +37,7 @@ export default defineEventHandler(async (event) => {
   const payload = parsed.data;
   const isLoginFailedEvent = payload.context.event === "LOGIN_FAILED";
 
-  const user = await serverSupabaseUser(event);
+  const user = await resolveServerAuthenticatedUser(event);
   if (!user && !isLoginFailedEvent) {
     throwApiError(401, "AUTH_AUDIT_UNAUTHORIZED", "No autorizado para registrar auditoria.");
   }

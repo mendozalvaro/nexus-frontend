@@ -30,8 +30,21 @@ const columns = computed(() => {
     {
       accessorKey: "type",
       header: "Tipo",
+      cell: ({ row }: { row: { original: CatalogCategoryItem } }) => {
+        const labels: Record<string, { color: string; label: string }> = {
+          product: { color: "primary", label: "Producto" },
+          service: { color: "warning", label: "Servicio" },
+          lodging: { color: "info", label: "Alojamiento" },
+        };
+        const t = labels[row.original.type] ?? { color: "neutral", label: row.original.type };
+        return h(UBadge, { color: t.color, variant: "soft" }, () => t.label);
+      },
+    },
+    {
+      accessorKey: "description",
+      header: "Descripcion",
       cell: ({ row }: { row: { original: CatalogCategoryItem } }) =>
-        h(UBadge, { color: row.original.type === "product" ? "primary" : "warning", variant: "soft" }, () => row.original.type === "product" ? "Producto" : "Servicio"),
+        h("span", { class: "text-sm text-slate-500" }, row.original.description ?? "—"),
     },
     {
       accessorKey: "linkedCount",

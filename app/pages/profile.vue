@@ -4,6 +4,7 @@ definePageMeta({
   middleware: ["permissions"],
   permission: "profile.view",
   roles: ["admin", "manager", "employee"],
+  moduleKey: "profile",
 });
 
 const {

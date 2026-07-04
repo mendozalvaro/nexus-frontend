@@ -1,4 +1,4 @@
-<script setup lang="ts">
+﻿<script setup lang="ts">
 import type { SettingsOrganization } from "@/composables/useSettings";
 
 interface Props {
@@ -27,8 +27,8 @@ const handleConfirm = () => {
       color="warning"
       variant="soft"
       icon="i-lucide-triangle-alert"
-      title="Accion irreversible"
-      description="Desactivar la organizacion bloqueara el acceso para todos los usuarios y cancelara operaciones pendientes."
+      title="Acción irreversible"
+      description="Desactivar la organización bloqueará el acceso para todos los usuarios y cancelará operaciones pendientes."
     />
 
     <UAlert
@@ -39,10 +39,10 @@ const handleConfirm = () => {
     >
       <template #description>
         <ul class="mt-1 space-y-1 text-sm">
-          <li>• Se bloqueara el acceso para todos los usuarios</li>
-          <li>• Se cancelaran citas pendientes automaticamente</li>
-          <li>• Se bloquearan operaciones de inventario y ventas</li>
-          <li>• Se enviara un email de confirmacion al administrador</li>
+          <li>• Se bloqueará el acceso para todos los usuarios</li>
+          <li>• Se cancelarán citas pendientes automáticamente</li>
+          <li>• Se bloquearán operaciones de inventario y ventas</li>
+          <li>• Se enviará un email de confirmación al administrador</li>
         </ul>
       </template>
     </UAlert>
@@ -50,9 +50,9 @@ const handleConfirm = () => {
     <UCard :ui="{ body: 'p-4' }">
       <div class="flex items-center justify-between">
         <div>
-          <p class="font-medium text-slate-900 dark:text-white">Desactivar {{ org?.name ?? 'organizacion' }}</p>
+          <p class="font-medium text-slate-900 dark:text-white">Desactivar {{ org?.name ?? 'organización' }}</p>
           <p class="text-sm text-slate-500 dark:text-slate-400">
-            Esta accion no se puede deshacer. Todos los datos permaneceran pero inaccesibles.
+            Esta acción no se puede deshacer. Todos los datos permanecerán pero inaccesibles.
           </p>
         </div>
         <UButton
@@ -75,3 +75,4 @@ const handleConfirm = () => {
     />
   </div>
 </template>
+

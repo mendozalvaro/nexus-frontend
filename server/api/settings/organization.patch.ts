@@ -1,8 +1,9 @@
 import { z } from "zod";
 
 import { throwApiError } from "../../utils/http-error";
-import { requireTenantContext } from "../../utils/tenant-context";
+import { requireStaffTenantContext } from "../../utils/tenant-context";
 import { setCacheHeaders } from "../../utils/cache";
+import { getOrganizationSlugValidationError } from "../../utils/organization-slug";
 
 const updateOrgSchema = z.object({
   name: z.string().trim().min(1, "El nombre es requerido").max(120).optional(),
@@ -10,13 +11,16 @@ const updateOrgSchema = z.object({
   timezone: z.string().trim().min(1).max(60).optional(),
   currency_code: z.string().trim().length(3, "Moneda debe tener 3 caracteres").optional(),
   country: z.string().trim().length(2, "Pais debe tener 2 caracteres").optional(),
-  business_type: z.enum(["products", "services", "hybrid"]).optional(),
   address: z.string().trim().max(300).nullable().optional(),
   is_active: z.boolean().optional(),
+  default_receipt_format: z.enum(["thermal", "half_letter"]).optional(),
+  lodging_checkout_deadline: z.string().trim().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Hora limite invalida.").optional(),
+  lodging_stay_cutoff_time: z.string().trim().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Hora de conteo invalida.").optional(),
+  lodging_late_checkout_penalty: z.coerce.number().min(0, "La penalizacion no puede ser negativa.").optional(),
 });
 
 export default defineEventHandler(async (event) => {
-  const context = await requireTenantContext(event);
+  const context = await requireStaffTenantContext(event);
 
   if (context.role !== "admin") {
     throwApiError(403, "SETTINGS_ORG_ADMIN_ONLY", "Solo administradores pueden actualizar la organizacion.");
@@ -41,6 +45,11 @@ export default defineEventHandler(async (event) => {
   }
 
   if (updates.slug) {
+    const slugError = getOrganizationSlugValidationError(updates.slug);
+    if (slugError) {
+      throwApiError(400, "SETTINGS_ORG_INVALID_SLUG", slugError);
+    }
+
     const { data: existingSlug } = await context.adminClient
       .from("organizations")
       .select("id")
@@ -57,7 +66,7 @@ export default defineEventHandler(async (event) => {
     .from("organizations")
     .update(updates)
     .eq("id", context.organizationId)
-    .select("id, name, slug, timezone, currency_code, country, business_type, address, logo_url, is_active, updated_at")
+    .select("id, name, slug, timezone, currency_code, country, address, logo_url, is_active, default_receipt_format, lodging_checkout_deadline, lodging_stay_cutoff_time, lodging_late_checkout_penalty, updated_at")
     .single();
 
   if (error || !data) {

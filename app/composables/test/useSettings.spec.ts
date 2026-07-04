@@ -43,7 +43,10 @@ describe('useSettings', () => {
       timezone: 'America/La_Paz',
       currency_code: 'BOB',
       country: 'BO',
-      business_type: 'hybrid',
+      default_receipt_format: null,
+      lodging_checkout_deadline: null,
+      lodging_stay_cutoff_time: null,
+      lodging_late_checkout_penalty: null,
       address: 'Calle 123',
       logo_url: null,
       is_active: true,
@@ -122,8 +125,11 @@ describe('useSettings', () => {
       slug: 'empresa-actualizada',
       timezone: 'America/La_Paz',
       currency_code: 'BOB',
-      country: 'BO',
-      business_type: 'services',
+      country: 'AR',
+      default_receipt_format: null,
+      lodging_checkout_deadline: null,
+      lodging_stay_cutoff_time: null,
+      lodging_late_checkout_penalty: null,
       address: null,
       logo_url: null,
       is_active: true,
@@ -132,14 +138,14 @@ describe('useSettings', () => {
 
     const result = await settings.updateOrganization({
       name: 'Empresa Actualizada',
-      business_type: 'services'
+      country: 'AR'
     })
 
     expect(mockFetch).toHaveBeenCalledWith('/api/settings/organization', {
       method: 'PATCH',
       body: {
         name: 'Empresa Actualizada',
-        business_type: 'services'
+        country: 'AR'
       }
     })
     expect(result.name).toBe('Empresa Actualizada')
@@ -271,7 +277,10 @@ describe('useSettings', () => {
       timezone: null,
       currency_code: null,
       country: null,
-      business_type: null,
+      default_receipt_format: null,
+      lodging_checkout_deadline: null,
+      lodging_stay_cutoff_time: null,
+      lodging_late_checkout_penalty: null,
       address: null,
       logo_url: null,
       is_active: false,
@@ -285,6 +294,41 @@ describe('useSettings', () => {
       body: { is_active: false }
     })
     expect(result.is_active).toBe(false)
+  })
+
+  it('quita logo de organizacion', async () => {
+    const { useSettings } = await import('../useSettings')
+    const settings = useSettings()
+
+    settings.organization.value = {
+      id: 'org-1',
+      name: 'Mi Empresa',
+      slug: 'mi-empresa',
+      timezone: null,
+      currency_code: null,
+      country: null,
+      default_receipt_format: null,
+      lodging_checkout_deadline: null,
+      lodging_stay_cutoff_time: null,
+      lodging_late_checkout_penalty: null,
+      address: null,
+      logo_url: 'https://cdn.test/logo.webp',
+      is_active: true,
+      updated_at: '2026-05-19'
+    }
+
+    mockFetch.mockResolvedValueOnce({
+      id: 'org-1',
+      logo_url: null
+    })
+
+    const result = await settings.removeLogo()
+
+    expect(mockFetch).toHaveBeenCalledWith('/api/settings/organization-logo', {
+      method: 'DELETE'
+    })
+    expect(result.logo_url).toBe(null)
+    expect(settings.organization.value?.logo_url).toBe(null)
   })
 
   it('maneja error al cargar organizacion', async () => {

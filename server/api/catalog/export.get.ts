@@ -1,7 +1,11 @@
 import { createError } from "h3";
 import { z } from "zod";
 
-import { requireCatalogContext } from "../../utils/catalog";
+import {
+  assertCatalogCategoryAccess,
+  assertCatalogEntityAccess,
+  requireCatalogContext,
+} from "../../utils/catalog";
 import { getCatalogProducts, type CatalogProduct } from "../../services/catalog/products";
 import { getCatalogServices, type CatalogService } from "../../services/catalog/services";
 import { getCatalogCategories, type CatalogCategory } from "../../services/catalog/categories";
@@ -38,12 +42,23 @@ export default defineEventHandler(async (event) => {
 
   if (type === "categories" || type === "all") {
     const categories = await getCatalogCategories(context);
+    const allowedTypes: Array<"product" | "service" | "lodging"> = [];
+    for (const categoryType of ["product", "service", "lodging"] as const) {
+      try {
+        await assertCatalogCategoryAccess(context, categoryType, "can_view");
+        allowedTypes.push(categoryType);
+      } catch {
+        // ignore inaccessible category types
+      }
+    }
+    const filtered = categories.filter((category) => allowedTypes.includes(category.type));
     const headers = ["name", "type", "parent_name", "is_active"];
-    const rows = categories.map((c: CatalogCategory) => [c.name, c.type, c.parentName ?? "", c.isActive ? "true" : "false"]);
+    const rows = filtered.map((c: CatalogCategory) => [c.name, c.type, c.parentName ?? "", c.isActive ? "true" : "false"]);
     csvParts.push(`[Categorias]\n${buildCsv(headers, rows)}`);
   }
 
   if (type === "products" || type === "all") {
+    await assertCatalogEntityAccess(context, "product", "can_view");
     const products = await getCatalogProducts(context);
     const headers = ["name", "sku", "cost_price", "sale_price", "track_inventory", "description", "is_active"];
     const rows = products.map((p: CatalogProduct) => [
@@ -59,6 +74,7 @@ export default defineEventHandler(async (event) => {
   }
 
   if (type === "services" || type === "all") {
+    await assertCatalogEntityAccess(context, "service", "can_view");
     const services = await getCatalogServices(context);
     const headers = ["name", "price", "duration_minutes", "description", "is_active"];
     const rows = services.map((s: CatalogService) => [

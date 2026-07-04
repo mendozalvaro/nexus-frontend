@@ -4,9 +4,12 @@ export const CACHE_KEYS = {
   profile: "profile",
   subscription: "subscription",
   branches: "branches",
+  inventoryStock: "inventory-stock",
   dashboardStats: "dashboard-stats",
   posProducts: "pos-products",
-  inventoryStock: "inventory-stock",
+  roomTypes: "room-types",
+  rooms: "rooms",
+  reservations: "reservations",
 } as const;
 
 export const dashboardStatsKey = (params: {

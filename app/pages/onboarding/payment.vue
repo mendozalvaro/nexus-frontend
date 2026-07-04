@@ -9,15 +9,18 @@ import AuthLayout from "../../components/auth/AuthLayout.vue";
 import PaymentInstructions from "../../components/onboarding/PaymentInstructions.vue";
 import ProgressStepper from "../../components/onboarding/ProgressStepper.vue";
 import ReceiptUpload from "../../components/onboarding/ReceiptUpload.vue";
+import { resolveOnboardingPaymentRedirect } from "@/utils/onboarding";
 
 definePageMeta({
   layout: false,
   title: "Pago manual",
+  middleware: ["account-status"],
 });
 
 const { profile, fetchProfile } = useAuth();
 const { resolveUser } = useSessionAccess();
 const session = useSupabaseSession();
+const { loadAccountStatus } = useAccountStatus();
 const {
   bankDetails,
   draft,
@@ -30,7 +33,7 @@ const {
   savePaymentProgress,
   resolvePageState,
 } = usePaymentValidation();
-const { resolvePostAuthDestination } = useRegistration();
+const { resolvePostAuthDestination } = usePostAuthResolution();
 
 const preview = ref<ReceiptPreview | null>(null);
 const latestStatus = ref<Awaited<ReturnType<typeof getPaymentStatus>> | null>(null);
@@ -45,6 +48,15 @@ let lastProgressSnapshot: string | null = null;
 let lastProgressSavedAt = 0;
 const MIN_PROGRESS_SAVE_INTERVAL_MS = 5000;
 const PROGRESS_SAVE_DEBOUNCE_MS = 2000;
+
+const replaceRoute = async (destination: string) => {
+  if (import.meta.client) {
+    window.location.replace(destination);
+    return;
+  }
+
+  await navigateTo(destination, { replace: true });
+};
 
 const formattedSubmittedAt = computed(() =>
   validationInfo.value?.submittedAt
@@ -100,7 +112,7 @@ const scheduleApprovedRedirect = () => {
     if (approvedRedirectSeconds.value <= 0) {
       clearInterval(redirectTimer as ReturnType<typeof setTimeout>);
       redirectTimer = null;
-      await navigateTo("/dashboard", { replace: true });
+      await replaceRoute("/dashboard");
     }
   }, 1000);
 };
@@ -125,7 +137,21 @@ const updatePageState = (
 const loadContext = async () => {
   const currentProfile = profile.value ?? await fetchProfile();
   if (!currentProfile?.organization_id) {
-    await navigateTo("/onboarding/organization", { replace: true });
+    await replaceRoute("/onboarding/organization");
+    return;
+  }
+
+  const accountStatusResult = await loadAccountStatus({
+    organizationId: currentProfile.organization_id,
+    force: true,
+  });
+  const paymentRedirect = resolveOnboardingPaymentRedirect({
+    accountStatus: accountStatusResult.accountStatus,
+    paymentRequired: accountStatusResult.paymentRequired,
+  });
+
+  if (paymentRedirect) {
+    await replaceRoute(paymentRedirect);
     return;
   }
 
@@ -233,13 +259,17 @@ const schedulePaymentProgressSave = () => {
 
 if (import.meta.client) {
   onMounted(async () => {
-    const resolution = await resolvePostAuthDestination();
-    if (!["payment", "pending"].includes(resolution.reason)) {
-      await navigateTo(resolution.destination, { replace: true });
-      return;
-    }
+    try {
+      await loadContext();
+    } catch {
+      const resolution = await resolvePostAuthDestination();
+      if (!["payment", "pending"].includes(resolution.reason)) {
+        await replaceRoute(resolution.destination);
+        return;
+      }
 
-    await loadContext();
+      error.value = "No pudimos cargar el estado de pago de tu cuenta.";
+    }
   });
 }
 

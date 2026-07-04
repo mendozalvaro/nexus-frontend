@@ -8,6 +8,9 @@ import type {
   UserRole,
 } from "@/types/permissions";
 import { ROLE_PERMISSIONS } from "@/types/permissions";
+import type { ModuleAccessKey } from "@/utils/module-access.registry";
+import { MODULE_ACCESS_REGISTRY } from "@/utils/module-access.registry";
+import { parseRoleModulePermissionGrants } from "@/utils/role-module-permissions";
 import { resolvePlanPermission } from "@/utils/subscription-plan";
 
 const PERMISSIONS_CACHE_TTL_MS = 30_000;
@@ -16,11 +19,14 @@ const accessibleBranchesInFlight = new Map<string, Promise<AccessibleBranch[]>>(
 export const usePermissions = () => {
   const supabase = useSupabaseClient<Database>();
   const { user, profile, permissionsRevision, setPermissionGrants } = useUserContext();
+  const { baseActorType, hasSystemAccess } = useActorContext();
   const { resolveAccessToken } = useSessionAccess();
   const { isFeatureEnabled } = useFeatureFlags();
   const { capabilities } = useSubscription();
+  const { hasBusinessType } = useBusinessTypes();
   const dbPermissionGrants = useState<PermissionGrant[]>("permissions:db-grants", () => []);
   const dbPermissionRoleId = useState<string | null>("permissions:db-role-id", () => null);
+  const dbPermissionState = useState<"idle" | "loaded" | "error">("permissions:db-state", () => "idle");
   const dbPermissionLoading = useState<boolean>("permissions:db-loading", () => false);
   const dbPermissionFetchedAt = useState<number>("permissions:db-fetched-at", () => 0);
   const accessibleBranchesCache = useState<{
@@ -47,113 +53,12 @@ export const usePermissions = () => {
   };
 
   const resolvePermissionModule = (permission: PermissionGrant): string => {
-    const [module] = permission.split(".");
-    return module ?? "";
-  };
-
-  const MODULE_ACTION_PERMISSION_MAP: Record<string, Partial<Record<
-    | "can_view"
-    | "can_create"
-    | "can_edit"
-    | "can_delete"
-    | "can_export"
-    | "can_manage",
-    PermissionGrant
-  >>> = {
-    pos: {
-      can_view: "pos.view",
-      can_create: "pos.create",
-      can_edit: "pos.edit",
-      can_delete: "pos.delete",
-      can_manage: "pos.*",
-    },
-    catalog: {
-      can_view: "catalog.view",
-      can_edit: "catalog.edit",
-      can_manage: "catalog.*",
-    },
-    inventory: {
-      can_view: "inventory.view",
-      can_edit: "inventory.adjust",
-      can_delete: "inventory.delete",
-      can_manage: "inventory.*",
-    },
-    service_assignment: {
-      can_view: "service_assignment.view",
-      can_edit: "service_assignment.edit",
-      can_manage: "service_assignment.*",
-    },
-    appointments: {
-      can_view: "appointments.view",
-      can_create: "appointments.create",
-      can_edit: "appointments.edit",
-      can_delete: "appointments.delete",
-      can_manage: "appointments.*",
-    },
-    users: {
-      can_view: "users.view",
-      can_create: "users.create",
-      can_edit: "users.edit",
-      can_delete: "users.delete",
-      can_manage: "users.*",
-    },
-    branches: {
-      can_view: "branches.view",
-      can_create: "branches.create",
-      can_edit: "branches.edit",
-      can_delete: "branches.delete",
-      can_manage: "branches.*",
-    },
-    reports: {
-      can_view: "reports.view",
-      can_export: "reports.export",
-      can_manage: "reports.*",
-    },
-    settings: {
-      can_view: "settings.view",
-      can_edit: "settings.edit",
-      can_manage: "settings.*",
-    },
-    profile: {
-      can_view: "profile.view",
-      can_edit: "profile.edit",
-      can_manage: "profile.*",
-    },
-  };
-
-  const actionKeys = [
-    "can_view",
-    "can_create",
-    "can_edit",
-    "can_delete",
-    "can_export",
-    "can_manage",
-  ] as const;
-
-  const parseDbPermissionGrants = (
-    rows: Database["public"]["Tables"]["role_module_permissions"]["Row"][],
-  ): PermissionGrant[] => {
-    const grants = new Set<PermissionGrant>();
-
-    for (const row of rows) {
-      const actionMap = MODULE_ACTION_PERMISSION_MAP[row.module_key];
-      if (!actionMap) {
-        continue;
-      }
-
-      for (const actionKey of actionKeys) {
-        if (row[actionKey] !== true) {
-          continue;
-        }
-
-        const permission = actionMap[actionKey];
-        if (permission) {
-          grants.add(permission);
-        }
-      }
+    const parts = permission.split(".");
+    if (parts.length <= 1) {
+      return "";
     }
 
-    return Array.from(grants);
+    return parts.slice(0, -1).join(".");
   };
 
   const loadRoleModulePermissions = async (
@@ -163,6 +68,7 @@ export const usePermissions = () => {
     if (!roleId) {
       dbPermissionGrants.value = [];
       dbPermissionRoleId.value = null;
+      dbPermissionState.value = "idle";
       dbPermissionFetchedAt.value = 0;
       return;
     }
@@ -198,21 +104,34 @@ export const usePermissions = () => {
     dbPermissionLoading.value = true;
 
     try {
-      const { data, error } = await supabase
-        .from("role_module_permissions")
-        .select("*")
-        .eq("role_id", roleId);
-
-      if (error) {
-        throw error;
+      const token = await resolveAccessToken();
+      if (!token) {
+        throw new Error("Missing access token for role permissions.");
       }
 
-      dbPermissionGrants.value = parseDbPermissionGrants(data ?? []);
+      const response = await $fetch<{
+        permissions: Database["public"]["Tables"]["role_module_permissions"]["Row"][];
+      }>("/api/auth/role-permissions", {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      dbPermissionGrants.value = parseRoleModulePermissionGrants(response.permissions ?? []);
       dbPermissionRoleId.value = roleId;
+      dbPermissionState.value = "loaded";
       dbPermissionFetchedAt.value = Date.now();
     } catch {
-      dbPermissionGrants.value = [];
-      dbPermissionRoleId.value = null;
+      const canReuseCachedPermissions =
+        dbPermissionRoleId.value === roleId
+        && dbPermissionGrants.value.length > 0;
+
+      if (!canReuseCachedPermissions) {
+        dbPermissionGrants.value = [];
+      }
+
+      dbPermissionRoleId.value = roleId;
+      dbPermissionState.value = "error";
       dbPermissionFetchedAt.value = 0;
     } finally {
       dbPermissionLoading.value = false;
@@ -220,6 +139,14 @@ export const usePermissions = () => {
   };
 
   const ensureRolePermissionsLoaded = async (): Promise<void> => {
+    if (hasSystemAccess.value || baseActorType.value !== "staff") {
+      dbPermissionGrants.value = [];
+      dbPermissionRoleId.value = null;
+      dbPermissionState.value = "idle";
+      dbPermissionFetchedAt.value = 0;
+      return;
+    }
+
     const roleId = profile.value?.role_id ?? null;
 
     if (!roleId) {
@@ -236,25 +163,43 @@ export const usePermissions = () => {
   watch(
     () => profile.value?.role_id ?? null,
     async (roleId) => {
+      if (hasSystemAccess.value || baseActorType.value !== "staff") {
+        dbPermissionGrants.value = [];
+        dbPermissionRoleId.value = null;
+        dbPermissionState.value = "idle";
+        dbPermissionFetchedAt.value = 0;
+        return;
+      }
+
       if (!roleId) {
         dbPermissionGrants.value = [];
         dbPermissionRoleId.value = null;
+        dbPermissionState.value = "idle";
         dbPermissionFetchedAt.value = 0;
         return;
       }
 
       await loadRoleModulePermissions(roleId);
     },
-    { immediate: true },
   );
 
   watch(
     () => permissionsRevision.value,
     async () => {
+      if (hasSystemAccess.value || baseActorType.value !== "staff") {
+        dbPermissionGrants.value = [];
+        dbPermissionRoleId.value = null;
+        dbPermissionState.value = "idle";
+        dbPermissionFetchedAt.value = 0;
+        setPermissionGrants([]);
+        return;
+      }
+
       const roleId = profile.value?.role_id ?? null;
       if (!roleId) {
         dbPermissionGrants.value = [];
         dbPermissionRoleId.value = null;
+        dbPermissionState.value = "idle";
         dbPermissionFetchedAt.value = 0;
         setPermissionGrants([]);
         return;
@@ -278,23 +223,37 @@ export const usePermissions = () => {
 
   const getUserPermissions = (): PermissionGrant[] => {
     if (!profile.value) {
+      setPermissionGrants([]);
+      return [];
+    }
+
+    if (hasSystemAccess.value) {
+      setPermissionGrants([]);
       return [];
     }
 
     const role = profile.value.role as UserRole;
+    const actorType = baseActorType.value;
+    const canUseStaticRoleFallback = actorType !== "staff" || !profile.value.role_id;
     const hasDbPermissions =
+      actorType === "staff"
+      &&
       Boolean(profile.value.role_id)
       && dbPermissionRoleId.value === profile.value.role_id;
-    let permissions = hasDbPermissions
-      ? [...dbPermissionGrants.value]
-      : [...(ROLE_PERMISSIONS[role] ?? [])];
+    let permissions: PermissionGrant[] = [];
+
+    if (canUseStaticRoleFallback) {
+      permissions = [...(ROLE_PERMISSIONS[role] ?? [])];
+    } else if (hasDbPermissions && dbPermissionState.value === "error") {
+      permissions = [...dbPermissionGrants.value];
+    } else if (hasDbPermissions) {
+      permissions = dbPermissionGrants.value.length > 0
+        ? [...dbPermissionGrants.value]
+        : [...(ROLE_PERMISSIONS[role] ?? [])];
+    }
 
     if (!isFeatureEnabled("feature_inventory_transfer")) {
       permissions = removePermission(permissions, "inventory.transfer");
-    }
-
-    if (!isFeatureEnabled("feature_advanced_reports")) {
-      permissions = removePermission(permissions, "reports.advanced");
     }
 
     if (!isFeatureEnabled("feature_multi_branch")) {
@@ -328,8 +287,57 @@ export const usePermissions = () => {
     });
   };
 
+  const hasAnyPermission = (
+    userPermissions: PermissionGrant[],
+    required: Permission[],
+  ): boolean => required.some((permission) => hasPermission(userPermissions, permission));
+
+  const hasModuleAccess = (moduleKey: ModuleAccessKey): boolean => {
+    const definition = MODULE_ACCESS_REGISTRY[moduleKey];
+    const currentRole = profile.value?.role as UserRole | undefined;
+    const actorType = hasSystemAccess.value ? "system" : baseActorType.value;
+
+    if (actorType === "system") {
+      return false;
+    }
+
+    if (!definition || !currentRole || !definition.roles.includes(currentRole)) {
+      return false;
+    }
+
+    if (
+      definition.allowedBusinessTypes
+      && definition.allowedBusinessTypes.length > 0
+      && !definition.allowedBusinessTypes.some((businessType) => hasBusinessType(businessType))
+    ) {
+      return false;
+    }
+
+    if (definition.featureFlag && !isFeatureEnabled(definition.featureFlag)) {
+      return false;
+    }
+
+    if (definition.requiredAny?.length) {
+      return definition.requiredAny.some((nestedModuleKey) => hasModuleAccess(nestedModuleKey));
+    }
+
+    if (definition.requiredPlanPermission) {
+      return resolvePlanPermission(
+        capabilities.value?.planPermissions,
+        definition.requiredPlanPermission,
+        true,
+      );
+    }
+
+    return true;
+  };
+
   const canAccessBranch = async (branchId: string): Promise<boolean> => {
     if (!profile.value) {
+      return false;
+    }
+
+    if (hasSystemAccess.value || baseActorType.value !== "staff") {
       return false;
     }
 
@@ -346,7 +354,7 @@ export const usePermissions = () => {
   };
 
   const getAccessibleBranches = async (): Promise<AccessibleBranch[]> => {
-    if (!profile.value) {
+    if (!profile.value || hasSystemAccess.value || baseActorType.value !== "staff") {
       return [];
     }
 
@@ -432,6 +440,18 @@ export const usePermissions = () => {
     branchId?: string | null,
   ): Promise<RouteAccessResolution> => {
     const currentRole = profile.value?.role as UserRole | undefined;
+    const actorType = hasSystemAccess.value ? "system" : baseActorType.value;
+
+    if (actorType === "system") {
+      return {
+        allowed: false,
+        reason: "role",
+        context: {
+          requiredRoles: meta.roles ?? null,
+          actorType,
+        },
+      };
+    }
 
     if (meta.roles && (!currentRole || !meta.roles.includes(currentRole))) {
       return {
@@ -454,6 +474,41 @@ export const usePermissions = () => {
       };
     }
 
+    if (
+      meta.requiredBusinessTypes
+      && meta.requiredBusinessTypes.length > 0
+      && !meta.requiredBusinessTypes.some((businessType) => hasBusinessType(businessType))
+    ) {
+      return {
+        allowed: false,
+        reason: "business_type",
+        context: {
+          requiredBusinessTypes: meta.requiredBusinessTypes,
+          activeBusinessTypes: capabilities.value?.businessTypes ?? [],
+        },
+      };
+    }
+
+    if (meta.moduleKey && !hasModuleAccess(meta.moduleKey)) {
+      return {
+        allowed: false,
+        reason: "module",
+        context: {
+          moduleKey: meta.moduleKey,
+        },
+      };
+    }
+
+    if (meta.moduleKeysAny && !meta.moduleKeysAny.some((moduleKey) => hasModuleAccess(moduleKey))) {
+      return {
+        allowed: false,
+        reason: "module",
+        context: {
+          moduleKeysAny: meta.moduleKeysAny,
+        },
+      };
+    }
+
     if (meta.permission) {
       const userPermissions = getUserPermissions();
 
@@ -463,6 +518,21 @@ export const usePermissions = () => {
           reason: "permission",
           context: {
             requiredPermission: meta.permission,
+            userPermissions,
+          },
+        };
+      }
+    }
+
+    if (meta.permissionsAny) {
+      const userPermissions = getUserPermissions();
+
+      if (!hasAnyPermission(userPermissions, meta.permissionsAny)) {
+        return {
+          allowed: false,
+          reason: "permission",
+          context: {
+            requiredPermissions: meta.permissionsAny,
             userPermissions,
           },
         };
@@ -485,6 +555,8 @@ export const usePermissions = () => {
   return {
     getUserPermissions,
     hasPermission,
+    hasAnyPermission,
+    hasModuleAccess,
     canAccessBranch,
     getAccessibleBranches,
     ensureRolePermissionsLoaded,

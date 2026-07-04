@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { requireTenantContext } from "../utils/tenant-context";
+import { requireStaffTenantContext } from "../utils/tenant-context";
 import {
   getTenantProfile,
   updateTenantProfile,
@@ -20,7 +20,7 @@ const passwordChangeSchema = z.object({
 });
 
 export default defineEventHandler(async (event) => {
-  const context = await requireTenantContext(event);
+  const context = await requireStaffTenantContext(event);
   const body = await readBody(event);
 
   if (body.current_password && body.new_password) {

@@ -2,10 +2,10 @@ import {
   getInventoryProducts,
 } from "../../services/inventory/products";
 import { setCacheHeaders } from "../../utils/cache";
-import { requireInventoryContext } from "../../utils/inventory";
+import { requireInventoryContextStrict } from "../../utils/inventory-access";
 
 export default defineEventHandler(async (event) => {
-  const context = await requireInventoryContext(event);
+  const context = await requireInventoryContextStrict(event, "can_view");
 
   const products = await getInventoryProducts(context);
 

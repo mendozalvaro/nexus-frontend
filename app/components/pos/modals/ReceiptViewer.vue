@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import type { POSReceipt } from "@/composables/usePOS";
+import type { POSReceipt, ReceiptFormat } from "@/composables/usePOS";
+import { downloadReceiptPdf, printReceiptByFormat } from "@/utils/receipt-renderer";
 
 const props = defineProps<{
   receipt: POSReceipt;
@@ -8,24 +9,43 @@ const props = defineProps<{
 const emit = defineEmits<{
   close: [];
 }>();
+const toast = useToast();
 
-const printReceipt = () => {
-  const r = props.receipt;
-  const rows: string[] = [];
-  for (const item of r.items) {
-    rows.push(`<tr><td style="padding:4px 0; border-bottom:1px solid #e2e8f0;">${item.title}<br><small style="color:#64748b;">${item.subtitle ?? ""}</small></td><td style="padding:4px 0; text-align:right; border-bottom:1px solid #e2e8f0;">${item.quantity} x Bs ${item.unitPrice.toFixed(2)}</td><td style="padding:4px 0; text-align:right; border-bottom:1px solid #e2e8f0; font-weight:600;">Bs ${item.subtotal.toFixed(2)}</td></tr>`);
-  }
-  const itemsHtml = rows.join("");
-  const discountRow = r.discountAmount > 0
-    ? `<div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px;"><span>Descuento</span><span>Bs ${r.discountAmount.toFixed(2)}</span></div>`
-    : "";
+const selectedFormat = ref<ReceiptFormat>(props.receipt.formatUsed ?? "thermal");
+const downloadingPdf = ref(false);
 
-  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Recibo #${r.invoiceNumber}</title><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:'Courier New',monospace;max-width:320px;margin:0 auto;padding:16px;color:#0f172a}.header{text-align:center;border-bottom:2px dashed #0f172a;padding-bottom:12px;margin-bottom:12px}.header h1{font-size:18px}.header p{font-size:12px;color:#475569}.info{font-size:12px;margin-bottom:12px}.info div{display:flex;justify-content:space-between;padding:2px 0}table{width:100%;border-collapse:collapse;margin-bottom:12px;font-size:12px}.total{border-top:2px dashed #0f172a;padding-top:8px;text-align:right;font-size:18px;font-weight:bold}.footer{text-align:center;margin-top:16px;font-size:11px;color:#64748b;border-top:1px dashed #cbd5e1;padding-top:8px}@media print{body{max-width:80mm}}</style></head><body><div class="header"><h1>NexusPOS</h1><p>${r.branchName}</p><p>Recibo de Venta</p></div><div class="info"><div><span>Factura #:</span><span>${r.invoiceNumber}</span></div><div><span>Fecha:</span><span>${new Date(r.createdAt).toLocaleString("es-BO")}</span></div><div><span>Cliente:</span><span>${r.customer.fullName}</span></div><div><span>Pago:</span><span>${r.paymentMethod}</span></div></div><table>${itemsHtml}</table>${discountRow}<div class="total">Bs ${r.finalAmount.toFixed(2)}</div><div class="footer"><p>Gracias por su compra</p><p>NexusPOS - Sistema de Punto de Venta</p></div><script>window.onload=()=>{window.print()}<\/script></body></html>`;
+watch(
+  () => props.receipt.formatUsed,
+  (value) => {
+    selectedFormat.value = value ?? "thermal";
+  },
+  { immediate: true },
+);
 
-  const printWindow = window.open("", "_blank", "width=400,height=600");
-  if (printWindow) {
-    printWindow.document.write(html);
-    printWindow.document.close();
+const printSelected = () => {
+  printReceiptByFormat(props.receipt, selectedFormat.value);
+};
+
+const downloadPdf = async () => {
+  downloadingPdf.value = true;
+  try {
+    await downloadReceiptPdf(props.receipt);
+    toast.add({
+      title: "PDF generado",
+      description: "El recibo media carta se descargo correctamente.",
+      color: "success",
+    });
+  } catch (error) {
+    const message = error instanceof Error
+      ? error.message
+      : "No se pudo descargar el PDF en este momento.";
+    toast.add({
+      title: "Fallo al descargar PDF",
+      description: message,
+      color: "error",
+    });
+  } finally {
+    downloadingPdf.value = false;
   }
 };
 </script>
@@ -51,6 +71,26 @@ const printReceipt = () => {
           <p class="font-semibold text-slate-950 dark:text-white">{{ receipt.customer.fullName }}</p>
         </div>
       </div>
+      <div class="mt-3">
+        <p class="text-xs text-slate-500 dark:text-slate-400">Verificación segura</p>
+        <a :href="receipt.verificationUrl" target="_blank" class="text-xs text-primary-600 underline break-all">
+          {{ receipt.verificationUrl }}
+        </a>
+      </div>
+    </div>
+
+    <div class="grid gap-3 sm:grid-cols-2">
+      <UFormField label="Formato para imprimir/reimprimir">
+        <USelect
+          v-model="selectedFormat"
+          :items="[
+            { label: 'Térmico (ticket)', value: 'thermal' },
+            { label: 'Media carta', value: 'half_letter' },
+          ]"
+          label-key="label"
+          value-key="value"
+        />
+      </UFormField>
     </div>
 
     <div>
@@ -74,9 +114,12 @@ const printReceipt = () => {
       </div>
     </div>
 
-    <div class="flex justify-end gap-2">
-      <UButton color="neutral" variant="soft" icon="i-lucide-printer" @click="printReceipt">
+    <div class="flex flex-wrap justify-end gap-2">
+      <UButton color="neutral" variant="soft" icon="i-lucide-printer" @click="printSelected">
         Imprimir
+      </UButton>
+      <UButton color="primary" variant="soft" icon="i-lucide-file-text" :loading="downloadingPdf" @click="downloadPdf">
+        Descargar PDF media carta
       </UButton>
       <UButton color="neutral" variant="soft" @click="emit('close')">
         Cerrar

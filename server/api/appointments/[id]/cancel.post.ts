@@ -1,11 +1,12 @@
 import {
   assertAppointmentMutationScope,
+  assertAppointmentModuleAccess,
   assertRoleAccess,
   cancelAppointmentSchema,
   getAppointmentOrThrow,
   insertAuditLog,
   readValidatedAppointmentBody,
-  requireAppointmentContext,
+  requireAppointmentContextStrict,
 } from "../../../utils/appointments";
 
 export default defineEventHandler(async (event) => {
@@ -17,7 +18,10 @@ export default defineEventHandler(async (event) => {
     });
   }
 
-  const context = await requireAppointmentContext(event);
+  const context = await requireAppointmentContextStrict(event);
+  if (context.role !== "client") {
+    await assertAppointmentModuleAccess(context, "can_edit");
+  }
   const body = await readValidatedAppointmentBody(event, cancelAppointmentSchema);
 
   assertRoleAccess(context, ["admin", "manager", "employee", "client"]);

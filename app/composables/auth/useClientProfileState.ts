@@ -1,5 +1,3 @@
-import type { Ref } from "vue";
-
 import type { User } from "@supabase/supabase-js";
 
 import type { ClientProfileState } from "@/types/client";
@@ -10,8 +8,8 @@ const wait = (ms: number) => new Promise<void>((resolve) => {
 });
 
 export const useClientProfileState = (
-  userRef: Ref<User | null>,
-  activeOrganizationIdRef: Ref<string | null>,
+  userRef: { value: User | null },
+  activeOrganizationIdRef: { value: string | null },
   resolveUser: (options?: { force?: boolean }) => Promise<User | null>,
 ) => {
   const clientProfile = useState<ClientProfileState | null>("auth:client-profile", () => null);
@@ -75,11 +73,7 @@ export const useClientProfileState = (
     try {
       const response = await $fetch<{
         profile: ClientProfileState | null;
-      }>("/api/clients/profile", {
-        query: {
-          organizationId: nextOrganizationId,
-        },
-      });
+      }>("/api/clients/profile");
 
       clientProfile.value = response.profile ?? null;
       clientProfileFetchedForUserId.value = currentUser.id;

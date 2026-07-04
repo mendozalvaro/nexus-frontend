@@ -1,4 +1,4 @@
-<script setup lang="ts">
+﻿<script setup lang="ts">
 import type { SettingsSubscription, UpdateBillingDataPayload } from "@/composables/useSettings";
 import type { OrganizationCapabilities } from "@/types/subscription";
 
@@ -41,14 +41,14 @@ const docTypeOptions = [
   { value: "nit" as const, label: "NIT" },
   { value: "ci" as const, label: "C.I." },
   { value: "pasaporte" as const, label: "Pasaporte" },
-  { value: "cedula" as const, label: "Cedula de identidad" },
+  { value: "cedula" as const, label: "Cédula de identidad" },
 ];
 
 const docFormatHints: Record<string, string> = {
-  nit: "10 digitos numericos (ej: 1234567890)",
-  ci: "5-8 digitos, opcionalmente seguidos de 1-2 letras (ej: 12345678)",
-  pasaporte: "6-9 caracteres alfanumericos (ej: AB123456)",
-  cedula: "5-8 digitos (ej: 12345678)",
+  nit: "10 dígitos numéricos (ej: 1234567890)",
+  ci: "5-8 dígitos, opcionalmente seguidos de 1-2 letras (ej: 12345678)",
+  pasaporte: "6-9 caracteres alfanuméricos (ej: AB123456)",
+  cedula: "5-8 dígitos (ej: 12345678)",
 };
 
 const docPatterns: Record<string, RegExp> = {
@@ -145,7 +145,7 @@ const handleBillingSubmit = () => {
   if (trimmed) {
     const pattern = docPatterns[billingForm.doc_type];
     if (pattern && !pattern.test(trimmed)) {
-      billingErrors.value.doc_number = `Formato invalido. ${docFormatHints[billingForm.doc_type]}`;
+      billingErrors.value.doc_number = `Formato inválido. ${docFormatHints[billingForm.doc_type]}`;
     }
   }
   if (Object.keys(billingErrors.value).length > 0) return;
@@ -176,7 +176,6 @@ const handleBillingReset = () => {
   </div>
 
   <template v-else-if="subscription">
-    <h3 class="text-lg font-semibold text-slate-900 dark:text-white">Datos de Subscripcion</h3>
 
     <div class="mt-4 grid gap-6 lg:grid-cols-3">
       <!-- LEFT: Plan info + card + Billing data -->
@@ -184,7 +183,7 @@ const handleBillingReset = () => {
         <!-- Plan Info Card -->
         <UCard class="rounded-3xl">
           <template #header>
-            <h3 class="text-base font-semibold text-slate-900 dark:text-white">Informacion del plan</h3>
+            <h3 class="text-base font-semibold text-slate-900 dark:text-white">Datos de suscripción</h3>
           </template>
 
           <div class="space-y-4">
@@ -228,7 +227,7 @@ const handleBillingReset = () => {
                   </div>
                 </div>
                 <div>
-                  <p class="text-xs text-white/60">Periodo</p>
+                  <p class="text-xs text-white/60">Período</p>
                   <p class="text-sm font-medium">{{ periodEndFormatted }}</p>
                 </div>
                 <div v-if="capabilities?.isTrial && trialEndFormatted">
@@ -262,7 +261,7 @@ const handleBillingReset = () => {
 
               <div v-if="subscription?.cancel_at_period_end" class="mt-3 rounded-lg bg-white/10 p-3">
                 <p class="text-xs text-white/80">
-                  Cancelacion programada. Acceso hasta el fin del periodo.
+                  Cancelación programada. Acceso hasta el fin del Período.
                 </p>
               </div>
             </div>
@@ -273,7 +272,7 @@ const handleBillingReset = () => {
         <UCard class="rounded-3xl">
           <template #header>
             <div>
-              <h3 class="text-base font-semibold text-slate-900 dark:text-white">Datos de facturacion</h3>
+              <h3 class="text-base font-semibold text-slate-900 dark:text-white">Datos de facturación</h3>
               <p class="text-sm text-slate-500 dark:text-slate-400">Informacion que aparece en tus facturas.</p>
             </div>
           </template>
@@ -325,7 +324,7 @@ const handleBillingReset = () => {
       <div>
         <UCard class="rounded-3xl">
           <template #header>
-            <h3 class="text-base font-semibold text-slate-900 dark:text-white">Ultimas transacciones</h3>
+            <h3 class="text-base font-semibold text-slate-900 dark:text-white">Últimas transacciones</h3>
           </template>
           <SettingsTablesMiniBillingHistory
             :entries="historyEntries"
@@ -339,9 +338,10 @@ const handleBillingReset = () => {
 
   <template v-else>
     <UiEmptyModuleState
-      title="Sin suscripcion"
-      description="No se encontro una suscripcion activa para esta organizacion."
+      title="Sin suscripción"
+      description="No se encontró una suscripción activa para esta organización."
       icon="i-lucide-credit-card"
     />
   </template>
 </template>
+
