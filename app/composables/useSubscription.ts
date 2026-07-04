@@ -305,12 +305,17 @@ export const useSubscription = () => {
       }
 
       const loader = (async () => {
-        const fetchCapabilitiesRequest = import.meta.server ? requestFetch : $fetch;
-        const response = await fetchCapabilitiesRequest<{ capabilities: Json }>("/api/subscription/capabilities", {
-          query: {
-            organizationId,
-          },
-        });
+        const response = import.meta.server
+          ? await requestFetch<{ capabilities: Json }>("/api/subscription/capabilities", {
+              query: {
+                organizationId,
+              },
+            })
+          : await $fetch<{ capabilities: Json }>("/api/subscription/capabilities", {
+              query: {
+                organizationId,
+              },
+            });
 
         capabilities.value = normalizeCapabilities(response.capabilities);
         lastLoadedOrganizationId.value = organizationId;

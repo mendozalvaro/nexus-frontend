@@ -199,8 +199,9 @@ export const useUserContext = () => {
     const loader = async () => {
       profileLoading.value = true;
       try {
-        const fetchProfileRequest = import.meta.server ? requestFetch : $fetch;
-        const data = await fetchProfileRequest<Profile>("/api/profile");
+        const data = import.meta.server
+          ? await requestFetch<Profile>("/api/profile")
+          : await $fetch<Profile>("/api/profile");
 
         profile.value = data ?? null;
         profileFetchedForUserId.value = currentUser.id;
