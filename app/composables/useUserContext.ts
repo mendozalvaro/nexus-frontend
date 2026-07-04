@@ -5,6 +5,7 @@ import type { PermissionGrant } from "@/types/permissions";
 
 const PROFILE_CACHE_TTL_MS = 30_000;
 const DEFAULT_ACCOUNT_STATUS = "active";
+const pendingProfileLoads = new Map<string, Promise<Profile | null>>();
 
 const sanitizeString = (value: string | null | undefined): string => {
   return value?.trim() ?? "";
@@ -38,8 +39,8 @@ export interface EnsureUserContextOptions {
 }
 
 export const useUserContext = () => {
-  const session = useSupabaseSession();
-  const { resolveUser, authBootstrapState } = useSessionAccess();
+  const { session, authenticatedUser, resolveUser, authBootstrapState } = useSessionAccess();
+  const requestFetch = useRequestFetch();
 
   const user = useState<User | null>("user-context:user", () => null);
   const profile = useState<Profile | null>("auth:profile", () => null);
@@ -86,6 +87,13 @@ export const useUserContext = () => {
     user.value = currentUser;
 
     if (!currentUser) {
+      if (profile.value && authBootstrapState.value !== "unauthenticated") {
+        contextBootstrapState.value = authBootstrapState.value === "authenticated"
+          ? "authenticated"
+          : "resolving";
+        return;
+      }
+
       roleState.value = null;
       organizationIdState.value = null;
       activeOrganizationIdState.value = null;
@@ -177,55 +185,63 @@ export const useUserContext = () => {
       && profile.value.id === currentUser.id;
 
     if (!forceRefresh && cacheIsFresh) {
+      contextBootstrapState.value = "authenticated";
       return profile.value;
     }
 
-    if (!forceRefresh && profileLoading.value) {
-      let attempts = 0;
-      while (profileLoading.value && attempts < 40) {
-        await new Promise<void>((resolve) => {
-          setTimeout(resolve, 25);
-        });
-        attempts += 1;
+    if (!forceRefresh) {
+      const pendingProfileLoad = pendingProfileLoads.get(currentUser.id);
+      if (pendingProfileLoad) {
+        return await pendingProfileLoad;
       }
+    }
 
-      if (profile.value?.id === currentUser.id) {
+    const loader = async () => {
+      profileLoading.value = true;
+      try {
+        const fetchProfileRequest = import.meta.server ? requestFetch : $fetch;
+        const data = await fetchProfileRequest<Profile>("/api/profile");
+
+        profile.value = data ?? null;
+        profileFetchedForUserId.value = currentUser.id;
+        profileFetchedAt.value = Date.now();
+
+        roleState.value = data?.role ?? getMetadataRole(currentUser);
+        organizationIdState.value = data?.organization_id ?? getMetadataOrganizationId(currentUser);
+
+        if (!activeOrganizationIdState.value && organizationIdState.value) {
+          activeOrganizationIdState.value = organizationIdState.value;
+        }
+
+        contextBootstrapState.value = data ? "authenticated" : "profile_incomplete";
+
         return profile.value;
+      } catch (error) {
+        profile.value = null;
+        profileFetchedForUserId.value = null;
+        profileFetchedAt.value = 0;
+        roleState.value = getMetadataRole(currentUser);
+        organizationIdState.value = getMetadataOrganizationId(currentUser);
+        const statusCode = typeof error === "object" && error && "statusCode" in error
+          ? Number((error as { statusCode?: unknown }).statusCode)
+          : NaN;
+        contextBootstrapState.value = statusCode === 403 ? "profile_incomplete" : "unauthenticated";
+        return null;
+      } finally {
+        profileLoading.value = false;
+        if (!forceRefresh) {
+          pendingProfileLoads.delete(currentUser.id);
+        }
       }
+    };
+
+    if (!forceRefresh) {
+      const pendingLoad = loader();
+      pendingProfileLoads.set(currentUser.id, pendingLoad);
+      return await pendingLoad;
     }
 
-    profileLoading.value = true;
-    try {
-      const data = await $fetch<Profile>("/api/profile");
-
-      profile.value = data ?? null;
-      profileFetchedForUserId.value = currentUser.id;
-      profileFetchedAt.value = Date.now();
-
-      roleState.value = data?.role ?? getMetadataRole(currentUser);
-      organizationIdState.value = data?.organization_id ?? getMetadataOrganizationId(currentUser);
-
-      if (!activeOrganizationIdState.value && organizationIdState.value) {
-        activeOrganizationIdState.value = organizationIdState.value;
-      }
-
-      contextBootstrapState.value = data ? "authenticated" : "profile_incomplete";
-
-      return profile.value;
-    } catch (error) {
-      profile.value = null;
-      profileFetchedForUserId.value = null;
-      profileFetchedAt.value = 0;
-      roleState.value = getMetadataRole(currentUser);
-      organizationIdState.value = getMetadataOrganizationId(currentUser);
-      const statusCode = typeof error === "object" && error && "statusCode" in error
-        ? Number((error as { statusCode?: unknown }).statusCode)
-        : NaN;
-      contextBootstrapState.value = statusCode === 403 ? "profile_incomplete" : "unauthenticated";
-      return null;
-    } finally {
-      profileLoading.value = false;
-    }
+    return await loader();
   };
 
   const ensureContext = async (
@@ -254,7 +270,7 @@ export const useUserContext = () => {
     contextWatcherInitialized.value = true;
 
     watch(
-      () => session.value?.user ?? null,
+      () => session.value?.user ?? authenticatedUser.value ?? null,
       (nextUser) => {
         syncFromCurrentUser(nextUser);
       },

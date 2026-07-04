@@ -18,27 +18,18 @@ export default defineNuxtConfig({
   runtimeConfig: {
     supabaseServiceRoleKey: process.env.NUXT_SUPABASE_SERVICE_ROLE_KEY ?? "",
     devAdminKey: process.env.NUXT_DEV_ADMIN_KEY ?? "",
-    public: {},
+    receiptVerificationSecret: process.env.NUXT_RECEIPT_VERIFICATION_SECRET ?? "",
+    public: {
+      appBaseUrl: process.env.NUXT_PUBLIC_APP_BASE_URL ?? "https://nexuspos.mendozalvarito.com",
+    },
   },
 
   // Configuración del módulo Supabase con redirect automático
   supabase: {
     url: process.env.NUXT_PUBLIC_SUPABASE_URL,
-    key: process.env.NUXT_PUBLIC_SUPABASE_ANON_KEY,
-    redirect: true,
-    redirectOptions: {
-      login: "/auth/login",
-      callback: "/auth/callback",
-      exclude: [
-        "/auth/**",
-        "/",
-        "/pricing",
-        "/about",
-        "/terms",
-        "/privacy",
-        "/test-all-composables",
-      ],
-    },
+    key: process.env.NUXT_PUBLIC_SUPABASE_KEY ?? process.env.NUXT_PUBLIC_SUPABASE_ANON_KEY,
+    useSsrCookies: true,
+    redirect: false,
     cookiePrefix: "nexuspos-auth",
     cookieOptions: {
       maxAge: 60 * 60 * 24 * 7,

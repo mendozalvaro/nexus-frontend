@@ -1,5 +1,3 @@
-import type { Ref } from "vue";
-
 import type { Database, Json } from "@/types/database.types";
 import type {
   CapabilityFeatureKey,
@@ -31,6 +29,7 @@ const FEATURE_KEYS: ReadonlySet<CapabilityFeatureKey> = new Set([
   "hasAdvancedReports",
   "hasApiAccess",
   "hasForensicExport",
+  "hasHotelModule",
 ]);
 
 const isRecord = (value: unknown): value is Record<string, unknown> => {
@@ -96,6 +95,10 @@ const createFallbackCapabilities = (
     hasAdvancedReports: false,
     hasApiAccess: false,
     hasForensicExport: false,
+    hasHotelModule: false,
+    businessTypes: [],
+    allowedBusinessTypes: [],
+    maxBusinessTypes: 1,
     currentBranchesCount,
     currentUsersCount,
     subscriptionStatus: "inactive",
@@ -159,6 +162,10 @@ const normalizeCapabilities = (payload: CapabilityRpcResponse): OrganizationCapa
       payload.hasForensicExport ?? payload.has_forensic_export,
       false,
     ),
+    hasHotelModule: readBoolean(payload.hasHotelModule ?? payload.has_hotel_module, false),
+    businessTypes: readStringArray(payload.businessTypes ?? payload.business_types),
+    allowedBusinessTypes: readStringArray(payload.allowedBusinessTypes ?? payload.allowed_business_types),
+    maxBusinessTypes: readNumber(payload.maxBusinessTypes ?? payload.max_business_types, 1),
     currentBranchesCount,
     currentUsersCount,
     subscriptionStatus: sanitizeSubscriptionStatus(
@@ -177,13 +184,13 @@ const normalizeCapabilities = (payload: CapabilityRpcResponse): OrganizationCapa
 };
 
 export const useSubscription = () => {
-  const supabase = useSupabaseClient<Database>();
   const { user, organizationId, ensureContext } = useUserContext();
+  const requestFetch = useRequestFetch();
 
   const capabilities = useState<OrganizationCapabilities | null>(
     "subscription:capabilities",
     () => createFallbackCapabilities(),
-  ) as Ref<OrganizationCapabilities | null>;
+  );
   const isLoading = useState<boolean>("subscription:is-loading", () => false);
   const error = useState<string | null>("subscription:error", () => null);
   const resolvedOrganizationId = useState<string | null>("subscription:organization-id", () => null);
@@ -204,14 +211,42 @@ export const useSubscription = () => {
   };
 
   const resolveOrganizationId = async (): Promise<string | null> => {
-    const { user: currentUser, profile } = await ensureContext({ requireProfile: true });
+    if (!user.value) {
+      const { user: currentUser, profile } = await ensureContext({ requireProfile: true });
+      if (!currentUser) {
+        resolvedOrganizationId.value = null;
+        return null;
+      }
+
+      const resolved = profile?.organization_id ?? organizationId.value ?? null;
+      resolvedOrganizationId.value = resolved;
+      return resolved;
+    }
+
+    const resolved = organizationId.value ?? null;
+    if (resolved) {
+      resolvedOrganizationId.value = resolved;
+      return resolved;
+    }
+
+    const { profile } = await ensureContext({ requireProfile: true });
+    const hydratedOrganizationId = profile?.organization_id ?? null;
+    resolvedOrganizationId.value = hydratedOrganizationId;
+    return hydratedOrganizationId;
+  };
+
+  const ensureAuthenticatedUser = async () => {
+    if (user.value) {
+      return user.value;
+    }
+
+    const { user: currentUser } = await ensureContext({ requireProfile: false });
     if (!currentUser) {
       resolvedOrganizationId.value = null;
       return null;
     }
-    const resolved = profile?.organization_id ?? organizationId.value ?? null;
-    resolvedOrganizationId.value = resolved;
-    return resolved;
+
+    return currentUser;
   };
 
   /**
@@ -232,7 +267,7 @@ export const useSubscription = () => {
     error.value = null;
 
     try {
-      const { user: currentUser } = await ensureContext({ requireProfile: false });
+      const currentUser = await ensureAuthenticatedUser();
       if (!currentUser) {
         setFallbackCapabilities();
         resolvedOrganizationId.value = null;
@@ -270,16 +305,14 @@ export const useSubscription = () => {
       }
 
       const loader = (async () => {
-        const { data, error: rpcError } = await supabase.rpc(
-          "get_organization_capabilities",
-          { input_org_id: organizationId },
-        );
+        const fetchCapabilitiesRequest = import.meta.server ? requestFetch : $fetch;
+        const response = await fetchCapabilitiesRequest<{ capabilities: Json }>("/api/subscription/capabilities", {
+          query: {
+            organizationId,
+          },
+        });
 
-        if (rpcError) {
-          throw rpcError;
-        }
-
-        capabilities.value = normalizeCapabilities(data as Json);
+        capabilities.value = normalizeCapabilities(response.capabilities);
         lastLoadedOrganizationId.value = organizationId;
         lastLoadedAt.value = Date.now();
         return capabilities.value;
