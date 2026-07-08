@@ -54,6 +54,9 @@ const state = reactive<ProductFormState>({
 const imageInputRef = ref<HTMLInputElement | null>(null);
 const localPreviewUrl = ref<string | null>(null);
 const previewUrl = computed(() => localPreviewUrl.value || state.imageUrl || null);
+const imageError = ref<string | null>(null);
+const MAX_IMAGE_FILE_SIZE_BYTES = 2 * 1024 * 1024;
+const ALLOWED_IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/webp"]);
 
 watch(
   () => props.initialValue,
@@ -68,6 +71,7 @@ watch(
     state.salePrice = value.salePrice ?? 0;
     state.categoryId = value.categoryId ?? null;
     state.trackInventory = value.trackInventory ?? true;
+    imageError.value = null;
   },
   { immediate: true, deep: true },
 );
@@ -103,6 +107,7 @@ const clearImageSelection = () => {
   clearLocalPreview();
   state.imageFile = null;
   state.imageUrl = "";
+  imageError.value = null;
   if (imageInputRef.value) {
     imageInputRef.value.value = "";
   }
@@ -115,7 +120,20 @@ const handleImageSelection = (event: Event) => {
     return;
   }
 
+  if (!ALLOWED_IMAGE_TYPES.has(file.type)) {
+    imageError.value = "La imagen debe ser PNG, JPG o WebP.";
+    input.value = "";
+    return;
+  }
+
+  if (file.size > MAX_IMAGE_FILE_SIZE_BYTES) {
+    imageError.value = "La imagen no puede superar 2MB.";
+    input.value = "";
+    return;
+  }
+
   clearLocalPreview();
+  imageError.value = null;
   state.imageFile = file;
   if (import.meta.client) {
     localPreviewUrl.value = URL.createObjectURL(file);
@@ -225,6 +243,9 @@ onBeforeUnmount(() => {
                 Quitar imagen
               </UButton>
             </div>
+            <p v-if="imageError" class="text-xs text-rose-600 dark:text-rose-400">
+              {{ imageError }}
+            </p>
             <label class="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
               <input v-model="state.cropSquare" type="checkbox" class="h-4 w-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500">
               Recortar a formato cuadrado (1:1)

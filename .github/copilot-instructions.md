@@ -101,7 +101,7 @@ Stack actual validado en `package.json` y `nuxt.config.ts`:
 ## 9) Fuente de verdad tecnica antes de implementar
 
 Leer siempre antes de cambios estructurales:
-- `schema.sql`
+- `supabase/dump.sql`
 - `app/types/database.types.ts`
 - `app/utils/constants.ts`
 - `app/utils/roles.ts`

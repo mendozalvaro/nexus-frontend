@@ -41,6 +41,10 @@ export const useCatalogRoomsPage = ({
   const pendingRooms = ref(false);
   const roomResourcesLoadedForOrganization = ref<string | null>(null);
   const currentOrganizationId = computed(() => profile.value?.organization_id ?? null);
+  const roomResourcesReady = computed(() =>
+    !canViewRoomCatalog.value
+    || (currentOrganizationId.value !== null && roomResourcesLoadedForOrganization.value === currentOrganizationId.value),
+  );
   const shouldLoadRoomResources = computed(() =>
     canViewRoomCatalog.value
     && (activeTab.value === "summary" || activeTab.value === "rooms" || activeTab.value === "room-categories"),
@@ -207,6 +211,7 @@ export const useCatalogRoomsPage = ({
     pendingRooms,
     roomCategories,
     roomModalOpen,
+    roomResourcesReady,
     roomsData,
   };
 };

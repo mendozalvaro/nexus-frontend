@@ -379,9 +379,10 @@ onMounted(async () => {
       await subscriptionApi?.loadCapabilities(context.profile.organization_id, { force: true });
     }
 
+    await permissionsApi?.ensureRolePermissionsLoaded();
+
     const accessResolution = await permissionsApi?.resolveRouteAccess({
       moduleKeysAny: ["reports.sales", "reports.services", "reports.lodging"],
-      permissionsAny: ["reports.sales.view", "reports.services.view", "reports.lodging.view"],
       roles: ["admin", "manager"],
     });
 

@@ -30,6 +30,18 @@ export const renderReceiptHtml = (
   format: ReceiptFormat,
   verificationQrDataUrl: string,
 ): string => {
+  const receiptMeta = receipt.meta ?? {};
+  const documentLabel = receiptMeta.documentLabel ?? "Recibo";
+  const headerTitle = receiptMeta.headerTitle ?? "NexusPOS";
+  const headerSubtitle = receiptMeta.headerSubtitle ?? receipt.branchName;
+  const headerSubtitleSecondary = receiptMeta.headerSubtitleSecondary ?? "";
+  const receiptTitle = receiptMeta.receiptTitle ?? "Recibo de Venta";
+  const customerSecondaryLabel = receiptMeta.customerSecondaryLabel ?? "Telefono";
+  const customerSecondaryValue = receiptMeta.customerSecondaryValue ?? receipt.customer.phone ?? "-";
+  const employeeLabel = receiptMeta.employeeLabel ?? "Atendido por";
+  const summaryRows = receiptMeta.summaryRows ?? [];
+  const showFormatLine = receiptMeta.showFormatLine !== false;
+
   const rows = receipt.items
     .map((item) => {
       return `<tr>
@@ -47,6 +59,9 @@ export const renderReceiptHtml = (
   const discountRow = receipt.discountAmount > 0
     ? `<div class="line"><span>Descuento</span><span>Bs ${receipt.discountAmount.toFixed(2)}</span></div>`
     : `<div class="line"><span>Descuento</span><span>Bs 0.00</span></div>`;
+  const customSummaryRows = summaryRows
+    .map((row) => `<div class="line"><span>${escapeHtml(row.label)}</span><span>${escapeHtml(row.value)}</span></div>`)
+    .join("");
 
   const verificationShort = truncateVerificationUrl(receipt.verificationUrl);
   const isHalfLetter = format === "half_letter";
@@ -55,7 +70,7 @@ export const renderReceiptHtml = (
 <html>
 <head>
   <meta charset="utf-8">
-  <title>Recibo #${receipt.invoiceNumber}</title>
+  <title>${documentLabel} #${receipt.invoiceNumber}</title>
   <style>
     *{margin:0;padding:0;box-sizing:border-box}
     body{font-family:${isHalfLetter ? "'Segoe UI', Arial, sans-serif" : "'Courier New',monospace"};color:#000;background:#fff}
@@ -90,23 +105,24 @@ export const renderReceiptHtml = (
 <body>
   <div class="page">
     <div class="header">
-      <h1>NexusPOS</h1>
-      <p class="muted">${escapeHtml(receipt.branchName)}</p>
-      <p class="title">Recibo de Venta</p>
+      <h1>${escapeHtml(headerTitle)}</h1>
+      <p class="muted">${escapeHtml(headerSubtitle)}</p>
+      ${headerSubtitleSecondary ? `<p class="muted">${escapeHtml(headerSubtitleSecondary)}</p>` : ""}
+      <p class="title">${escapeHtml(receiptTitle)}</p>
     </div>
     <div class="${isHalfLetter ? "meta-grid" : ""}">
       <div class="${isHalfLetter ? "meta-card" : ""}">
         <div class="info">
-          <div class="line"><span>Factura #:</span><span>${receipt.invoiceNumber}</span></div>
+          <div class="line"><span>${escapeHtml(documentLabel)} #:</span><span>${receipt.invoiceNumber}</span></div>
           <div class="line"><span>Fecha:</span><span>${new Date(receipt.createdAt).toLocaleString("es-BO")}</span></div>
-          <div class="line"><span>Formato:</span><span>${getReceiptLabel(format)}</span></div>
+          ${showFormatLine ? `<div class="line"><span>Formato:</span><span>${getReceiptLabel(format)}</span></div>` : ""}
         </div>
       </div>
       <div class="${isHalfLetter ? "meta-card" : ""}">
         <div class="info">
           <div class="line"><span>Cliente:</span><span>${escapeHtml(receipt.customer.fullName)}</span></div>
-          <div class="line"><span>Telefono:</span><span>${escapeHtml(receipt.customer.phone ?? "-")}</span></div>
-          <div class="line"><span>Pago:</span><span>${escapeHtml(receipt.paymentMethod)}</span></div>
+          <div class="line"><span>${escapeHtml(customerSecondaryLabel)}:</span><span>${escapeHtml(customerSecondaryValue)}</span></div>
+          <div class="line"><span>${escapeHtml(employeeLabel)}:</span><span>${escapeHtml(receipt.employeeName)}</span></div>
         </div>
       </div>
     </div>
@@ -122,6 +138,7 @@ export const renderReceiptHtml = (
       <tbody>${rows}</tbody>
     </table>
     <div class="summary">
+      ${customSummaryRows}
       <div class="line"><span>Subtotal</span><span>Bs ${receipt.totalAmount.toFixed(2)}</span></div>
       ${discountRow}
       <div class="total"><span>Total</span><span>Bs ${receipt.finalAmount.toFixed(2)}</span></div>

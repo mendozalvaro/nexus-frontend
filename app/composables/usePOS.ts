@@ -159,7 +159,7 @@ export interface POSReceiptLineItem {
 
 export interface POSReceipt {
   transactionId: string;
-  invoiceNumber: number;
+  invoiceNumber: number | string;
   createdAt: string;
   branchId: string;
   branchName: string;
@@ -181,6 +181,21 @@ export interface POSReceipt {
   formatUsed: ReceiptFormat;
   verificationUrl: string;
   items: POSReceiptLineItem[];
+  meta?: {
+    headerTitle?: string;
+    headerSubtitle?: string;
+    headerSubtitleSecondary?: string;
+    receiptTitle?: string;
+    documentLabel?: string;
+    customerSecondaryLabel?: string;
+    customerSecondaryValue?: string | null;
+    employeeLabel?: string;
+    summaryLabel?: string;
+    summaryRows?: Array<{ label: string; value: string }>;
+    showFormatSelector?: boolean;
+    showFormatLine?: boolean;
+    allowPdfDownload?: boolean;
+  };
 }
 
 export interface POSTransactionHistoryItem {

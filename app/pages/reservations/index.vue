@@ -18,7 +18,6 @@ definePageMeta({
 });
 
 const { loadReservations, loadRoomBoard } = useReservations();
-const { ensureContext } = useUserContext();
 const session = useSupabaseSession();
 const today = new Date();
 const monthStart = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-01`;
@@ -45,7 +44,6 @@ const load = async () => {
   loading.value = true;
   error.value = null;
   try {
-    await ensureContext({ requireProfile: true, forceUserValidation: true });
     const [result, board] = await Promise.all([
       loadReservations({ ...filters, page: page.value, perPage }),
       loadRoomBoard(filters.branchId),
@@ -61,10 +59,21 @@ const load = async () => {
 };
 
 const summary = computed(() => {
-  const checkedIn = rows.value.filter((r) => r.status === "checked_in").length;
+  const activeReservationIds = new Set(
+    roomBoard.value
+      .map((room) => room.reservationId)
+      .filter((value): value is string => typeof value === "string" && value.length > 0),
+  );
+  const occupiedRooms = roomBoard.value.filter((room) => room.status === "occupied");
+  const checkedIn = occupiedRooms.length;
   const checkedOut = rows.value.filter((r) => r.status === "checked_out").length;
-  const withBalance = rows.value.filter((r) => r.balance > 0).length;
-  return { total: total.value, checkedIn, checkedOut, withBalance };
+  const withBalance = occupiedRooms.filter((room) => room.balance > 0).length;
+  return {
+    total: Math.max(total.value, activeReservationIds.size),
+    checkedIn,
+    checkedOut,
+    withBalance,
+  };
 });
 
 const statusFilterOptions = computed(() =>
@@ -83,9 +92,6 @@ const goToPOSPayment = (id: string) => navigateTo(`/reservations/${id}?openPayme
 const goToCreate = () => {
   activeTab.value = "summary";
   createModalOpen.value = true;
-};
-const handleTabNavigate = (tab: "summary" | "list") => {
-  activeTab.value = tab;
 };
 const handleCreated = async (payload: { reservationId: string; goToPayment: boolean }) => {
   await load();
@@ -195,35 +201,35 @@ watch(
     <UAlert v-if="error" color="error" variant="soft" icon="i-lucide-circle-x" :title="error" />
     <ReservationsTabs
       v-model="activeTab"
-      :summary-count="summary.checkedIn"
-      :history-count="summary.total"
     />
 
     <div v-if="activeTab === 'summary'" class="space-y-6">
-      <ReservationsSummaryPanel
-        :total="summary.total"
-        :checked-in="summary.checkedIn"
-        :checked-out="summary.checkedOut"
-        :with-balance="summary.withBalance"
-        @navigate="handleTabNavigate"
-        @create="goToCreate"
-      />
-      <ReservationsActiveRoomsPanel
-        :rooms="roomBoard"
-        @create="goToCreate"
-        @detail="openRoomDetail"
-        @payment="openRoomPayment"
-        @checkout="openRoomCheckout"
-        @extend="openRoomExtend"
-      />
+      <div class="grid gap-6 xl:grid-cols-[minmax(0,2fr)_minmax(0,2fr)_minmax(280px,1fr)]">
+        <div class="xl:col-span-2">
+          <ReservationsActiveRoomsPanel
+            :rooms="roomBoard"
+            @create="goToCreate"
+            @detail="openRoomDetail"
+            @payment="openRoomPayment"
+            @checkout="openRoomCheckout"
+            @extend="openRoomExtend"
+          />
+        </div>
+
+        <div class="xl:col-start-3">
+          <ReservationsSummaryPanel
+            :total="summary.total"
+            :checked-in="summary.checkedIn"
+            :checked-out="summary.checkedOut"
+            :with-balance="summary.withBalance"
+          />
+        </div>
+      </div>
     </div>
 
     <div v-else class="space-y-6">
       <ReservationsToolbar
-        :search-query="filters.search ?? ''"
         :loading="loading"
-        :total-rows="total"
-        @update:search-query="filters.search = $event ?? ''"
         @refresh="load"
         @create="goToCreate"
       />

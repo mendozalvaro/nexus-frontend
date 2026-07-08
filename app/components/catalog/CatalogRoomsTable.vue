@@ -23,7 +23,7 @@ const columns = computed(() => {
       cell: ({ row }: { row: { original: CatalogRoomItem } }) =>
         h("div", { class: "space-y-1" }, [
           h("p", { class: "font-medium text-slate-950 dark:text-white" }, row.original.roomNumber),
-          h("p", { class: "text-xs text-slate-500 dark:text-slate-400" }, row.original.floor ? `Piso ${row.original.floor}` : "—"),
+          h("p", { class: "text-xs text-slate-500 dark:text-slate-400" }, row.original.location || "-"),
         ]),
     },
     {

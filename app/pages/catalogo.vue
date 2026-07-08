@@ -81,6 +81,7 @@ const {
   productModalOpen,
   roomCategories,
   roomModalOpen,
+  roomResourcesReady,
   roomsData,
   searchQuery,
   serviceCategories,
@@ -118,7 +119,7 @@ const {
     />
 
     <CatalogSummaryPanel
-      v-if="activeTab === 'summary'"
+      v-if="activeTab === 'summary' && roomResourcesReady"
       :show-products="canViewProductCatalog"
       :show-services="canViewServiceCatalog"
       :show-rooms="canViewRoomCatalog"
@@ -130,6 +131,17 @@ const {
       :room-categories-count="roomCategories.length"
       @navigate="activeTab = $event"
     />
+
+    <UCard
+      v-else-if="activeTab === 'summary'"
+      class="rounded-[1.75rem]"
+    >
+      <div class="space-y-3 py-4">
+        <USkeleton class="h-10 w-full rounded-xl" />
+        <USkeleton class="h-28 w-full rounded-2xl" />
+        <USkeleton class="h-28 w-full rounded-2xl" />
+      </div>
+    </UCard>
 
     <template v-else>
       <CatalogToolbar

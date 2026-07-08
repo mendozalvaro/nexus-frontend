@@ -423,7 +423,7 @@ type RoomRow = Database["public"]["Tables"]["rooms"]["Row"];
 
 export const roomSchema = z.object({
   roomNumber: z.string().trim().min(1, "El numero de habitacion es obligatorio."),
-  floor: z.coerce.number().int().nullable().optional(),
+  location: z.string().trim().max(120, "La ubicacion no puede superar 120 caracteres.").optional(),
   categoryId: z.string().uuid("Selecciona una categoria valida."),
   branchId: z.string().uuid("Selecciona una sucursal valida."),
   basePrice: numericField.min(0, "El precio base no puede ser negativo."),
@@ -432,7 +432,7 @@ export const roomSchema = z.object({
 
 export const roomUpdateSchema = z.object({
   roomNumber: z.string().trim().min(1).optional(),
-  floor: z.coerce.number().int().nullable().optional(),
+  location: z.string().trim().max(120).optional(),
   categoryId: z.string().uuid().optional(),
   basePrice: numericField.min(0).optional(),
   status: z.enum(["available", "occupied", "maintenance", "cleaning"]).optional(),

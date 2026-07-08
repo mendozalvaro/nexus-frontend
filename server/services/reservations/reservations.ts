@@ -1,5 +1,6 @@
 import { createError } from "h3";
 import type { Database } from "@/types/database.types";
+import { formatReservationReceiptNumber, normalizeReservationReceiptBase } from "@/utils/reservation-receipts";
 import type { ReservationContext } from "../../utils/reservations";
 import { assertReservationBranchAccess } from "../../utils/reservations";
 
@@ -28,6 +29,10 @@ export interface ReservationDetail {
   id: string;
   branchId: string;
   branchName: string;
+  branchAddress: string | null;
+  organizationName: string;
+  defaultReceiptFormat: "thermal" | "half_letter";
+  createdByName: string | null;
   checkIn: string;
   checkOut: string;
   actualCheckInAt: string | null;
@@ -59,6 +64,7 @@ export interface ReservationRoomDetail {
 
 export interface GuestDetail {
   id: string;
+  guestCustomerId: string | null;
   fullName: string;
   documentType: string | null;
   documentNumber: string | null;
@@ -72,14 +78,56 @@ export interface GuestDetail {
   isMainGuest: boolean;
 }
 
+export interface ReservationGuestLookupResult {
+  guestCustomerId: string | null;
+  fullName: string;
+  documentType: string | null;
+  documentNumber: string | null;
+  birthDate: string | null;
+  sex: "male" | "female" | "other" | null;
+  phone: string | null;
+  email: string | null;
+  nationality: string | null;
+  address: string | null;
+  maritalStatus: string | null;
+}
+
+export interface ReservationGuestSuggestion {
+  guestCustomerId: string | null;
+  fullName: string;
+  documentType: string | null;
+  documentNumber: string | null;
+}
+
+const dedupeGuestSuggestions = (suggestions: ReservationGuestSuggestion[]) => {
+  const uniqueSuggestions = new Map<string, ReservationGuestSuggestion>();
+
+  for (const suggestion of suggestions) {
+    const identity = suggestion.guestCustomerId
+      ?? `${suggestion.documentType ?? ""}:${suggestion.documentNumber ?? ""}:${suggestion.fullName}`;
+    if (!uniqueSuggestions.has(identity)) {
+      uniqueSuggestions.set(identity, suggestion);
+    }
+  }
+
+  return Array.from(uniqueSuggestions.values());
+};
+
 export interface PaymentDetail {
   id: string;
   amount: number;
   paymentMethod: string;
   paymentType: string;
+  receiptKind: "partial" | "final" | null;
+  receiptBaseNumber: string | null;
+  receiptNumber: string | null;
+  receiptPartialIndex: number | null;
+  receiptYear: number | null;
+  receiptSequence: number | null;
   reference: string | null;
   notes: string | null;
   paidAt: string;
+  createdByName: string | null;
 }
 
 export interface ReservationFilters {
@@ -393,9 +441,24 @@ export async function getReservationDetail(
   const r = reservation as Record<string, unknown>;
   const { data: branch } = await context.adminClient
     .from("branches")
-    .select("name")
+    .select("name, address")
     .eq("id", r.branch_id as string)
-    .maybeSingle<{ name: string | null }>();
+    .maybeSingle<{ name: string | null; address: string | null }>();
+
+  const { data: organization } = await context.adminClient
+    .from("organizations")
+    .select("name, default_receipt_format")
+    .eq("id", context.organizationId)
+    .maybeSingle<{ name: string | null; default_receipt_format: string | null }>();
+
+  const createdById = typeof r.created_by === "string" ? r.created_by : null;
+  const { data: createdByProfile } = createdById
+    ? await context.adminClient
+      .from("profiles")
+      .select("full_name")
+      .eq("id", createdById)
+      .maybeSingle<{ full_name: string | null }>()
+    : { data: null };
 
   const { data: roomLinks, error: roomLinksError } = await context.adminClient
     .from("reservation_rooms")
@@ -422,6 +485,7 @@ export async function getReservationDetail(
         notes: (roomLink.notes as string) ?? null,
         guests: (guests ?? []).map((guest: Record<string, unknown>) => ({
           id: guest.id as string,
+          guestCustomerId: (guest.guest_customer_id as string) ?? null,
           fullName: guest.full_name as string,
           documentType: (guest.document_type as string) ?? null,
           documentNumber: (guest.document_number as string) ?? null,
@@ -444,10 +508,31 @@ export async function getReservationDetail(
     .eq("reservation_id", reservationId)
     .order("paid_at", { ascending: false });
 
+  const paymentCreatorIds = Array.from(new Set(
+    (payments ?? [])
+      .map((payment: Record<string, unknown>) => typeof payment.created_by === "string" ? payment.created_by : null)
+      .filter((value): value is string => Boolean(value)),
+  ));
+
+  const { data: paymentCreators } = paymentCreatorIds.length > 0
+    ? await context.adminClient
+      .from("profiles")
+      .select("id, full_name")
+      .in("id", paymentCreatorIds)
+    : { data: [] };
+
+  const paymentCreatorNames = new Map(
+    (paymentCreators ?? []).map((profile) => [profile.id, profile.full_name ?? null]),
+  );
+
   return {
     id: r.id as string,
     branchId: r.branch_id as string,
     branchName: branch?.name ?? "",
+    branchAddress: branch?.address ?? null,
+    organizationName: organization?.name ?? "",
+    defaultReceiptFormat: organization?.default_receipt_format === "thermal" ? "thermal" : "half_letter",
+    createdByName: createdByProfile?.full_name ?? null,
     checkIn: r.check_in as string,
     checkOut: r.check_out as string,
     actualCheckInAt: (r.actual_check_in_at as string) ?? null,
@@ -468,11 +553,224 @@ export async function getReservationDetail(
       amount: Number(payment.amount),
       paymentMethod: payment.payment_method as string,
       paymentType: payment.payment_type as string,
+      receiptKind: (payment.receipt_kind as "partial" | "final" | null) ?? null,
+      receiptBaseNumber: normalizeReservationReceiptBase((payment.receipt_base_number as string | null) ?? (payment.receipt_number as string | null)),
+      receiptNumber: formatReservationReceiptNumber(
+        (payment.receipt_base_number as string | null) ?? (payment.receipt_number as string | null),
+        (payment.receipt_kind as "partial" | "final" | null) ?? null,
+        typeof payment.receipt_partial_index === "number" ? payment.receipt_partial_index : null,
+      ),
+      receiptPartialIndex: typeof payment.receipt_partial_index === "number" ? payment.receipt_partial_index : null,
+      receiptYear: typeof payment.receipt_year === "number" ? payment.receipt_year : null,
+      receiptSequence: typeof payment.receipt_sequence === "number" ? payment.receipt_sequence : null,
       reference: (payment.reference as string) ?? null,
       notes: (payment.notes as string) ?? null,
       paidAt: (payment.paid_at as string) ?? "",
+      createdByName: paymentCreatorNames.get(payment.created_by as string) ?? null,
     })),
   };
+}
+
+export async function lookupGuestByDocument(
+  context: ReservationContext,
+  documentNumber: string,
+  documentType?: string,
+): Promise<ReservationGuestLookupResult | null> {
+  const normalizedDocumentNumber = documentNumber.trim();
+  const normalizedDocumentType = documentType?.trim() || null;
+
+  if (!normalizedDocumentNumber) {
+    return null;
+  }
+
+  let guestCustomerQuery = context.adminClient
+    .from("guest_customers")
+    .select("id, full_name, document_type, document_number, birth_date, sex, phone, email, nationality, address, marital_status")
+    .eq("organization_id", context.organizationId)
+    .eq("document_number", normalizedDocumentNumber)
+    .order("updated_at", { ascending: false })
+    .limit(1);
+
+  if (normalizedDocumentType) {
+    guestCustomerQuery = guestCustomerQuery.eq("document_type", normalizedDocumentType);
+  }
+
+  const { data: guestCustomers, error: guestCustomerError } = await guestCustomerQuery;
+  if (guestCustomerError) {
+    throw createError({ statusCode: 500, statusMessage: guestCustomerError.message });
+  }
+
+  const guestCustomer = guestCustomers?.[0];
+  if (guestCustomer) {
+    return {
+      guestCustomerId: guestCustomer.id,
+      fullName: guestCustomer.full_name,
+      documentType: guestCustomer.document_type,
+      documentNumber: guestCustomer.document_number,
+      birthDate: guestCustomer.birth_date,
+      sex: (guestCustomer.sex as "male" | "female" | "other" | null) ?? null,
+      phone: guestCustomer.phone,
+      email: (guestCustomer as Record<string, unknown>).email as string | null ?? null,
+      nationality: (guestCustomer as Record<string, unknown>).nationality as string | null ?? null,
+      address: (guestCustomer as Record<string, unknown>).address as string | null ?? null,
+      maritalStatus: (guestCustomer as Record<string, unknown>).marital_status as string | null ?? null,
+    };
+  }
+
+  let reservationGuestQuery = context.adminClient
+    .from("reservation_guests")
+    .select("id, guest_customer_id, full_name, document_type, document_number, birth_date, sex, phone, email, nationality, address, marital_status, reservation_room_id")
+    .eq("document_number", normalizedDocumentNumber)
+    .order("created_at", { ascending: false })
+    .limit(20);
+
+  if (normalizedDocumentType) {
+    reservationGuestQuery = reservationGuestQuery.eq("document_type", normalizedDocumentType);
+  }
+
+  const { data: reservationGuests, error: reservationGuestError } = await reservationGuestQuery;
+  if (reservationGuestError) {
+    throw createError({ statusCode: 500, statusMessage: reservationGuestError.message });
+  }
+
+  const reservationRoomIds = [...new Set((reservationGuests ?? [])
+    .map((row) => row.reservation_room_id)
+    .filter((value): value is string => typeof value === "string" && value.length > 0))];
+
+  if (reservationRoomIds.length === 0) {
+    return null;
+  }
+
+  const { data: reservationRooms, error: reservationRoomsError } = await context.adminClient
+    .from("reservation_rooms")
+    .select("id, reservations!inner(organization_id)")
+    .in("id", reservationRoomIds);
+
+  if (reservationRoomsError) {
+    throw createError({ statusCode: 500, statusMessage: reservationRoomsError.message });
+  }
+
+  const allowedRoomIds = new Set(
+    (reservationRooms ?? [])
+      .filter((room: Record<string, unknown>) => {
+        const reservation = room.reservations as Record<string, unknown> | undefined;
+        return reservation?.organization_id === context.organizationId;
+      })
+      .map((room) => room.id as string),
+  );
+
+  const reservationGuest = (reservationGuests ?? []).find((row) => allowedRoomIds.has(row.reservation_room_id as string));
+
+  if (!reservationGuest) {
+    return null;
+  }
+
+  return {
+    guestCustomerId: (reservationGuest.guest_customer_id as string) ?? null,
+    fullName: reservationGuest.full_name as string,
+    documentType: (reservationGuest.document_type as string) ?? null,
+    documentNumber: (reservationGuest.document_number as string) ?? null,
+    birthDate: (reservationGuest.birth_date as string) ?? null,
+    sex: (reservationGuest.sex as "male" | "female" | "other" | null) ?? null,
+    phone: (reservationGuest.phone as string) ?? null,
+    email: (reservationGuest.email as string) ?? null,
+    nationality: (reservationGuest.nationality as string) ?? null,
+    address: (reservationGuest.address as string) ?? null,
+    maritalStatus: (reservationGuest.marital_status as string) ?? null,
+  };
+}
+
+export async function searchGuestsByDocument(
+  context: ReservationContext,
+  documentNumber: string,
+  documentType?: string,
+): Promise<ReservationGuestSuggestion[]> {
+  const normalizedDocumentNumber = documentNumber.trim();
+  const normalizedDocumentType = documentType?.trim() || null;
+
+  if (normalizedDocumentNumber.length < 4) {
+    return [];
+  }
+
+  let query = context.adminClient
+    .from("guest_customers")
+    .select("id, full_name, document_type, document_number")
+    .eq("organization_id", context.organizationId)
+    .ilike("document_number", `${normalizedDocumentNumber}%`)
+    .order("updated_at", { ascending: false })
+    .limit(8);
+
+  if (normalizedDocumentType) {
+    query = query.eq("document_type", normalizedDocumentType);
+  }
+
+  const { data, error } = await query;
+  if (error) {
+    throw createError({ statusCode: 500, statusMessage: error.message });
+  }
+
+  const guestCustomerSuggestions = (data ?? []).map((guest) => ({
+    guestCustomerId: guest.id,
+    fullName: guest.full_name,
+    documentType: guest.document_type,
+    documentNumber: guest.document_number,
+  }));
+
+  let reservationGuestQuery = context.adminClient
+    .from("reservation_guests")
+    .select("guest_customer_id, full_name, document_type, document_number, reservation_room_id, created_at")
+    .ilike("document_number", `${normalizedDocumentNumber}%`)
+    .order("created_at", { ascending: false })
+    .limit(20);
+
+  if (normalizedDocumentType) {
+    reservationGuestQuery = reservationGuestQuery.eq("document_type", normalizedDocumentType);
+  }
+
+  const { data: reservationGuests, error: reservationGuestError } = await reservationGuestQuery;
+  if (reservationGuestError) {
+    throw createError({ statusCode: 500, statusMessage: reservationGuestError.message });
+  }
+
+  const reservationRoomIds = [...new Set((reservationGuests ?? [])
+    .map((row) => row.reservation_room_id)
+    .filter((value): value is string => typeof value === "string" && value.length > 0))];
+
+  let historicalSuggestions: ReservationGuestSuggestion[] = [];
+
+  if (reservationRoomIds.length > 0) {
+    const { data: reservationRooms, error: reservationRoomsError } = await context.adminClient
+      .from("reservation_rooms")
+      .select("id, reservations!inner(organization_id)")
+      .in("id", reservationRoomIds);
+
+    if (reservationRoomsError) {
+      throw createError({ statusCode: 500, statusMessage: reservationRoomsError.message });
+    }
+
+    const allowedRoomIds = new Set(
+      (reservationRooms ?? [])
+        .filter((room: Record<string, unknown>) => {
+          const reservation = room.reservations as Record<string, unknown> | undefined;
+          return reservation?.organization_id === context.organizationId;
+        })
+        .map((room) => room.id as string),
+    );
+
+    historicalSuggestions = (reservationGuests ?? [])
+      .filter((guest) => allowedRoomIds.has(guest.reservation_room_id as string))
+      .map((guest) => ({
+        guestCustomerId: (guest.guest_customer_id as string) ?? null,
+        fullName: guest.full_name as string,
+        documentType: (guest.document_type as string) ?? null,
+        documentNumber: (guest.document_number as string) ?? null,
+      }));
+  }
+
+  return dedupeGuestSuggestions([
+    ...guestCustomerSuggestions,
+    ...historicalSuggestions,
+  ]).slice(0, 8);
 }
 
 export async function createReservation(
@@ -481,137 +779,26 @@ export async function createReservation(
   input: CreateReservationInput,
 ): Promise<string> {
   assertReservationBranchAccess(context, input.branchId);
+  const { data, error } = await (context.adminClient as any).rpc("create_lodging_quick_checkin", {
+    p_organization_id: context.organizationId,
+    p_branch_id: input.branchId,
+    p_created_by: userId,
+    p_check_in: input.checkIn,
+    p_check_out: input.checkOut,
+    p_is_open_ended: input.openEnded === true,
+    p_notes: input.notes?.trim() || null,
+    p_rooms: input.rooms,
+    p_payment: input.payment ?? null,
+  });
 
-  const nights = calculateNights(input.checkIn, input.checkOut);
-  if (nights <= 0) {
-    throw createError({ statusCode: 400, statusMessage: "La reserva debe tener al menos una noche." });
+  if (error || !data) {
+    throw createError({
+      statusCode: 500,
+      statusMessage: error?.message ?? "No se pudo registrar el ingreso rapido.",
+    });
   }
 
-  const requestedRoomIds = input.rooms.map((room) => room.roomId);
-  const { data: rooms, error: roomsError } = await context.adminClient
-    .from("rooms")
-    .select("id, branch_id, is_active, status, base_price")
-    .eq("organization_id", context.organizationId)
-    .in("id", requestedRoomIds);
-
-  if (roomsError) throw createError({ statusCode: 500, statusMessage: roomsError.message });
-
-  const roomMap = new Map((rooms ?? []).map((room) => [room.id, room]));
-  for (const roomId of requestedRoomIds) {
-    const room = roomMap.get(roomId);
-    if (!room) {
-      throw createError({ statusCode: 404, statusMessage: "Una de las habitaciones seleccionadas no existe." });
-    }
-    if (room.branch_id !== input.branchId) {
-      throw createError({ statusCode: 409, statusMessage: "La habitacion no pertenece a la sucursal de la reserva." });
-    }
-    if (!room.is_active || room.status === "maintenance") {
-      throw createError({ statusCode: 409, statusMessage: "Una de las habitaciones no esta disponible." });
-    }
-  }
-
-  await assertRoomsAvailableForRange(context, requestedRoomIds, input.checkIn, input.checkOut);
-
-  const totalAmount = input.rooms.reduce((sum, roomInput) => {
-    const room = roomMap.get(roomInput.roomId);
-    return sum + Number(room?.base_price ?? 0) * nights;
-  }, 0);
-  const initialPaymentAmount = Number(input.payment?.amount ?? 0);
-
-  if (initialPaymentAmount > totalAmount) {
-    throw createError({ statusCode: 409, statusMessage: "El pago inicial excede el monto total de la reserva." });
-  }
-
-  const { data: reservation, error: reservationError } = await context.adminClient
-    .from("reservations")
-    .insert({
-      organization_id: context.organizationId,
-      branch_id: input.branchId,
-      check_in: input.checkIn,
-      check_out: input.checkOut,
-      status: "checked_in",
-      total_amount: totalAmount,
-      paid_amount: initialPaymentAmount,
-      source: "staff",
-      notes: input.notes?.trim() || null,
-      created_by: userId,
-      actual_check_in_at: new Date().toISOString(),
-      is_open_ended: input.openEnded === true,
-    })
-    .select("id")
-    .single<{ id: string }>();
-
-  if (reservationError || !reservation) {
-    throw createError({ statusCode: 500, statusMessage: reservationError?.message ?? "No se pudo crear la reserva." });
-  }
-
-  for (const roomInput of input.rooms) {
-    const room = roomMap.get(roomInput.roomId);
-    const roomPrice = Number(room?.base_price ?? 0);
-    const subtotal = roomPrice * nights;
-
-    const { data: roomLink, error: roomLinkError } = await context.adminClient
-      .from("reservation_rooms")
-      .insert({
-        reservation_id: reservation.id,
-        room_id: roomInput.roomId,
-        room_price: roomPrice,
-        subtotal,
-        notes: roomInput.notes?.trim() || null,
-      })
-      .select("id")
-      .single<{ id: string }>();
-
-    if (roomLinkError || !roomLink) {
-      throw createError({ statusCode: 500, statusMessage: roomLinkError?.message ?? "No se pudo asignar la habitacion." });
-    }
-
-    for (const guest of roomInput.guests) {
-      const { error: guestError } = await context.adminClient
-        .from("reservation_guests")
-        .insert({
-          reservation_room_id: roomLink.id,
-          full_name: guest.fullName.trim(),
-          document_type: guest.documentType.trim(),
-          document_number: guest.documentNumber.trim(),
-          birth_date: guest.birthDate,
-          sex: guest.sex,
-          phone: guest.phone?.trim() || null,
-          email: guest.email?.trim() || null,
-          nationality: guest.nationality?.trim() || null,
-          address: guest.address?.trim() || null,
-          marital_status: guest.maritalStatus?.trim() || null,
-          is_main_guest: guest.isMainGuest === true,
-        });
-
-      if (guestError) {
-        throw createError({ statusCode: 500, statusMessage: guestError.message });
-      }
-    }
-  }
-
-  if (initialPaymentAmount > 0 && input.payment) {
-    const { error: paymentError } = await context.adminClient
-      .from("reservation_payments")
-      .insert({
-        organization_id: context.organizationId,
-        reservation_id: reservation.id,
-        amount: initialPaymentAmount,
-        payment_method: input.payment.paymentMethod,
-        payment_type: input.payment.paymentType,
-        reference: input.payment.reference?.trim() || null,
-        notes: input.payment.notes?.trim() || null,
-        created_by: userId,
-      });
-
-    if (paymentError) {
-      throw createError({ statusCode: 500, statusMessage: paymentError.message });
-    }
-  }
-
-  await updateRoomStatuses(context, requestedRoomIds, "occupied");
-
-  return reservation.id;
+  return data as string;
 }
 
 export async function updateReservation(
@@ -838,6 +1025,28 @@ export async function registerPayment(
     throw createError({ statusCode: 409, statusMessage: "El pago excede el monto total de la reserva." });
   }
 
+  const paymentTimestamp = new Date().toISOString();
+  const receiptKind = newPaid >= Number(reservation.total_amount) ? "final" : "partial";
+
+  const { data: receiptAllocation, error: receiptAllocationError } = await context.adminClient
+    .rpc("allocate_reservation_receipt_number", {
+      p_organization_id: context.organizationId,
+      p_reservation_id: input.reservationId,
+      p_receipt_kind: receiptKind,
+      p_paid_at: paymentTimestamp,
+    })
+    .single<{
+      receipt_year: number;
+      receipt_sequence: number;
+      receipt_base_number: string;
+      receipt_partial_index: number | null;
+      receipt_number: string;
+    }>();
+
+  if (receiptAllocationError || !receiptAllocation) {
+    throw createError({ statusCode: 500, statusMessage: receiptAllocationError?.message ?? "No se pudo generar el correlativo del recibo." });
+  }
+
   const { error: paymentError } = await context.adminClient
     .from("reservation_payments")
     .insert({
@@ -846,8 +1055,15 @@ export async function registerPayment(
       amount: input.amount,
       payment_method: input.paymentMethod,
       payment_type: input.paymentType,
+      receipt_kind: receiptKind,
+      receipt_base_number: receiptAllocation.receipt_base_number,
+      receipt_year: receiptAllocation.receipt_year,
+      receipt_sequence: receiptAllocation.receipt_sequence,
+      receipt_partial_index: receiptAllocation.receipt_partial_index,
+      receipt_number: receiptAllocation.receipt_number,
       reference: input.reference?.trim() || null,
       notes: input.notes?.trim() || null,
+      paid_at: paymentTimestamp,
       created_by: userId,
     });
 

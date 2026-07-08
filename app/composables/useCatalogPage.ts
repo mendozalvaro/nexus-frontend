@@ -113,6 +113,7 @@ export const useCatalogPage = () => {
     productModalOpen: corePage.productModalOpen,
     roomCategories: roomsPage.roomCategories,
     roomModalOpen: roomsPage.roomModalOpen,
+    roomResourcesReady: roomsPage.roomResourcesReady,
     roomsData: roomsPage.roomsData,
     searchQuery,
     serviceCategories: corePage.serviceCategories,

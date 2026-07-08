@@ -511,36 +511,60 @@ export type Database = {
       }
       guest_customers: {
         Row: {
+          address: string | null
+          birth_date: string | null
           branch_id: string | null
           created_at: string | null
           created_by: string | null
+          document_number: string | null
+          document_type: string | null
+          email: string | null
           full_name: string
           id: string
+          marital_status: string | null
+          nationality: string | null
           notes: string | null
           organization_id: string
           phone: string | null
+          sex: string | null
           updated_at: string | null
         }
         Insert: {
+          address?: string | null
+          birth_date?: string | null
           branch_id?: string | null
           created_at?: string | null
           created_by?: string | null
+          document_number?: string | null
+          document_type?: string | null
+          email?: string | null
           full_name: string
           id?: string
+          marital_status?: string | null
+          nationality?: string | null
           notes?: string | null
           organization_id: string
           phone?: string | null
+          sex?: string | null
           updated_at?: string | null
         }
         Update: {
+          address?: string | null
+          birth_date?: string | null
           branch_id?: string | null
           created_at?: string | null
           created_by?: string | null
+          document_number?: string | null
+          document_type?: string | null
+          email?: string | null
           full_name?: string
           id?: string
+          marital_status?: string | null
+          nationality?: string | null
           notes?: string | null
           organization_id?: string
           phone?: string | null
+          sex?: string | null
           updated_at?: string | null
         }
         Relationships: [
@@ -2098,6 +2122,7 @@ export type Database = {
           floor: number | null
           id: string
           is_active: boolean | null
+          location: string | null
           notes: string | null
           organization_id: string
           room_number: string
@@ -2112,6 +2137,7 @@ export type Database = {
           floor?: number | null
           id?: string
           is_active?: boolean | null
+          location?: string | null
           notes?: string | null
           organization_id: string
           room_number: string
@@ -2126,6 +2152,7 @@ export type Database = {
           floor?: number | null
           id?: string
           is_active?: boolean | null
+          location?: string | null
           notes?: string | null
           organization_id?: string
           room_number?: string
@@ -2312,6 +2339,7 @@ export type Database = {
           document_type: string | null
           email: string | null
           full_name: string
+          guest_customer_id: string | null
           id: string
           is_main_guest: boolean | null
           marital_status: string | null
@@ -2328,6 +2356,7 @@ export type Database = {
           document_type?: string | null
           email?: string | null
           full_name: string
+          guest_customer_id?: string | null
           id?: string
           is_main_guest?: boolean | null
           marital_status?: string | null
@@ -2344,6 +2373,7 @@ export type Database = {
           document_type?: string | null
           email?: string | null
           full_name?: string
+          guest_customer_id?: string | null
           id?: string
           is_main_guest?: boolean | null
           marital_status?: string | null
@@ -2353,6 +2383,13 @@ export type Database = {
           sex?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "reservation_guests_guest_customer_id_fkey"
+            columns: ["guest_customer_id"]
+            isOneToOne: false
+            referencedRelation: "guest_customers"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "reservation_guests_reservation_room_id_fkey"
             columns: ["reservation_room_id"]
@@ -2372,6 +2409,12 @@ export type Database = {
           organization_id: string
           paid_at: string | null
           payment_method: string
+          receipt_base_number: string | null
+          receipt_kind: string | null
+          receipt_number: string | null
+          receipt_partial_index: number | null
+          receipt_sequence: number | null
+          receipt_year: number | null
           payment_type: string
           reference: string | null
           reservation_id: string
@@ -2385,6 +2428,12 @@ export type Database = {
           organization_id: string
           paid_at?: string | null
           payment_method: string
+          receipt_base_number?: string | null
+          receipt_kind?: string | null
+          receipt_number?: string | null
+          receipt_partial_index?: number | null
+          receipt_sequence?: number | null
+          receipt_year?: number | null
           payment_type: string
           reference?: string | null
           reservation_id: string
@@ -2398,6 +2447,12 @@ export type Database = {
           organization_id?: string
           paid_at?: string | null
           payment_method?: string
+          receipt_base_number?: string | null
+          receipt_kind?: string | null
+          receipt_number?: string | null
+          receipt_partial_index?: number | null
+          receipt_sequence?: number | null
+          receipt_year?: number | null
           payment_type?: string
           reference?: string | null
           reservation_id?: string
@@ -2555,6 +2610,29 @@ export type Database = {
           organization_status: string
           subscription_status: Database["public"]["Enums"]["sub_status"]
           trial_ends_at: string
+        }[]
+      }
+      next_reservation_receipt_number: {
+        Args: { p_organization_id: string; p_paid_at?: string }
+        Returns: {
+          receipt_number: string
+          receipt_sequence: number
+          receipt_year: number
+        }[]
+      }
+      allocate_reservation_receipt_number: {
+        Args: {
+          p_organization_id: string
+          p_paid_at?: string
+          p_receipt_kind: string
+          p_reservation_id: string
+        }
+        Returns: {
+          receipt_base_number: string
+          receipt_number: string
+          receipt_partial_index: number | null
+          receipt_sequence: number
+          receipt_year: number
         }[]
       }
       get_organization_capabilities: {

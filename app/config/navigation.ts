@@ -14,6 +14,7 @@ export const PENDING_ALLOWED_PATH_PREFIXES = [
   "/settings",
   "/inventory",
   "/service-assignment",
+  "/reports",
   "/profile",
   "/select-branch",
   "/reservations",

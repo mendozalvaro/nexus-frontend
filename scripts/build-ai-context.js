@@ -5,7 +5,7 @@ const path = require('path');
 const STATE_FILE = '.ai-workflow/STATE.md';
 const OUTPUT_FILE = '.ai-workflow/AGENT_CONTEXT.md';
 const REFERENCES = [
-  { file: 'supabase/schema.sql', label: '🗃️ Schema DB' },
+  { file: 'supabase/dump.sql', label: '🗃️ Schema DB' },
   { file: 'app/types/database.types.ts', label: '📦 Tipos TS' },
   { file: 'app/utils/constants.ts', label: '🔢 Constantes/Enums' },
   { file: 'app/utils/roles.ts', label: '🛡️ Matriz de Permisos' },

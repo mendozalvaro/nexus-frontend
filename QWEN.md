@@ -73,7 +73,7 @@ nexus-frontend/
 ├── supabase/                 # Supabase configuration (ignored)
 ├── nuxt.config.ts            # Nuxt configuration
 ├── wrangler.toml             # Cloudflare Workers/Pages config
-├── schema.sql                # Complete database schema
+├── supabase/dump.sql         # Complete database schema snapshot
 └── package.json              # Dependencies and scripts
 ```
 
@@ -151,7 +151,7 @@ Required environment variables (see `.gitignore` - use `.env` file):
 
 ## Database Schema
 
-The database schema is defined in `schema.sql`. Key tables include:
+The database schema reference is `supabase/dump.sql`. Key tables include:
 
 - **`organizations`** - Multi-tenant tenants
 - **`subscription_plans`** - Plan definitions with feature flags

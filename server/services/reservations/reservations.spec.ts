@@ -1,5 +1,6 @@
-import { describe, expect, it } from "vitest";
-import { reservationRangesOverlap, resolveReservationStatusAfterPayment } from "./reservations";
+import { describe, expect, it, vi } from "vitest";
+import { formatReservationReceiptNumber } from "@/utils/reservation-receipts";
+import { createReservation, reservationRangesOverlap, resolveReservationStatusAfterPayment } from "./reservations";
 import { reservationAppearsInStaying } from "../reports/lodging";
 
 describe("reservationRangesOverlap", () => {
@@ -74,5 +75,59 @@ describe("resolveReservationStatusAfterPayment", () => {
 
   it("deja pendiente una reserva futura con pago parcial", () => {
     expect(resolveReservationStatusAfterPayment("pending_payment", 300, 100)).toBe("pending_payment");
+  });
+});
+
+describe("createReservation", () => {
+  it("delegates quick check-in to the atomic rpc", async () => {
+    const rpc = vi.fn().mockResolvedValue({ data: "reservation-id", error: null });
+    const context = {
+      organizationId: "org-id",
+      allowedBranchIds: ["branch-id"],
+      adminClient: { rpc },
+    } as any;
+
+    const reservationId = await createReservation(context, "user-id", {
+      branchId: "branch-id",
+      checkIn: "2026-07-05",
+      checkOut: "2026-07-06",
+      openEnded: false,
+      notes: "  ingreso rapido  ",
+      rooms: [{
+        roomId: "room-id",
+        notes: "  nota  ",
+        guests: [{
+          fullName: "Huesped Demo",
+          documentType: "CI",
+          documentNumber: "123",
+          birthDate: "1990-01-01",
+          sex: "male",
+          isMainGuest: true,
+        }],
+      }],
+      payment: {
+        amount: 50,
+        paymentMethod: "cash",
+        paymentType: "deposit",
+        reference: "ref-1",
+      },
+    });
+
+    expect(reservationId).toBe("reservation-id");
+    expect(rpc).toHaveBeenCalledWith("create_lodging_quick_checkin", expect.objectContaining({
+      p_organization_id: "org-id",
+      p_branch_id: "branch-id",
+      p_created_by: "user-id",
+      p_check_in: "2026-07-05",
+      p_check_out: "2026-07-06",
+      p_notes: "ingreso rapido",
+    }));
+  });
+});
+
+describe("formatReservationReceiptNumber", () => {
+  it("usa el mismo correlativo base y agrega sufijo en parciales", () => {
+    expect(formatReservationReceiptNumber("REC-2026-000005", "partial", 1)).toBe("REC-2026-000005/01");
+    expect(formatReservationReceiptNumber("REC-2026-000005", "final", null)).toBe("REC-2026-000005");
   });
 });

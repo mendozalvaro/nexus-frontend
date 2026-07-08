@@ -3,8 +3,6 @@ export type ReservationsTab = "summary" | "list";
 
 const props = defineProps<{
   modelValue: ReservationsTab;
-  summaryCount?: number;
-  historyCount?: number;
 }>();
 
 const emit = defineEmits<{
@@ -25,9 +23,6 @@ const setTab = (tab: ReservationsTab) => {
       @click="setTab('summary')"
     >
       Habitaciones
-      <UBadge v-if="typeof props.summaryCount === 'number'" color="neutral" variant="subtle" size="sm" class="ml-2">
-        {{ props.summaryCount }}
-      </UBadge>
     </UButton>
     <UButton
       :variant="props.modelValue === 'list' ? 'solid' : 'soft'"
@@ -36,9 +31,6 @@ const setTab = (tab: ReservationsTab) => {
       @click="setTab('list')"
     >
       Historial
-      <UBadge v-if="typeof props.historyCount === 'number'" color="neutral" variant="subtle" size="sm" class="ml-2">
-        {{ props.historyCount }}
-      </UBadge>
     </UButton>
   </div>
 </template>

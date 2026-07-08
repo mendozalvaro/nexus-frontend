@@ -92,7 +92,7 @@ const emit = defineEmits<{
               Registrar salida
             </UButton>
             <UButton v-if="room.status === 'occupied'" color="neutral" variant="soft" size="sm" @click="emit('extend', room.reservationId)">
-              Anadir estadia
+              Agregar estadia
             </UButton>
           </div>
         </div>

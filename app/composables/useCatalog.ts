@@ -68,7 +68,7 @@ export interface CatalogServiceItem {
 
 export interface CatalogRoomPayload {
   roomNumber: string;
-  floor?: number;
+  location?: string;
   categoryId: string;
   branchId: string;
   basePrice: number;
@@ -78,7 +78,7 @@ export interface CatalogRoomPayload {
 export interface CatalogRoomItem {
   id: string;
   roomNumber: string;
-  floor: number | null;
+  location: string | null;
   categoryId: string;
   categoryName: string;
   branchId: string;

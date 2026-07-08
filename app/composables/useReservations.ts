@@ -23,6 +23,10 @@ export interface ReservationDetail {
   id: string;
   branchId: string;
   branchName: string;
+  branchAddress: string | null;
+  organizationName: string;
+  defaultReceiptFormat: "thermal" | "half_letter";
+  createdByName: string | null;
   checkIn: string;
   checkOut: string;
   actualCheckInAt: string | null;
@@ -54,6 +58,7 @@ export interface ReservationRoomDetail {
 
 export interface GuestDetail {
   id: string;
+  guestCustomerId: string | null;
   fullName: string;
   documentType: string | null;
   documentNumber: string | null;
@@ -67,14 +72,42 @@ export interface GuestDetail {
   isMainGuest: boolean;
 }
 
+export interface ReservationGuestLookupResult {
+  guestCustomerId: string | null;
+  fullName: string;
+  documentType: string | null;
+  documentNumber: string | null;
+  birthDate: string | null;
+  sex: "male" | "female" | "other" | null;
+  phone: string | null;
+  email: string | null;
+  nationality: string | null;
+  address: string | null;
+  maritalStatus: string | null;
+}
+
+export interface ReservationGuestSuggestion {
+  guestCustomerId: string | null;
+  fullName: string;
+  documentType: string | null;
+  documentNumber: string | null;
+}
+
 export interface PaymentDetail {
   id: string;
   amount: number;
   paymentMethod: string;
   paymentType: string;
+  receiptKind: "partial" | "final" | null;
+  receiptBaseNumber: string | null;
+  receiptNumber: string | null;
+  receiptPartialIndex: number | null;
+  receiptYear: number | null;
+  receiptSequence: number | null;
   reference: string | null;
   notes: string | null;
   paidAt: string;
+  createdByName: string | null;
 }
 
 export interface CreateReservationPayload {
@@ -225,6 +258,28 @@ export const useReservations = () => {
     });
   };
 
+  const lookupGuestByDocument = async (documentNumber: string, documentType?: string) => {
+    return await $fetch<ReservationGuestLookupResult | null>("/api/reservations/guest-lookup", {
+      method: "POST",
+      headers: await getAuthHeaders(),
+      body: {
+        documentNumber,
+        documentType: documentType?.trim() || undefined,
+      },
+    });
+  };
+
+  const searchGuestsByDocument = async (documentNumber: string, documentType?: string) => {
+    return await $fetch<ReservationGuestSuggestion[]>("/api/reservations/guest-search", {
+      method: "POST",
+      headers: await getAuthHeaders(),
+      body: {
+        documentNumber,
+        documentType: documentType?.trim() || undefined,
+      },
+    });
+  };
+
   const updateReservation = async (id: string, payload: { checkIn?: string; checkOut?: string; notes?: string }) => {
     return await $fetch<{ success: boolean; reservationId: string }>(`/api/reservations/${id}`, {
       method: "PATCH",
@@ -281,6 +336,8 @@ export const useReservations = () => {
   return {
     loadReservations,
     loadRoomBoard,
+    lookupGuestByDocument,
+    searchGuestsByDocument,
     loadReservationDetail,
     createReservation,
     updateReservation,

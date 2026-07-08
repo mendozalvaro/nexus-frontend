@@ -1,41 +1,24 @@
 <script setup lang="ts">
 import type { CatalogRoomItem } from "@/composables/useCatalog";
+import type { ReservationGuestSuggestion } from "@/composables/useReservations";
+import ReservationAvailableRoomsSection from "@/components/reservations/forms/ReservationAvailableRoomsSection.vue";
+import ReservationPaymentSection from "@/components/reservations/forms/ReservationPaymentSection.vue";
+import ReservationQuickCheckinSection from "@/components/reservations/forms/ReservationQuickCheckinSection.vue";
+import ReservationRoomGuestsSection from "@/components/reservations/forms/ReservationRoomGuestsSection.vue";
+import type { GuestSex, RoomGuest, RoomGuestField, SelectedRoom } from "@/components/reservations/forms/reservation-create.types";
 import { countriesList } from "@/utils/constants";
 
 type StayPreset = "day" | "week" | "month" | "open" | "custom";
-type GuestSex = "male" | "female" | "other";
-
-type RoomGuest = {
-  fullName: string;
-  documentType: string;
-  documentNumber: string;
-  birthDate: string;
-  sex: GuestSex;
-  phone: string;
-  email: string;
-  nationality: string;
-  maritalStatus: string;
-  address: string;
-  isMainGuest: boolean;
-};
-
-type SelectedRoom = {
-  roomId: string;
-  roomNumber: string;
-  roomPrice: number;
-  roomTypeName: string;
-  guests: RoomGuest[];
-};
 
 const emit = defineEmits<{
   created: [{ reservationId: string; goToPayment: boolean }];
   cancel: [];
 }>();
 
-const { createReservation } = useReservations();
-const { loadBranches } = useBranches();
+const { createReservation, lookupGuestByDocument, searchGuestsByDocument } = useReservations();
+const { getAccessibleBranches } = usePermissions();
+const { selectedBranchId } = useUserContext();
 const { loadAvailableRooms, loadRooms } = useCatalog();
-const { siatBillingEnabled, loadSiatBilling } = useSiatBilling();
 const toast = useToast();
 
 const todayIso = new Date().toISOString().slice(0, 10);
@@ -79,14 +62,9 @@ const PAYMENT_METHOD_OPTIONS = [
   { label: "Billetera digital", value: "digital_wallet" },
 ];
 
-const PAYMENT_TYPE_OPTIONS = [
-  { label: "Deposito", value: "deposit" },
-  { label: "Saldo", value: "balance" },
-  { label: "Completo", value: "full" },
-];
-
 const loading = ref(false);
 const error = ref<string | null>(null);
+const formErrors = ref<Record<string, string>>({});
 const branches = ref<Array<{ label: string; value: string }>>([]);
 const availableRooms = ref<CatalogRoomItem[]>([]);
 const stayPreset = ref<StayPreset>("day");
@@ -102,11 +80,13 @@ const form = reactive({
   registerPaymentNow: false,
   paymentAmount: 0,
   paymentMethod: "cash",
-  paymentType: "deposit",
   paymentReference: "",
 });
 
+const resolveAutomaticPaymentType = (amount: number, total: number) => amount >= total ? "full" : "deposit";
+
 const createGuest = (isMainGuest: boolean): RoomGuest => ({
+  guestCustomerId: null,
   fullName: "",
   documentType: "CI",
   documentNumber: "",
@@ -118,7 +98,62 @@ const createGuest = (isMainGuest: boolean): RoomGuest => ({
   maritalStatus: "",
   address: "",
   isMainGuest,
+  lookupMessage: null,
+  lookupState: "idle",
+  suggestions: [],
+  suggestionsOpen: false,
 });
+
+const suggestionTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+const getGuestKey = (roomIndex: number, guestIndex: number) => `${roomIndex}:${guestIndex}`;
+const getGuestFieldKey = (roomIndex: number, guestIndex: number, field: string) => `${getGuestKey(roomIndex, guestIndex)}:${field}`;
+
+const setFieldError = (key: string, message?: string) => {
+  if (message) {
+    formErrors.value[key] = message;
+    return;
+  }
+  delete formErrors.value[key];
+};
+
+const getFieldError = (key: string) => formErrors.value[key];
+const clearFieldError = (key: string) => setFieldError(key);
+const clearGuestFieldError = (roomIndex: number, guestIndex: number, field: string) => clearFieldError(getGuestFieldKey(roomIndex, guestIndex, field));
+
+const clearGuestSuggestionTimer = (roomIndex: number, guestIndex: number) => {
+  const timerKey = getGuestKey(roomIndex, guestIndex);
+  const existingTimer = suggestionTimers.get(timerKey);
+  if (existingTimer) {
+    clearTimeout(existingTimer);
+    suggestionTimers.delete(timerKey);
+  }
+};
+
+const assignGuestLookupResult = (
+  guest: RoomGuest,
+  result: ReservationGuestSuggestion & Partial<{
+    birthDate: string | null;
+    sex: GuestSex | null;
+    phone: string | null;
+    email: string | null;
+    nationality: string | null;
+    address: string | null;
+    maritalStatus: string | null;
+  }>,
+) => {
+  guest.guestCustomerId = result.guestCustomerId;
+  guest.fullName = result.fullName || guest.fullName;
+  guest.documentType = result.documentType || guest.documentType;
+  guest.documentNumber = result.documentNumber || guest.documentNumber;
+  guest.birthDate = result.birthDate || guest.birthDate;
+  guest.sex = result.sex || guest.sex;
+  guest.phone = result.phone || guest.phone;
+  guest.email = result.email || guest.email;
+  guest.nationality = result.nationality || guest.nationality;
+  guest.address = result.address || guest.address;
+  guest.maritalStatus = result.maritalStatus || guest.maritalStatus;
+};
 
 const addDaysIso = (value: string, days: number) => {
   const nextDate = new Date(`${value}T00:00:00`);
@@ -154,12 +189,11 @@ const resolveCheckoutForPreset = (checkIn: string, preset: StayPreset) => {
 };
 
 onMounted(async () => {
-  await loadSiatBilling();
   form.checkOut = addDaysIso(todayIso, 1);
 
   try {
-    const branchData = await loadBranches();
-    branches.value = (branchData.branches ?? []).map((branch) => ({ label: branch.name, value: branch.id }));
+    const accessibleBranches = await getAccessibleBranches();
+    branches.value = accessibleBranches.map((branch) => ({ label: branch.name, value: branch.id }));
   } catch {
     const rooms = await loadRooms();
     const byBranch = new Map<string, string>();
@@ -170,6 +204,15 @@ onMounted(async () => {
     }
     branches.value = Array.from(byBranch.entries()).map(([value, label]) => ({ label, value }));
   }
+
+  if (!form.branchId) {
+    const defaultBranchId = selectedBranchId.value ?? branches.value[0]?.value ?? "";
+    form.branchId = branches.value.some((branch) => branch.value === defaultBranchId)
+      ? defaultBranchId
+      : (branches.value[0]?.value ?? "");
+  }
+
+  await onCriteriaChange();
 });
 
 const effectiveCheckOut = computed(() => form.openEnded ? addDaysIso(form.checkIn, 1) : form.checkOut);
@@ -215,6 +258,7 @@ const refreshAvailableRooms = async () => {
 
 const onCriteriaChange = async () => {
   form.rooms = [];
+  setFieldError("rooms");
   await refreshAvailableRooms();
 };
 
@@ -242,10 +286,14 @@ const addRoom = (room: CatalogRoomItem) => {
     roomTypeName: room.categoryName,
     guests: [createGuest(true)],
   });
+  setFieldError("rooms");
 };
 
 const removeRoom = (index: number) => {
   form.rooms.splice(index, 1);
+  if (form.rooms.length > 0) {
+    setFieldError("rooms");
+  }
 };
 
 const addCompanion = (roomIndex: number) => {
@@ -277,37 +325,188 @@ const setMainGuest = (roomIndex: number, guestIndex: number) => {
   });
 };
 
+const updateGuestField = (roomIndex: number, guestIndex: number, field: RoomGuestField, value: string) => {
+  const guest = form.rooms[roomIndex]?.guests[guestIndex];
+  if (!guest) {
+    return;
+  }
+
+  if (field === "sex") {
+    guest.sex = value as GuestSex;
+  } else {
+    guest[field] = value;
+  }
+
+  if (field === "documentNumber" || field === "documentType" || field === "fullName" || field === "birthDate" || field === "phone") {
+    clearGuestFieldError(roomIndex, guestIndex, field);
+  }
+};
+
+const validateForm = () => {
+  formErrors.value = {};
+
+  if (!form.branchId) {
+    setFieldError("branchId", "La sucursal es obligatoria.");
+  }
+
+  if (!form.rooms.length) {
+    setFieldError("rooms", "Agrega al menos una habitacion.");
+  }
+
+  form.rooms.forEach((room, roomIndex) => {
+    const mainGuest = room.guests.find((guest) => guest.isMainGuest);
+    if (!mainGuest) {
+      setFieldError(`room:${roomIndex}`, `La habitacion ${room.roomNumber} requiere un huesped principal.`);
+    }
+
+    room.guests.forEach((guest, guestIndex) => {
+      if (!guest.documentNumber.trim()) {
+        setFieldError(getGuestFieldKey(roomIndex, guestIndex, "documentNumber"), "Documento requerido.");
+      }
+      if (!guest.documentType.trim()) {
+        setFieldError(getGuestFieldKey(roomIndex, guestIndex, "documentType"), "Tipo requerido.");
+      }
+      if (!guest.fullName.trim()) {
+        setFieldError(getGuestFieldKey(roomIndex, guestIndex, "fullName"), "Nombre requerido.");
+      }
+      if (!guest.birthDate) {
+        setFieldError(getGuestFieldKey(roomIndex, guestIndex, "birthDate"), "Fecha requerida.");
+      }
+      if (guest.isMainGuest && !guest.phone.trim()) {
+        setFieldError(getGuestFieldKey(roomIndex, guestIndex, "phone"), "Celular requerido.");
+      }
+    });
+  });
+
+  if (form.registerPaymentNow) {
+    if (form.paymentAmount <= 0) {
+      setFieldError("paymentAmount", "Ingresa un monto mayor a cero.");
+    } else if (form.paymentAmount > totalAmount.value) {
+      setFieldError("paymentAmount", "El monto no puede exceder el total.");
+    }
+  }
+
+  return Object.keys(formErrors.value).length === 0;
+};
+
+const hydrateGuestFromRegistry = async (roomIndex: number, guestIndex: number) => {
+  const guest = form.rooms[roomIndex]?.guests[guestIndex];
+  if (!guest) {
+    return;
+  }
+
+  clearGuestSuggestionTimer(roomIndex, guestIndex);
+
+  const documentNumber = guest.documentNumber.trim();
+  if (!documentNumber) {
+    guest.lookupMessage = null;
+    guest.lookupState = "idle";
+    guest.guestCustomerId = null;
+    guest.suggestions = [];
+    guest.suggestionsOpen = false;
+    return;
+  }
+
+  guest.lookupState = "loading";
+  guest.lookupMessage = "Buscando huesped registrado...";
+
+  try {
+    const result = await lookupGuestByDocument(documentNumber, guest.documentType);
+    if (!result) {
+      guest.lookupState = "missing";
+      guest.lookupMessage = "Sin coincidencias registradas.";
+      guest.guestCustomerId = null;
+      return;
+    }
+
+    assignGuestLookupResult(guest, result);
+    guest.lookupState = "found";
+    guest.lookupMessage = `Huesped cargado: ${result.fullName}`;
+    guest.suggestions = [];
+    guest.suggestionsOpen = false;
+  } catch (lookupError) {
+    guest.lookupState = "missing";
+    guest.lookupMessage = lookupError instanceof Error ? lookupError.message : "No se pudo buscar el huesped.";
+  }
+};
+
+const applyGuestSuggestion = async (roomIndex: number, guestIndex: number, suggestion: ReservationGuestSuggestion) => {
+  const guest = form.rooms[roomIndex]?.guests[guestIndex];
+  if (!guest) {
+    return;
+  }
+
+  assignGuestLookupResult(guest, suggestion);
+  guest.suggestions = [];
+  guest.suggestionsOpen = false;
+  await hydrateGuestFromRegistry(roomIndex, guestIndex);
+};
+
+const queueGuestSuggestions = (roomIndex: number, guestIndex: number) => {
+  const guest = form.rooms[roomIndex]?.guests[guestIndex];
+  if (!guest) {
+    return;
+  }
+
+  clearGuestSuggestionTimer(roomIndex, guestIndex);
+
+  const documentNumber = guest.documentNumber.trim();
+  if (documentNumber.length < 4) {
+    guest.suggestions = [];
+    guest.suggestionsOpen = false;
+    if (!documentNumber) {
+      guest.lookupMessage = null;
+      guest.lookupState = "idle";
+    }
+    return;
+  }
+
+  guest.lookupState = "loading";
+  guest.lookupMessage = "Buscando huespedes registrados...";
+
+  const timerKey = getGuestKey(roomIndex, guestIndex);
+  suggestionTimers.set(timerKey, setTimeout(async () => {
+    try {
+      const suggestions = await searchGuestsByDocument(documentNumber, guest.documentType);
+      if (suggestions.length === 0) {
+        const lookupResult = await lookupGuestByDocument(documentNumber, guest.documentType);
+        if (lookupResult) {
+          assignGuestLookupResult(guest, lookupResult);
+          guest.suggestions = [];
+          guest.suggestionsOpen = false;
+          guest.lookupState = "found";
+          guest.lookupMessage = `Huesped cargado: ${lookupResult.fullName}`;
+          return;
+        }
+      }
+
+      guest.suggestions = suggestions;
+      guest.suggestionsOpen = suggestions.length > 0;
+      guest.lookupState = suggestions.length > 0 ? "found" : "missing";
+      guest.lookupMessage = suggestions.length > 0
+        ? `${suggestions.length} coincidencia(s) encontrada(s).`
+        : "Sin coincidencias registradas.";
+    } catch (searchError) {
+      guest.suggestions = [];
+      guest.suggestionsOpen = false;
+      guest.lookupState = "missing";
+      guest.lookupMessage = searchError instanceof Error ? searchError.message : "No se pudo buscar el huesped.";
+    } finally {
+      suggestionTimers.delete(timerKey);
+    }
+  }, 250));
+};
+
 const handleSubmit = async () => {
+  if (!validateForm()) {
+    error.value = "Revisa los campos marcados.";
+    return;
+  }
+
   loading.value = true;
   error.value = null;
 
   try {
-    if (!form.branchId) {
-      throw new Error("La sucursal es obligatoria.");
-    }
-    if (!form.rooms.length) {
-      throw new Error("Agrega al menos una habitacion.");
-    }
-
-    for (const room of form.rooms) {
-      const mainGuest = room.guests.find((guest) => guest.isMainGuest);
-      if (!mainGuest) {
-        throw new Error(`La habitacion ${room.roomNumber} requiere un huesped principal.`);
-      }
-
-      for (const guest of room.guests) {
-        if (
-          !guest.fullName.trim()
-          || !guest.birthDate
-          || (guest.isMainGuest && !guest.phone.trim())
-          || (siatBillingEnabled.value && !guest.documentType.trim())
-          || (siatBillingEnabled.value && !guest.documentNumber.trim())
-        ) {
-          throw new Error(`Completa los campos obligatorios de la habitacion ${room.roomNumber}.`);
-        }
-      }
-    }
-
     const payload = {
       branchId: form.branchId,
       checkIn: form.checkIn,
@@ -317,8 +516,8 @@ const handleSubmit = async () => {
         roomId: room.roomId,
         guests: room.guests.map((guest) => ({
           fullName: guest.fullName.trim(),
-          documentType: siatBillingEnabled.value ? guest.documentType.trim() : "N/A",
-          documentNumber: siatBillingEnabled.value ? guest.documentNumber.trim() : "N/A",
+          documentType: guest.documentType.trim(),
+          documentNumber: guest.documentNumber.trim(),
           birthDate: guest.birthDate,
           sex: guest.sex,
           phone: guest.isMainGuest ? guest.phone.trim() : "",
@@ -334,7 +533,7 @@ const handleSubmit = async () => {
         ? {
             amount: Number(form.paymentAmount),
             paymentMethod: form.paymentMethod,
-            paymentType: form.paymentType,
+            paymentType: resolveAutomaticPaymentType(Number(form.paymentAmount), totalAmount.value),
             reference: form.paymentReference || undefined,
           }
         : undefined,
@@ -355,154 +554,53 @@ const handleSubmit = async () => {
   <div class="space-y-5">
     <UAlert v-if="error" color="error" variant="soft" icon="i-lucide-circle-x" :title="error" />
 
-    <UCard>
-      <template #header><h3 class="font-semibold">Ingreso rapido</h3></template>
-      <div class="space-y-4">
-        <div class="grid grid-cols-1 gap-4 md:grid-cols-3">
-          <UFormField label="Sucursal" required>
-            <USelectMenu v-model="form.branchId" :items="branches" value-key="value" label-key="label" placeholder="Seleccionar..." class="w-full" @update:model-value="onCriteriaChange" />
-          </UFormField>
+    <ReservationQuickCheckinSection
+      :branch-id="form.branchId"
+      :branch-error="getFieldError('branchId')"
+      :branches="branches"
+      :check-in="form.checkIn"
+      :check-out="form.checkOut"
+      :stay-preset="stayPreset"
+      :stay-preset-options="STAY_PRESET_OPTIONS"
+      @update:branch-id="clearFieldError('branchId'); form.branchId = $event; onCriteriaChange()"
+      @update:check-out="form.checkOut = $event; onCriteriaChange()"
+      @select-preset="setStayPreset($event as StayPreset)"
+    />
 
-          <UFormField label="Ingreso">
-            <div class="flex h-10 items-center rounded-lg border border-default px-3 text-sm font-medium">
-              {{ form.checkIn }}
-            </div>
-          </UFormField>
-
-          <UFormField label="Salida">
-            <UInput v-model="form.checkOut" type="date" :disabled="stayPreset !== 'custom'" :min="form.checkIn" class="w-full" @update:model-value="onCriteriaChange" />
-          </UFormField>
-        </div>
-
-        <div class="flex flex-wrap gap-2">
-          <UButton
-            v-for="option in STAY_PRESET_OPTIONS"
-            :key="option.value"
-            :color="stayPreset === option.value ? 'primary' : 'neutral'"
-            :variant="stayPreset === option.value ? 'solid' : 'soft'"
-            @click="setStayPreset(option.value)"
-          >
-            {{ option.label }}
-          </UButton>
-        </div>
-      </div>
-    </UCard>
-
-    <UCard>
-      <template #header><h3 class="font-semibold">Habitaciones disponibles</h3></template>
-      <div class="space-y-4">
-        <p class="text-sm text-muted">
-          {{ form.openEnded ? "Estadia indefinida" : `${nights} noche(s)` }} desde {{ form.checkIn }}.
-        </p>
-
-        <div v-for="group in availableRoomGroups" :key="group.name" class="rounded-lg border border-default p-4">
-          <span class="font-medium">{{ group.name }}</span>
-          <div class="mt-2 grid grid-cols-2 gap-2 md:grid-cols-4">
-            <UButton
-              v-for="room in group.rooms"
-              :key="room.id"
-              color="neutral"
-              variant="soft"
-              @click="addRoom(room)"
-            >
-              Hab. {{ room.roomNumber }}
-            </UButton>
-          </div>
-        </div>
-
-        <UAlert
-          v-if="!availableRoomGroups.length"
-          color="neutral"
-          variant="soft"
-          icon="i-lucide-info"
-          :title="form.branchId ? 'No hay habitaciones disponibles para ese ingreso.' : 'Selecciona una sucursal para cargar habitaciones disponibles.'"
-        />
-
-        <div v-if="form.rooms.length" class="space-y-2">
-          <div v-for="(room, index) in form.rooms" :key="room.roomId" class="flex flex-col gap-2 rounded-lg bg-muted/30 p-3 md:flex-row md:items-center md:justify-between">
-            <div class="flex items-center gap-2">
-              <span>Hab. {{ room.roomNumber }} ({{ room.roomTypeName }})</span>
-              <UBadge color="neutral" variant="soft">Tarifa: ${{ room.roomPrice.toFixed(2) }}</UBadge>
-            </div>
-            <UButton color="neutral" variant="ghost" icon="i-lucide-x" @click="removeRoom(index)">Quitar</UButton>
-          </div>
-        </div>
-      </div>
-    </UCard>
+    <ReservationAvailableRoomsSection
+      :open-ended="form.openEnded"
+      :nights="nights"
+      :check-in="form.checkIn"
+      :groups="availableRoomGroups"
+      :branch-id="form.branchId"
+      :rooms-error="getFieldError('rooms')"
+      :selected-rooms="form.rooms"
+      @add-room="addRoom($event)"
+      @remove-room="removeRoom($event)"
+    />
 
     <UCard>
       <template #header><h3 class="font-semibold">Huespedes por habitacion</h3></template>
       <div class="space-y-4">
-        <div v-for="(room, roomIndex) in form.rooms" :key="room.roomId" class="rounded-lg border border-default p-4">
-          <div class="mb-3 flex items-center justify-between">
-            <div>
-              <h4 class="font-medium">Hab. {{ room.roomNumber }}</h4>
-              <p class="text-sm text-slate-500 dark:text-slate-400">{{ room.roomTypeName }}</p>
-            </div>
-            <UButton color="primary" variant="soft" icon="i-lucide-user-plus" @click="addCompanion(roomIndex)">
-              Agregar acompanante
-            </UButton>
-          </div>
-
-          <div class="space-y-4">
-            <div v-for="(guest, guestIndex) in room.guests" :key="`${room.roomId}-${guestIndex}`" class="rounded-xl border border-slate-200 p-4 dark:border-slate-800">
-              <div class="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                <div class="flex items-center gap-2">
-                  <UBadge :color="guest.isMainGuest ? 'primary' : 'neutral'" variant="soft">
-                    {{ guest.isMainGuest ? "Huesped principal" : `Acompanante ${guestIndex}` }}
-                  </UBadge>
-                  <UButton
-                    v-if="!guest.isMainGuest"
-                    color="neutral"
-                    variant="ghost"
-                    size="sm"
-                    @click="setMainGuest(roomIndex, guestIndex)"
-                  >
-                    Marcar principal
-                  </UButton>
-                </div>
-
-                <UButton
-                  v-if="room.guests.length > 1"
-                  color="error"
-                  variant="ghost"
-                  size="sm"
-                  icon="i-lucide-trash-2"
-                  @click="removeGuest(roomIndex, guestIndex)"
-                >
-                  Quitar
-                </UButton>
-              </div>
-
-              <div class="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
-                <UInput v-model="guest.fullName" placeholder="Nombre completo" />
-                <template v-if="siatBillingEnabled">
-                  <USelectMenu
-                    v-model="guest.documentType"
-                    :items="DOCUMENT_TYPE_OPTIONS"
-                    value-key="value"
-                    label-key="label"
-                    placeholder="Tipo de documento"
-                  />
-                  <UInput v-model="guest.documentNumber" placeholder="Numero de documento" />
-                </template>
-                <UInput v-model="guest.birthDate" type="date" />
-                <USelectMenu v-model="guest.sex" :items="SEX_OPTIONS" value-key="value" label-key="label" placeholder="Sexo" />
-                <UInput v-if="guest.isMainGuest" v-model="guest.phone" placeholder="Celular" />
-                <UInput v-if="guest.isMainGuest" v-model="guest.email" type="email" placeholder="Email" />
-                <USelectMenu
-                  v-model="guest.nationality"
-                  :items="NATIONALITY_OPTIONS"
-                  value-key="value"
-                  label-key="label"
-                  placeholder="Nacionalidad"
-                />
-                <USelectMenu v-model="guest.maritalStatus" :items="MARITAL_STATUS_OPTIONS" value-key="value" label-key="label" placeholder="Estado civil" />
-                <UTextarea v-model="guest.address" :rows="2" placeholder="Procedencia o direccion" class="md:col-span-2 xl:col-span-3" />
-              </div>
-            </div>
-          </div>
-        </div>
+        <ReservationRoomGuestsSection
+          v-for="(room, roomIndex) in form.rooms"
+          :key="room.roomId"
+          :room="room"
+          :room-index="roomIndex"
+          :room-error="getFieldError(`room:${roomIndex}`)"
+          :document-type-options="DOCUMENT_TYPE_OPTIONS"
+          :sex-options="SEX_OPTIONS"
+          :nationality-options="NATIONALITY_OPTIONS"
+          :marital-status-options="MARITAL_STATUS_OPTIONS"
+          :get-guest-error="(guestIndex, field) => getFieldError(getGuestFieldKey(roomIndex, guestIndex, field))"
+          @add-companion="addCompanion(roomIndex)"
+          @set-main="setMainGuest(roomIndex, $event)"
+          @remove-guest="removeGuest(roomIndex, $event)"
+          @queue-suggestions="queueGuestSuggestions(roomIndex, $event)"
+          @blur-document="hydrateGuestFromRegistry(roomIndex, $event)"
+          @select-suggestion="(guestIndex, suggestion) => applyGuestSuggestion(roomIndex, guestIndex, suggestion)"
+          @update-field="(guestIndex, field, value) => updateGuestField(roomIndex, guestIndex, field, value)"
+        />
 
         <UFormField label="Notas">
           <UTextarea v-model="form.notes" placeholder="Notas opcionales..." class="w-full" />
@@ -510,34 +608,21 @@ const handleSubmit = async () => {
       </div>
     </UCard>
 
-    <UCard>
-      <template #header><h3 class="font-semibold">Pago</h3></template>
-      <div class="space-y-4">
-        <UCheckbox v-model="form.registerPaymentNow" label="Registrar pago ahora" />
-
-        <div v-if="form.registerPaymentNow" class="grid grid-cols-1 gap-4 md:grid-cols-4">
-          <UFormField label="Monto">
-            <UInput v-model="form.paymentAmount" type="number" min="0.01" :max="totalAmount" step="0.01" />
-          </UFormField>
-          <UFormField label="Metodo">
-            <USelectMenu v-model="form.paymentMethod" :items="PAYMENT_METHOD_OPTIONS" value-key="value" label-key="label" />
-          </UFormField>
-          <UFormField label="Tipo">
-            <USelectMenu v-model="form.paymentType" :items="PAYMENT_TYPE_OPTIONS" value-key="value" label-key="label" />
-          </UFormField>
-          <UFormField label="Referencia">
-            <UInput v-model="form.paymentReference" placeholder="Opcional" />
-          </UFormField>
-        </div>
-
-        <div class="flex items-center justify-between gap-3 rounded-lg border border-default px-4 py-3 text-sm">
-          <span>Total estimado</span>
-          <span class="font-semibold">${{ totalAmount.toFixed(2) }}</span>
-        </div>
-
-        <UCheckbox v-model="form.goToPayment" label="Abrir detalle para cobrar despues" />
-      </div>
-    </UCard>
+    <ReservationPaymentSection
+      :register-payment-now="form.registerPaymentNow"
+      :go-to-payment="form.goToPayment"
+      :payment-amount="form.paymentAmount"
+      :payment-amount-error="getFieldError('paymentAmount')"
+      :payment-method="form.paymentMethod"
+      :payment-reference="form.paymentReference"
+      :total-amount="totalAmount"
+      :payment-method-options="PAYMENT_METHOD_OPTIONS"
+      @update:register-payment-now="form.registerPaymentNow = $event"
+      @update:payment-amount="clearFieldError('paymentAmount'); form.paymentAmount = $event"
+      @update:payment-method="form.paymentMethod = $event"
+      @update:payment-reference="form.paymentReference = $event"
+      @update:go-to-payment="form.goToPayment = $event"
+    />
 
     <div class="flex justify-end gap-2">
       <UButton color="neutral" variant="ghost" @click="emit('cancel')">Cancelar</UButton>

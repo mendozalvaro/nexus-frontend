@@ -23,8 +23,7 @@ export const useCatalogCorePage = ({
   searchQuery: Ref<string>;
   mutationState: CatalogMutationState;
 }) => {
-  const { profile, ensureContext } = useUserContext();
-  const { loadCapabilities } = useSubscription();
+  const { profile } = useUserContext();
   const { ensureTenantContext, uploadCatalogImage } = useCatalogMedia();
   const { hasModuleAccess } = usePermissions();
   const {
@@ -381,13 +380,17 @@ export const useCatalogCorePage = ({
     },
   );
 
-  onMounted(async () => {
-    await ensureContext({ requireProfile: true });
-    if (profile.value?.organization_id) {
-      await loadCapabilities(profile.value.organization_id);
-    }
-    await ensureTenantContext();
-  });
+  watch(
+    () => profile.value?.organization_id ?? null,
+    async (organizationId) => {
+      if (!organizationId) {
+        return;
+      }
+
+      await ensureTenantContext();
+    },
+    { immediate: true },
+  );
 
   return {
     canViewProductCatalog,

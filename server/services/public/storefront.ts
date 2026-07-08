@@ -86,7 +86,7 @@ const mapPublicItems = async (
   if (businessType === "lodging") {
     const { data, error } = await adminClient
       .from("rooms")
-      .select("id, room_number, notes, base_price, floor, category_id, is_active")
+      .select("id, room_number, notes, base_price, location, floor, category_id, is_active")
       .eq("organization_id", organizationId)
       .eq("is_active", true)
       .order("room_number", { ascending: true })
@@ -98,16 +98,20 @@ const mapPublicItems = async (
 
     const catMap = await fetchCategoryMap(adminClient, organizationId);
 
-    return (data ?? []).map((item) => ({
-      id: item.id,
-      title: `Habitacion ${item.room_number}`,
-      subtitle: item.floor !== null ? `Piso ${item.floor}` : null,
-      description: item.notes,
-      price: item.base_price,
-      imageUrl: null,
-      badge: item.category_id ? (catMap.get(item.category_id) ?? null) : null,
-      meta: item.floor !== null ? `Piso ${item.floor}` : null,
-    }));
+    return (data ?? []).map((item) => {
+      const location = item.location?.trim() || (item.floor !== null ? `Piso ${item.floor}` : null);
+
+      return {
+        id: item.id,
+        title: `Habitacion ${item.room_number}`,
+        subtitle: location,
+        description: item.notes,
+        price: item.base_price,
+        imageUrl: null,
+        badge: item.category_id ? (catMap.get(item.category_id) ?? null) : null,
+        meta: location,
+      };
+    });
   }
 
   const { data, error } = await adminClient

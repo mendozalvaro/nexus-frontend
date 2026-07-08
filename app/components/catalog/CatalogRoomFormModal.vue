@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { z } from "zod";
 import type { CatalogRoomItem, CatalogRoomPayload, CatalogCategoryItem } from "@/composables/useCatalog";
 import type { BranchOption } from "@/composables/useBranches";
 
@@ -17,7 +18,7 @@ const emit = defineEmits<{
 
 const defaultState = (): CatalogRoomPayload => ({
   roomNumber: "",
-  floor: undefined,
+  location: "",
   categoryId: "",
   branchId: "",
   basePrice: 0,
@@ -25,6 +26,14 @@ const defaultState = (): CatalogRoomPayload => ({
 });
 
 const state = reactive<CatalogRoomPayload>(defaultState());
+const schema = z.object({
+  roomNumber: z.string().trim().min(1, "El numero de habitacion es obligatorio."),
+  location: z.string().trim().max(120, "La ubicacion no puede superar 120 caracteres.").optional(),
+  categoryId: z.string().uuid("Selecciona una categoria valida."),
+  branchId: z.string().uuid("Selecciona una sucursal valida."),
+  basePrice: z.coerce.number().min(0.01, "El precio fijo debe ser mayor a cero."),
+  notes: z.string().trim().max(500, "Las notas no pueden superar 500 caracteres.").optional(),
+});
 
 const isEdit = computed(() => !!props.initialValue);
 const categoryOptions = computed(() => props.lodgingCategories.map((c) => ({ label: c.name, value: c.id })));
@@ -33,7 +42,7 @@ watch(() => props.open, (open) => {
   if (open && props.initialValue) {
     Object.assign(state, {
       roomNumber: props.initialValue.roomNumber,
-      floor: props.initialValue.floor,
+      location: props.initialValue.location ?? "",
       categoryId: props.initialValue.categoryId,
       branchId: props.initialValue.branchId,
       basePrice: props.initialValue.basePrice,
@@ -56,17 +65,17 @@ const handleSubmit = () => {
     </template>
 
     <template #body>
-      <UForm :state="state" @submit="handleSubmit" class="space-y-4">
-        <UFormField label="Numero de habitacion" required>
+      <UForm :schema="schema" :state="state" @submit="handleSubmit" class="space-y-4">
+        <UFormField label="Numero de habitacion" name="roomNumber" required>
           <UInput v-model="state.roomNumber" placeholder="Ej: 101" class="w-full" />
         </UFormField>
 
         <div class="grid grid-cols-2 gap-4">
-          <UFormField label="Piso">
-            <UInput v-model="state.floor" type="number" min="0" class="w-full" />
+          <UFormField label="Ubicacion" name="location">
+            <UInput v-model="state.location" placeholder="Ej: Piso 2, Ala norte" class="w-full" />
           </UFormField>
 
-          <UFormField label="Categoria (tipo de habitacion)" required>
+          <UFormField label="Categoria (tipo de habitacion)" name="categoryId" required>
             <USelectMenu
               v-model="state.categoryId"
               :items="categoryOptions"
@@ -78,11 +87,11 @@ const handleSubmit = () => {
           </UFormField>
         </div>
 
-        <UFormField label="Precio fijo por noche" required>
+        <UFormField label="Precio fijo por noche" name="basePrice" required>
           <UInput v-model.number="state.basePrice" type="number" min="0" step="0.01" class="w-full" />
         </UFormField>
 
-        <UFormField label="Sucursal" required>
+        <UFormField label="Sucursal" name="branchId" required>
           <USelectMenu
             v-model="state.branchId"
             :items="branches"
@@ -93,7 +102,7 @@ const handleSubmit = () => {
           />
         </UFormField>
 
-        <UFormField label="Notas">
+        <UFormField label="Notas" name="notes">
           <UTextarea v-model="state.notes" placeholder="Notas opcionales" class="w-full" />
         </UFormField>
 

@@ -6,6 +6,7 @@ import ReservationStayActionModal from "@/components/reservations/modals/Reserva
 import ReservationCancelModal from "@/components/reservations/modals/ReservationCancelModal.vue";
 import ReservationPaymentModal from "@/components/reservations/modals/ReservationPaymentModal.vue";
 import ReceiptViewer from "@/components/pos/modals/ReceiptViewer.vue";
+import { formatReservationReceiptNumber } from "@/utils/reservation-receipts";
 
 type StayActionMode = "check_out" | "extend_stay" | "define_check_out" | "mark_open_ended";
 
@@ -36,10 +37,11 @@ const cancelReason = ref("");
 const paymentForm = reactive({
   amount: 0,
   paymentMethod: "cash",
-  paymentType: "deposit",
   reference: "",
 });
 const mutationLoading = ref(false);
+
+const resolveAutomaticPaymentType = (amount: number, balanceAmount: number) => amount >= balanceAmount ? "full" : "deposit";
 
 const clearOpenPaymentQuery = async () => {
   if (!route.query.openPayment) {
@@ -61,16 +63,42 @@ const handlePaymentModalOpenChange = async (open: boolean) => {
   }
 };
 
-const normalizeReceiptNumber = (value: string) => {
-  const digits = value.replace(/\D/g, "").slice(0, 14);
-  return Number(digits || Date.now().toString().slice(0, 14));
-};
-
 const normalizeReceiptPaymentMethod = (value: string): POSReceipt["paymentMethod"] => {
   if (value === "cash" || value === "card" || value === "transfer" || value === "digital_wallet") {
     return value;
   }
   return "transfer";
+};
+
+const formatGuestDocument = (documentType?: string | null, documentNumber?: string | null) => {
+  const parts = [documentType?.trim(), documentNumber?.trim()].filter(Boolean);
+  return parts.length > 0 ? parts.join(" ") : "Sin documento";
+};
+
+const getPaymentProgress = (paymentId: string) => {
+  if (!detail.value) {
+    return { paidAfter: 0, balanceAfter: 0 };
+  }
+
+  let paidAfter = 0;
+  const ascendingPayments = [...detail.value.payments].sort((left, right) =>
+    new Date(left.paidAt).getTime() - new Date(right.paidAt).getTime(),
+  );
+
+  for (const currentPayment of ascendingPayments) {
+    paidAfter += currentPayment.amount;
+    if (currentPayment.id === paymentId) {
+      return {
+        paidAfter,
+        balanceAfter: Math.max(0, detail.value.totalAmount - paidAfter),
+      };
+    }
+  }
+
+  return {
+    paidAfter: detail.value.paidAmount,
+    balanceAfter: Math.max(0, detail.value.totalAmount - detail.value.paidAmount),
+  };
 };
 
 const buildReceiptFromPayment = (payment: ReservationDetail["payments"][number]): POSReceipt | null => {
@@ -82,20 +110,28 @@ const buildReceiptFromPayment = (payment: ReservationDetail["payments"][number])
     .flatMap((room) => room.guests)
     .find((guest) => guest.isMainGuest) ?? detail.value.rooms[0]?.guests[0];
   const roomNumbers = detail.value.rooms.map((room) => room.roomNumber).join(", ");
-  const balanceAfterPayment = Math.max(0, detail.value.totalAmount - detail.value.paidAmount);
+  const { balanceAfter: pendingAfterPayment } = getPaymentProgress(payment.id);
+  const isPartialReceipt = payment.receiptKind === "partial";
+  const receiptNumber = payment.receiptNumber
+    ?? formatReservationReceiptNumber(
+      payment.receiptBaseNumber,
+      payment.receiptKind,
+      payment.receiptPartialIndex,
+    )
+    ?? `REC-${new Date(payment.paidAt).getFullYear()}-${payment.id.slice(0, 6).toUpperCase()}`;
 
   return {
     transactionId: payment.id,
-    invoiceNumber: normalizeReceiptNumber(payment.paidAt),
+    invoiceNumber: receiptNumber,
     createdAt: payment.paidAt,
     branchId: detail.value.branchId,
     branchName: detail.value.branchName || "Recepcion",
     employeeId: detail.value.id,
-    employeeName: detail.value.source ?? "Recepcion",
+    employeeName: payment.createdByName ?? detail.value.createdByName ?? detail.value.source ?? "Recepcion",
     customer: {
       mode: "walk_in",
       customerId: null,
-      guestCustomerId: null,
+      guestCustomerId: mainGuest?.guestCustomerId ?? null,
       fullName: mainGuest?.fullName ?? "Huesped",
       phone: mainGuest?.phone ?? null,
       email: mainGuest?.email ?? null,
@@ -105,7 +141,7 @@ const buildReceiptFromPayment = (payment: ReservationDetail["payments"][number])
     discountAmount: 0,
     taxAmount: 0,
     finalAmount: payment.amount,
-    formatUsed: "half_letter",
+    formatUsed: detail.value.defaultReceiptFormat,
     verificationUrl: `${window.location.origin}/reservations/${detail.value.id}`,
     items: [
       {
@@ -115,19 +151,41 @@ const buildReceiptFromPayment = (payment: ReservationDetail["payments"][number])
         unitPrice: payment.amount,
         subtotal: payment.amount,
         title: `Pago de estadia Hab. ${roomNumbers}`,
-        subtitle: `Reserva ${detail.value.id.slice(0, 8)} · ${payment.paymentType} · saldo despues Bs ${balanceAfterPayment.toFixed(2)}`,
+        subtitle: `Reserva ${detail.value.id.slice(0, 8)} - ${isPartialReceipt ? "Pago parcial" : "Pago total"}`,
         snapshotData: null,
       },
     ],
+    meta: {
+      headerTitle: detail.value.organizationName || "Tenant",
+      headerSubtitle: `Sucursal: ${detail.value.branchName || "Recepcion"}`,
+      headerSubtitleSecondary: `Direccion: ${detail.value.branchAddress?.trim() || "-"}`,
+      receiptTitle: "Recibo",
+      documentLabel: "Recibo",
+      customerSecondaryLabel: "Documento",
+      customerSecondaryValue: formatGuestDocument(mainGuest?.documentType, mainGuest?.documentNumber),
+      employeeLabel: "Usuario que emite",
+      summaryLabel: isPartialReceipt ? "Pago parcial" : "Pago total",
+      summaryRows: isPartialReceipt
+        ? [
+            { label: "Monto pagado", value: `Bs ${payment.amount.toFixed(2)}` },
+            { label: "Pendiente", value: `Bs ${pendingAfterPayment.toFixed(2)}` },
+          ]
+        : undefined,
+      showFormatSelector: false,
+      showFormatLine: false,
+      allowPdfDownload: false,
+    },
   };
 };
 
-const openLatestReceipt = () => {
-  const latestPayment = detail.value?.payments[0];
-  if (!latestPayment) {
+const openLatestReceipt = (paymentId?: string) => {
+  const selectedPayment = paymentId
+    ? detail.value?.payments.find((payment) => payment.id === paymentId)
+    : detail.value?.payments[0];
+  if (!selectedPayment) {
     return;
   }
-  const nextReceipt = buildReceiptFromPayment(latestPayment);
+  const nextReceipt = buildReceiptFromPayment(selectedPayment);
   if (!nextReceipt) {
     return;
   }
@@ -149,6 +207,7 @@ const load = async () => {
 const canRegisterStay = computed(() => Boolean(detail.value && detail.value.status === "checked_in"));
 const canCancel = computed(() => Boolean(detail.value && ["pending", "pending_payment", "confirmed"].includes(detail.value.status)));
 const balance = computed(() => (detail.value ? detail.value.totalAmount - detail.value.paidAmount : 0));
+
 const openStayActionModal = () => {
   stayActionMode.value = null;
   stayActionModalOpen.value = true;
@@ -161,7 +220,7 @@ const handleStayAction = async (payload: ReservationStayActionPayload) => {
     stayActionModalOpen.value = false;
     await load();
   } catch (e) {
-    error.value = e instanceof Error ? e.message : "Error al registrar la estadía.";
+    error.value = e instanceof Error ? e.message : "Error al registrar la estadia.";
   } finally {
     mutationLoading.value = false;
   }
@@ -186,30 +245,42 @@ const handlePayment = async () => {
   if (paymentForm.amount <= 0) return;
   mutationLoading.value = true;
   try {
+    const automaticPaymentType = resolveAutomaticPaymentType(paymentForm.amount, balance.value);
     const paymentSnapshot = {
       id: `payment-${Date.now()}`,
       amount: paymentForm.amount,
       paymentMethod: paymentForm.paymentMethod,
-      paymentType: paymentForm.paymentType,
+      paymentType: automaticPaymentType,
+      receiptKind: (paymentForm.amount >= balance.value ? "final" : "partial") as "partial" | "final",
+      receiptBaseNumber: null,
+      receiptNumber: null,
+      receiptPartialIndex: null,
+      receiptYear: null,
+      receiptSequence: null,
       reference: paymentForm.reference || null,
       notes: null,
       paidAt: new Date().toISOString(),
+      createdByName: detail.value?.createdByName ?? null,
     };
+
     await registerPayment({
       reservationId,
       amount: paymentForm.amount,
       paymentMethod: paymentForm.paymentMethod,
-      paymentType: paymentForm.paymentType,
+      paymentType: automaticPaymentType,
       reference: paymentForm.reference || undefined,
     });
+
     paymentModalOpen.value = false;
-    Object.assign(paymentForm, { amount: 0, paymentMethod: "cash", paymentType: "deposit", reference: "" });
+    Object.assign(paymentForm, { amount: 0, paymentMethod: "cash", reference: "" });
     await load();
+
     const nextReceipt = buildReceiptFromPayment(detail.value?.payments[0] ?? paymentSnapshot);
     if (nextReceipt) {
       receiptData.value = nextReceipt;
       receiptOpen.value = true;
     }
+
     await clearOpenPaymentQuery();
   } catch (e) {
     error.value = e instanceof Error ? e.message : "Error al registrar pago.";
@@ -295,13 +366,11 @@ watch(
       :loading="mutationLoading"
       :amount="paymentForm.amount"
       :payment-method="paymentForm.paymentMethod"
-      :payment-type="paymentForm.paymentType"
       :reference="paymentForm.reference"
       :balance="balance"
       @update:open="handlePaymentModalOpenChange"
       @update:amount="(value: number) => paymentForm.amount = value"
       @update:payment-method="(value: string) => paymentForm.paymentMethod = value"
-      @update:payment-type="(value: string) => paymentForm.paymentType = value"
       @update:reference="(value: string) => paymentForm.reference = value"
       @submit="handlePayment"
     />

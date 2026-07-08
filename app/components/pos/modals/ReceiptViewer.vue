@@ -9,10 +9,24 @@ const props = defineProps<{
 const emit = defineEmits<{
   close: [];
 }>();
-const toast = useToast();
 
+const toast = useToast();
 const selectedFormat = ref<ReceiptFormat>(props.receipt.formatUsed ?? "thermal");
 const downloadingPdf = ref(false);
+
+const receiptMeta = computed(() => props.receipt.meta ?? {});
+const documentLabel = computed(() => receiptMeta.value.documentLabel ?? "Recibo");
+const headerTitle = computed(() => receiptMeta.value.headerTitle ?? "NexusPOS");
+const headerSubtitle = computed(() => receiptMeta.value.headerSubtitle ?? props.receipt.branchName);
+const headerSubtitleSecondary = computed(() => receiptMeta.value.headerSubtitleSecondary ?? "");
+const receiptTitle = computed(() => receiptMeta.value.receiptTitle ?? "Recibo de venta");
+const customerSecondaryLabel = computed(() => receiptMeta.value.customerSecondaryLabel ?? "Telefono");
+const customerSecondaryValue = computed(() => receiptMeta.value.customerSecondaryValue ?? props.receipt.customer.phone ?? "Sin telefono");
+const employeeLabel = computed(() => receiptMeta.value.employeeLabel ?? "Atendido por");
+const summaryLabel = computed(() => receiptMeta.value.summaryLabel ?? "Total");
+const summaryRows = computed(() => receiptMeta.value.summaryRows ?? []);
+const showFormatSelector = computed(() => receiptMeta.value.showFormatSelector !== false);
+const allowPdfDownload = computed(() => receiptMeta.value.allowPdfDownload !== false);
 
 watch(
   () => props.receipt.formatUsed,
@@ -27,6 +41,10 @@ const printSelected = () => {
 };
 
 const downloadPdf = async () => {
+  if (!allowPdfDownload.value) {
+    return;
+  }
+
   downloadingPdf.value = true;
   try {
     await downloadReceiptPdf(props.receipt);
@@ -55,7 +73,7 @@ const downloadPdf = async () => {
     <div class="rounded-xl bg-slate-50 p-4 dark:bg-slate-900/70">
       <div class="grid grid-cols-2 gap-4 text-sm">
         <div>
-          <span class="text-slate-500 dark:text-slate-400">Factura #</span>
+          <span class="text-slate-500 dark:text-slate-400">{{ documentLabel }} #</span>
           <p class="font-semibold text-slate-950 dark:text-white">{{ receipt.invoiceNumber }}</p>
         </div>
         <div>
@@ -63,34 +81,46 @@ const downloadPdf = async () => {
           <p class="font-semibold text-slate-950 dark:text-white">{{ new Date(receipt.createdAt).toLocaleString("es-BO") }}</p>
         </div>
         <div>
-          <span class="text-slate-500 dark:text-slate-400">Sucursal</span>
-          <p class="font-semibold text-slate-950 dark:text-white">{{ receipt.branchName }}</p>
+          <span class="text-slate-500 dark:text-slate-400">{{ headerTitle }}</span>
+          <p class="font-semibold text-slate-950 dark:text-white">{{ headerSubtitle }}</p>
+          <p v-if="headerSubtitleSecondary" class="text-sm text-slate-500 dark:text-slate-400">{{ headerSubtitleSecondary }}</p>
         </div>
         <div>
-          <span class="text-slate-500 dark:text-slate-400">Cliente</span>
+          <span class="text-slate-500 dark:text-slate-400">{{ receiptTitle }}</span>
           <p class="font-semibold text-slate-950 dark:text-white">{{ receipt.customer.fullName }}</p>
         </div>
       </div>
       <div class="mt-3">
-        <p class="text-xs text-slate-500 dark:text-slate-400">Verificación segura</p>
+        <p class="text-xs text-slate-500 dark:text-slate-400">Verificacion segura</p>
         <a :href="receipt.verificationUrl" target="_blank" class="text-xs text-primary-600 underline break-all">
           {{ receipt.verificationUrl }}
         </a>
       </div>
     </div>
 
-    <div class="grid gap-3 sm:grid-cols-2">
+    <div v-if="showFormatSelector" class="grid gap-3 sm:grid-cols-2">
       <UFormField label="Formato para imprimir/reimprimir">
         <USelect
           v-model="selectedFormat"
           :items="[
-            { label: 'Térmico (ticket)', value: 'thermal' },
+            { label: 'Termico (ticket)', value: 'thermal' },
             { label: 'Media carta', value: 'half_letter' },
           ]"
           label-key="label"
           value-key="value"
         />
       </UFormField>
+    </div>
+
+    <div class="grid gap-4 sm:grid-cols-2">
+      <div class="rounded-xl border border-slate-200/80 bg-slate-50/70 px-4 py-3 dark:border-slate-800 dark:bg-slate-900/70">
+        <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">{{ customerSecondaryLabel }}</p>
+        <p class="mt-1 text-sm font-semibold text-slate-950 dark:text-white">{{ customerSecondaryValue }}</p>
+      </div>
+      <div class="rounded-xl border border-slate-200/80 bg-slate-50/70 px-4 py-3 dark:border-slate-800 dark:bg-slate-900/70">
+        <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">{{ employeeLabel }}</p>
+        <p class="mt-1 text-sm font-semibold text-slate-950 dark:text-white">{{ receipt.employeeName }}</p>
+      </div>
     </div>
 
     <div>
@@ -108,8 +138,14 @@ const downloadPdf = async () => {
     </div>
 
     <div class="rounded-xl bg-slate-950 p-4 text-white dark:bg-white dark:text-slate-950">
+      <div v-if="summaryRows.length" class="mb-3 space-y-1.5 text-sm">
+        <div v-for="row in summaryRows" :key="row.label" class="flex items-center justify-between gap-3">
+          <span>{{ row.label }}</span>
+          <span class="font-medium">{{ row.value }}</span>
+        </div>
+      </div>
       <div class="flex items-center justify-between text-lg font-semibold">
-        <span>Total</span>
+        <span>{{ summaryLabel }}</span>
         <span>Bs {{ receipt.finalAmount.toFixed(2) }}</span>
       </div>
     </div>
@@ -118,7 +154,7 @@ const downloadPdf = async () => {
       <UButton color="neutral" variant="soft" icon="i-lucide-printer" @click="printSelected">
         Imprimir
       </UButton>
-      <UButton color="primary" variant="soft" icon="i-lucide-file-text" :loading="downloadingPdf" @click="downloadPdf">
+      <UButton v-if="allowPdfDownload" color="primary" variant="soft" icon="i-lucide-file-text" :loading="downloadingPdf" @click="downloadPdf">
         Descargar PDF media carta
       </UButton>
       <UButton color="neutral" variant="soft" @click="emit('close')">

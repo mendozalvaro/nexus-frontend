@@ -28,9 +28,6 @@ alter table rooms alter column category_id set not null;
 alter table rooms add constraint rooms_category_fkey
   foreign key (category_id) references categories(id) on delete restrict;
 
-alter table rooms add constraint rooms_category_lodging_check
-  check (exists (select 1 from categories c where c.id = category_id and c.type = 'lodging'));
-
 -- 4. Drop room_types
 drop trigger if exists update_room_type_updated_at on room_types;
 drop trigger if exists audit_room_types on room_types;

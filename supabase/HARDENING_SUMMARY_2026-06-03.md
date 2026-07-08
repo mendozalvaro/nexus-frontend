@@ -6,8 +6,8 @@ Este documento resume el saneamiento aplicado sobre el proyecto Supabase enlazad
 
 ## Fuente de verdad adoptada
 
-- El baseline confiable pasa a ser `supabase/migrations/**` + la BD remota enlazada.
-- `schema.sql` quedó históricamente desfasado respecto al remoto y no debe usarse como fuente única para nuevos cambios hasta regenerarlo.
+- El baseline confiable pasa a ser `supabase/dump.sql` + la BD remota enlazada.
+- `supabase/migrations/**` sigue siendo el historial de cambios; el schema operativo debe contrastarse contra `dump.sql` y la BD real.
 
 ## Cambios aplicados
 
@@ -156,6 +156,5 @@ Por tanto:
 
 ## Pendientes conocidos
 
-- Regenerar `schema.sql` desde el remoto cuando el entorno tenga soporte operativo para `db dump`/flujo estable de export.
 - Decidir si la deuda aceptada del core RLS se mantiene o entra a un refactor mayor de autorización.
-- Mantener futuras migraciones usando como fuente de verdad `supabase/migrations/**` + validación remota.
+- Mantener futuras migraciones usando como contraste `supabase/dump.sql` + validación remota.

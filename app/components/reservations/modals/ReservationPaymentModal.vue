@@ -4,7 +4,6 @@ const props = defineProps<{
   loading: boolean;
   amount: number;
   paymentMethod: string;
-  paymentType: string;
   reference: string;
   balance: number;
 }>();
@@ -13,10 +12,10 @@ const emit = defineEmits<{
   "update:open": [boolean];
   "update:amount": [number];
   "update:paymentMethod": [string];
-  "update:paymentType": [string];
   "update:reference": [string];
   submit: [];
 }>();
+
 </script>
 
 <template>
@@ -34,13 +33,6 @@ const emit = defineEmits<{
             { label: 'QR', value: 'qr' },
             { label: 'Billetera digital', value: 'digital_wallet' },
           ]" value-key="value" label-key="label" class="w-full" @update:model-value="(value) => emit('update:paymentMethod', value)" />
-        </UFormField>
-        <UFormField label="Tipo de pago">
-          <USelectMenu :model-value="paymentType" :items="[
-            { label: 'Deposito', value: 'deposit' },
-            { label: 'Saldo', value: 'balance' },
-            { label: 'Completo', value: 'full' },
-          ]" value-key="value" label-key="label" class="w-full" @update:model-value="(value) => emit('update:paymentType', value)" />
         </UFormField>
         <UFormField label="Referencia">
           <UInput :model-value="reference" placeholder="Opcional" class="w-full" @update:model-value="(value) => emit('update:reference', value)" />

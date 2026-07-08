@@ -4,7 +4,7 @@ import type { CatalogContext } from "../../utils/catalog";
 export interface RoomItem {
   id: string;
   roomNumber: string;
-  floor: number | null;
+  location: string | null;
   categoryId: string;
   categoryName: string;
   branchId: string;
@@ -49,7 +49,11 @@ export const getCatalogRooms = async (
     return {
       id: row.id as string,
       roomNumber: row.room_number as string,
-      floor: (row.floor as number) ?? null,
+      location: typeof row.location === "string" && row.location.trim().length > 0
+        ? row.location.trim()
+        : typeof row.floor === "number"
+          ? `Piso ${row.floor}`
+          : null,
       categoryId: row.category_id as string,
       categoryName: cat?.name ?? "",
       branchId: row.branch_id as string,
@@ -79,7 +83,7 @@ export const getCatalogRooms = async (
 
 export interface CreateRoomPayload {
   roomNumber: string;
-  floor?: number | null;
+  location?: string | null;
   categoryId: string;
   branchId: string;
   basePrice: number;
@@ -101,7 +105,7 @@ export const createCatalogRoom = async (
       branch_id: payload.branchId,
       category_id: payload.categoryId,
       room_number: payload.roomNumber.trim(),
-      floor: payload.floor ?? null,
+      location: payload.location?.trim() || null,
       base_price: payload.basePrice,
       notes: payload.notes?.trim() || null,
       status: "available",
@@ -131,7 +135,7 @@ export const updateCatalogRoom = async (
 
   const roomFields: Record<string, unknown> = {};
   if (payload.roomNumber !== undefined) roomFields.room_number = payload.roomNumber.trim();
-  if (payload.floor !== undefined) roomFields.floor = payload.floor;
+  if (payload.location !== undefined) roomFields.location = payload.location?.trim() || null;
   if (payload.categoryId !== undefined) roomFields.category_id = payload.categoryId;
   if (payload.branchId !== undefined) roomFields.branch_id = payload.branchId;
   if (payload.basePrice !== undefined) roomFields.base_price = payload.basePrice;
